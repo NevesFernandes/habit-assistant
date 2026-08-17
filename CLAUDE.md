@@ -4,7 +4,7 @@ An agent-driven habit tracker and task manager. Instead of navigating menus, for
 
 This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
 
-**Status: pre-code.** This file is the foundation from a requirements-gathering session; no application code has been written yet. Nothing below should be treated as already implemented.
+**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, and a chat UI that can create a Single Task via one tool call are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists.
 
 ## Interaction model
 
@@ -69,9 +69,9 @@ Applies to Habits and Recurring Tasks. The full target model:
 
 - **Frontend**: a web app, built as an installable PWA. One codebase works on Android (installed to home screen) and desktop browsers.
 - **Storage**: the user's own Google Drive. Data lives as a file (or small set of files) in the user's Drive — not a third-party-hosted database. This was a deliberate choice over a "free-tier" hosted DB service, trading some extra engineering effort (Drive API integration, basic conflict handling for near-simultaneous edits from two devices) for genuine data ownership and a cost that is $0 by construction rather than by a company's current pricing policy.
-- **Hosting**: the frontend is static, hosted on a structurally-free host (e.g. GitHub Pages or Cloudflare Pages). No traditional always-on backend server in v1 — storage and cross-device sync are handled entirely via Drive.
-- **Auth**: Google Sign-In. It serves double duty — logging the user in, and granting OAuth access to their Drive file.
-- **Agent / LLM**: Anthropic Claude API. Note this is billed separately from a Claude.ai (Pro/Max) subscription — a Claude.ai subscription does not include API credits; a console.anthropic.com API key with its own pay-as-you-go billing is required. The LLM call should sit behind a small internal abstraction so a different provider could be swapped in later (the user wants to keep that option open as usage scales), without over-building that flexibility now.
+- **Hosting**: **Cloudflare Pages** — static site hosting plus one Pages Function, both free. (Superseded the earlier "GitHub Pages" idea once it became clear the Anthropic key needed a server-side home — see below.)
+- **Auth**: Google Sign-In via Google Identity Services, scope `drive.file`. It serves double duty — logging the user in, and granting OAuth access to their Drive file. The data file lives in a **visible** "Habit Assistant" folder in the user's own Drive (not the hidden `appDataFolder`), so it's genuinely inspectable/backup-able by them.
+- **Agent / LLM**: Anthropic Claude API, called from **one small Cloudflare Pages Function** (`functions/api/agent.ts`) rather than directly from the browser — calling Anthropic client-side would put the API key in the browser bundle/network requests, which is a real extraction risk even for a private tool. This is a deliberate, narrow amendment to "no backend": it's a single on-demand function, not an always-on server; storage and sync still go straight from the browser to Drive with nothing else in between. Note the Anthropic key is billed separately from a Claude.ai (Pro/Max) subscription — a Claude.ai subscription does not include API credits; a console.anthropic.com API key with its own pay-as-you-go billing is required. The model ID is read from an env var with a sensible default, which stands in for the "swap providers later" abstraction without over-building it now.
 - **Notifications**: none in v1. Don't spend effort enabling them, but don't design storage/sync in a way that would preclude adding them later.
 
 ## Open questions / to refine later
