@@ -1,0 +1,84 @@
+# Habit Assistant
+
+An agent-driven habit tracker and task manager. Instead of navigating menus, forms, and checkboxes like typical apps (HabitNow, Focus To-Do, Todoist), the user talks to an agent in plain English — "add a habit to read every night," "mark gym done today," "add milk to my shopping list" — and the agent performs the action, asking a clarifying follow-up question only when it genuinely needs more information to act.
+
+This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
+
+**Status: pre-code.** This file is the foundation from a requirements-gathering session; no application code has been written yet. Nothing below should be treated as already implemented.
+
+## Interaction model
+
+- **Chat-first**: a text box is the primary interface. The agent interprets natural-language requests and acts on them directly (creates/edits/completes items) rather than routing the user through forms.
+- **Conversational, not fire-and-forget**: if the agent doesn't have enough information to complete a request, it asks a follow-up question instead of guessing or silently failing.
+- **Voice is deferred but architected for from day one.** No voice-to-text in v1, but "user message" must be treated as an abstract text input throughout the system, so a future voice layer can feed the same pipeline without rework. Do not hardcode assumptions that only make sense for typed text.
+- **No push notifications or reminders in v1.** The app is pull-based — the user checks in on their own terms. This may be revisited later; don't build toward it yet, but don't design anything that would make adding it later painful.
+
+## Item taxonomy
+
+Three item types share a common base:
+
+- `name` (required)
+- `description` (optional)
+- `category` (optional, see Categories below)
+- `priority` (numeric; affects display order)
+- `startDate` (defaults to today)
+- `endDate` (optional)
+
+### 1. Habit
+Recurring. Has a **completion type**:
+- Yes/No
+- Numeric value (e.g. "8 glasses of water")
+- Timer (duration-based, e.g. "meditate 10 min")
+- Checklist (percent-complete toward that occurrence's completion — partial or 100%)
+
+Habits are meant to build a detailed tracking/statistics dashboard over time (streaks, history, charts). **The dashboard UI itself is a future phase**, but completion history must be logged from day one (every occurrence, every completion event) so stats can be computed later without backfilling data.
+
+### 2. Recurring Task
+Same structural shape as a Habit (category, priority, dates, periodicity) but tracking is simple: **done / not-done per occurrence only**. No completion-type machinery, no stats dashboard.
+
+### 3. Single Task
+One-off. No periodicity. Done / not-done.
+
+### Checklists (a shared building block, two different uses)
+- As a **Habit's completion type**: defines what "done" means for that occurrence (e.g. a morning-routine checklist resets and must be filled each day).
+- As an **attachment on either Task type**: a freeform, growing list of sub-items unrelated to the done/not-done status of the task itself. Example: a weekly recurring task "go shopping," where items get added throughout the week, functioning as a running shopping list.
+
+These are the same underlying checklist component used in two different roles — don't build two separate implementations. Exact reset/carry-over behavior of a *task's* checklist across recurring occurrences (does it clear each cycle, or carry unfinished items forward?) is intentionally undecided — see Open Questions.
+
+## Categories
+
+- A default starter list of categories exists out of the box, each with a small icon (reference: HabitNow's default set — Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other). Treat this as the starting point, not a locked spec — icons/colors are ours to design.
+- Users can add their own categories ("Create category").
+- **Category is optional**, with a sensible default — this was explicitly left undecided in the source notes ("debatable if it should be mandatory"); optional was chosen to keep friction low for quick agent-created items.
+
+## Periodicity
+
+Applies to Habits and Recurring Tasks. The full target model:
+
+- Every day
+- Specific days of the week
+- Specific days of the month, including "nth weekday of month" (e.g. "third Monday") via two linked selectors: first/second/third/fourth/fifth/last + day-of-week
+- Specific dates of the year (recurring annually — e.g. birthdays), added one at a time to a list
+- "N times per period" (per week/month/year), flexible/unpinned to specific days
+- Interval repeats ("every X days")
+- On/off cycles ("5 days on, 2 days off")
+
+**This is phased.** The data model should be designed up front to represent all of the above, but v1's actual implementation only needs to cover the common cases: every day, specific days of week, every X days, N times per week. The remaining types (nth-weekday-of-month, specific yearly dates, on/off cycles) are a fast follow-up once the core create → track → complete loop works end-to-end. Don't skip designing the data model for them now just because they're not built yet — retrofitting recurrence rules later is painful.
+
+## Architecture
+
+- **Frontend**: a web app, built as an installable PWA. One codebase works on Android (installed to home screen) and desktop browsers.
+- **Storage**: the user's own Google Drive. Data lives as a file (or small set of files) in the user's Drive — not a third-party-hosted database. This was a deliberate choice over a "free-tier" hosted DB service, trading some extra engineering effort (Drive API integration, basic conflict handling for near-simultaneous edits from two devices) for genuine data ownership and a cost that is $0 by construction rather than by a company's current pricing policy.
+- **Hosting**: the frontend is static, hosted on a structurally-free host (e.g. GitHub Pages or Cloudflare Pages). No traditional always-on backend server in v1 — storage and cross-device sync are handled entirely via Drive.
+- **Auth**: Google Sign-In. It serves double duty — logging the user in, and granting OAuth access to their Drive file.
+- **Agent / LLM**: Anthropic Claude API. Note this is billed separately from a Claude.ai (Pro/Max) subscription — a Claude.ai subscription does not include API credits; a console.anthropic.com API key with its own pay-as-you-go billing is required. The LLM call should sit behind a small internal abstraction so a different provider could be swapped in later (the user wants to keep that option open as usage scales), without over-building that flexibility now.
+- **Notifications**: none in v1. Don't spend effort enabling them, but don't design storage/sync in a way that would preclude adding them later.
+
+## Open questions / to refine later
+
+These were deliberately left undecided rather than guessed at — surface them again before they become load-bearing:
+
+- Does a recurring task's checklist reset each new occurrence, or carry unfinished items forward to the next cycle?
+- Exact conflict-resolution strategy for near-simultaneous edits to the Drive-stored data file from two devices.
+- Design of the stats/dashboard view for Habits (streaks, charts, etc.) — functionality is expected, visuals/metrics are not yet specified.
+- Whether/when to revisit push notifications, given "no reminders" was affirmed for now but not ruled out permanently.

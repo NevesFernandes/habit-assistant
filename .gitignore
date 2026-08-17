@@ -1,0 +1,32 @@
+# Handwritten note photos & reference screenshots — already transcribed into CLAUDE.md, no need to version them
+/Notes/
+
+# Secrets & credentials — Anthropic/Google API keys and OAuth secrets must never be committed
+.env
+.env.*
+!.env.example
+*.pem
+*credentials*.json
+*service-account*.json
+client_secret*.json
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
