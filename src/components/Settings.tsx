@@ -4,6 +4,8 @@ import {
   saveProviderKey,
   setActiveProvider,
   forgetProviderKey,
+  getSttUsesOwnKey,
+  setSttUsesOwnKey,
   type ByokProvider,
 } from "../lib/settingsStore";
 
@@ -23,6 +25,7 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
   const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
+  const [sttOwnKey, setSttOwnKey] = useState(getSttUsesOwnKey());
 
   function handleSelect(provider: ByokProvider) {
     setSelected(provider);
@@ -50,6 +53,14 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
   }
 
   const hasSavedKey = getSavedKey(selected) !== null;
+  const hasGroqKey = getSavedKey("groq") !== null;
+
+  function handleToggleStt() {
+    const next = !sttOwnKey;
+    setSttOwnKey(next);
+    setSttUsesOwnKey(next);
+    onChange();
+  }
 
   return (
     <div className="rounded-md bg-slate-800 p-4 text-sm">
@@ -121,6 +132,27 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
           </button>
         )}
       </div>
+
+      <hr className="my-4 border-slate-700" />
+
+      <h2 className="mb-2 font-medium">Voice transcription</h2>
+      <p className="mb-3 text-slate-400">
+        Independent of the chat provider above — uses a free shared trial by default, or your own
+        Groq key (the same one saved above, if you have one).
+      </p>
+      <div className="flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">
+        <span>{sttOwnKey ? "Using your Groq key" : "Using free trial"}</span>
+        <button
+          onClick={handleToggleStt}
+          disabled={!sttOwnKey && !hasGroqKey}
+          className="rounded-md bg-violet-500 px-2 py-1 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+        >
+          {sttOwnKey ? "Switch to trial" : "Use my Groq key"}
+        </button>
+      </div>
+      {!hasGroqKey && !sttOwnKey && (
+        <p className="mt-1 text-xs text-slate-500">Save a Groq key above first to enable this.</p>
+      )}
     </div>
   );
 }

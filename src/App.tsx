@@ -16,7 +16,7 @@ import {
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
 import { addSingleTask, toggleSingleTaskDone } from "./lib/dataStore";
-import { getActiveByok, type ByokSettings } from "./lib/settingsStore";
+import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -33,11 +33,18 @@ export default function App() {
   const [sending, setSending] = useState(false);
 
   const [byok, setByok] = useState<ByokSettings | null>(null);
+  const [sttApiKey, setSttApiKey] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setByok(getActiveByok());
+    setSttApiKey(getActiveStt()?.apiKey ?? null);
   }, []);
+
+  function refreshSettings() {
+    setByok(getActiveByok());
+    setSttApiKey(getActiveStt()?.apiKey ?? null);
+  }
 
   async function handleSignIn() {
     setSigningIn(true);
@@ -140,14 +147,14 @@ export default function App() {
       {settingsOpen && (
         <SettingsPanel
           activeProvider={byok?.provider ?? null}
-          onChange={() => setByok(getActiveByok())}
+          onChange={refreshSettings}
           onClose={() => setSettingsOpen(false)}
         />
       )}
 
       <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
         <div className="min-h-[60vh] md:min-h-0">
-          <Chat messages={messages} onSend={handleSend} sending={sending} />
+          <Chat messages={messages} onSend={handleSend} sending={sending} sttApiKey={sttApiKey} />
         </div>
         <div>
           <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-400">

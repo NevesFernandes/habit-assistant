@@ -2,7 +2,7 @@
 
 See `CLAUDE.md` for the product vision and architecture decisions. This README is just the "how do I run it" instructions.
 
-**Status**: first scaffold plus a provider-agnostic agent layer. Sign in, chat with the assistant (on a shared free trial by default, or your own key via the Settings panel), and it can create simple one-off tasks — that's the whole vertical slice for now. Habits, recurring tasks, and everything else in `CLAUDE.md` come next.
+**Status**: first scaffold plus a provider-agnostic agent layer and voice input. Sign in, chat (typed or spoken — press-and-hold the mic button) with the assistant on a shared free trial by default, or your own key via the Settings panel, and it can create simple one-off tasks — that's the whole vertical slice for now. Habits, recurring tasks, and everything else in `CLAUDE.md` come next.
 
 ## One-time setup (things only you can do)
 
@@ -32,6 +32,17 @@ Prefer a different default, or want to test without spending anything at all?
 
 Anthropic, Groq, and Gemini are also the three choices in the app's own Settings panel, for anyone who wants to bring their own key instead of using the shared trial.
 
+### 3. A key for the shared voice-transcription trial
+
+Voice input (press-and-hold the mic button in chat) always uses Groq's Whisper API — it's the only viable free speech-to-text option, so unlike chat there's no provider choice here. This is a **separate** trial key from step 2's, even though it's likely the same physical Groq key.
+
+Add to the same `.dev.vars` file:
+```
+STT_TRIAL_API_KEY=gsk_...
+```
+
+(You can reuse the same Groq key from step 2, or create a second one — either works.) Anyone can also switch to their *own* Groq key for voice specifically in the Settings panel, independent of whichever provider they're chatting with.
+
 ## Running locally
 
 ```bash
@@ -39,7 +50,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real Cloudflare Function). It reads the trial provider's key straight from `.dev.vars`.
+Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` and `/api/transcribe` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real Cloudflare Functions). It reads the trial keys straight from `.dev.vars`. Microphone access requires HTTPS or `localhost` — both `http://localhost:5173` here and the real Cloudflare Pages deployment already satisfy that, nothing extra to configure.
 
 There's also `npm run pages:dev`, which uses Cloudflare's own `wrangler pages dev` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
 
@@ -48,7 +59,7 @@ There's also `npm run pages:dev`, which uses Cloudflare's own `wrangler pages de
 1. Create a free [Cloudflare](https://dash.cloudflare.com/) account.
 2. **Workers & Pages → Create → Pages → Connect to Git**, pick this GitHub repo.
 3. Build command: `npm run build`. Build output directory: `dist`.
-4. In the Pages project's **Settings → Environment variables**, add `TRIAL_PROVIDER`, `TRIAL_API_KEY` (and optionally `TRIAL_MODEL`) as secrets — same idea as `.dev.vars`, but for production.
+4. In the Pages project's **Settings → Environment variables**, add `TRIAL_PROVIDER`, `TRIAL_API_KEY`, `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`) as secrets — same idea as `.dev.vars`, but for production.
 5. Add the deployed `*.pages.dev` URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
 
 I'll walk through each of these with you when we get there.

@@ -4,13 +4,13 @@ An agent-driven habit tracker and task manager. Instead of navigating menus, for
 
 This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
 
-**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, a chat UI that can create a Single Task via one tool call, and a provider-agnostic agent layer (shared free trial + BYOK settings) are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists.
+**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, a chat UI that can create a Single Task via one tool call, a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists.
 
 ## Interaction model
 
 - **Chat-first**: a text box is the primary interface. The agent interprets natural-language requests and acts on them directly (creates/edits/completes items) rather than routing the user through forms.
 - **Conversational, not fire-and-forget**: if the agent doesn't have enough information to complete a request, it asks a follow-up question instead of guessing or silently failing.
-- **Voice is deferred but architected for from day one.** No voice-to-text in v1, but "user message" must be treated as an abstract text input throughout the system, so a future voice layer can feed the same pipeline without rework. Do not hardcode assumptions that only make sense for typed text.
+- **Voice input**: press-and-hold the mic button to speak; on release, the clip is transcribed and **sent immediately** — no review/edit step before it reaches the agent. This was a deliberate choice (not an oversight) for a faster voice-native feel, at the cost of the usual "never guess" caution; the transcript is still visible afterward as the sent user message in the chat log. "User message" is treated as an abstract text input throughout the system regardless of source, so voice just feeds the same pipeline as typing — see "Voice input" under Architecture for how transcription actually works.
 - **No push notifications or reminders in v1.** The app is pull-based — the user checks in on their own terms. This may be revisited later; don't build toward it yet, but don't design anything that would make adding it later painful.
 
 ## Item taxonomy
@@ -83,6 +83,19 @@ Real testing costs real money (a single Anthropic call during scaffolding cost ~
 - The shared trial is understood as a **bootstrap/trial mechanism, not permanent infrastructure**. If usage ever grows enough to strain the shared key, moving most users to BYOK (or a paid shared tier) is the intended next step — revisit then, don't over-build for scale now.
 - `TRIAL_PROVIDER` / `TRIAL_API_KEY` / `TRIAL_MODEL` env vars configure the shared trial (see `.env.example`, `README.md`). `TRIAL_PROVIDER=mock` is a zero-cost stand-in for local development that isn't testing agent reasoning itself.
 
+### Voice input
+
+Researched three real options: the browser-native Web Speech API (free, but broken in installed iOS PWAs and gives us no control over the model — a real blocker, not a minor gap); fully client-side WASM/WebGPU Whisper (the true web-native analog of what WhatsApp/Telegram do with on-device transcription — most private, zero ongoing cost, but meaningfully more engineering effort); and cloud transcription through our own proxy. **Went with the cloud path**, mirroring the LLM proxy's architecture exactly:
+
+- Audio is recorded in the browser (`MediaRecorder`) and POSTed to **one small Cloudflare Pages Function** (`functions/api/transcribe.ts`), which forwards it to **Groq's Whisper API** and returns text — the browser never holds an STT key, and raw audio is never persisted anywhere (not in Drive, not logged; transcribed and discarded immediately).
+- **Speech-to-text has its own provider setting**, independent of whichever LLM the user is chatting with (`STT_TRIAL_API_KEY` env var, separate from `TRIAL_API_KEY`; its own toggle in Settings) — since Groq is the only viable free STT option today, chat could be on Anthropic while voice still uses Groq underneath.
+- **Recording gesture is press-and-hold** (mirrors the mic button on `VoiceButton.tsx`). WhatsApp/Telegram both converge on press-and-hold **with slide-to-lock** for hands-free longer recordings — v1 deliberately only builds the hold gesture, not the lock, to keep scope down.
+- **Transcribed text sends immediately**, no review/edit step — a deliberate divergence from the app's usual "never guess" caution, chosen for a faster voice-native feel over accuracy-guarding friction.
+
+**Noted as explicit future work, not built now:**
+- Slide-to-lock gesture for hands-free recording.
+- Fully client-side WASM/WebGPU Whisper (`transformers.js` or similar) — the closest web-native equivalent to WhatsApp's on-device privacy model (audio never leaves the device at all, works offline, zero ongoing cost even at scale). Worth revisiting once voice usage/priority justifies the extra build effort.
+
 ## Open questions / to refine later
 
 These were deliberately left undecided rather than guessed at — surface them again before they become load-bearing:
@@ -91,3 +104,4 @@ These were deliberately left undecided rather than guessed at — surface them a
 - Exact conflict-resolution strategy for near-simultaneous edits to the Drive-stored data file from two devices.
 - Design of the stats/dashboard view for Habits (streaks, charts, etc.) — functionality is expected, visuals/metrics are not yet specified.
 - Whether/when to revisit push notifications, given "no reminders" was affirmed for now but not ruled out permanently.
+- Whether/when to build slide-to-lock recording and/or client-side WASM Whisper (see "Voice input" above).

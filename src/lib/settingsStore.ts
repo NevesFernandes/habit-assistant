@@ -15,19 +15,21 @@ export interface ByokSettings {
 }
 
 interface StoredState {
-  activeProvider: ByokProvider | null; // null = use the shared free trial
+  activeProvider: ByokProvider | null; // null = use the shared free trial (chat)
   keys: Partial<Record<ByokProvider, { apiKey: string; model?: string }>>;
+  sttUsesOwnKey?: boolean; // independent of `activeProvider` — see getActiveStt()
 }
 
 const STORAGE_KEY = "habit-assistant:byok";
+const EMPTY_STATE: StoredState = { activeProvider: null, keys: {} };
 
 function loadState(): StoredState {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { activeProvider: null, keys: {} };
+  if (!raw) return { ...EMPTY_STATE };
   try {
-    return JSON.parse(raw) as StoredState;
+    return { ...EMPTY_STATE, ...(JSON.parse(raw) as StoredState) };
   } catch {
-    return { activeProvider: null, keys: {} };
+    return { ...EMPTY_STATE };
   }
 }
 
@@ -70,4 +72,27 @@ export function getActiveByok(): ByokSettings | null {
   const saved = state.keys[state.activeProvider];
   if (!saved) return null;
   return { provider: state.activeProvider, apiKey: saved.apiKey, model: saved.model };
+}
+
+// --- Speech-to-text: its own setting, independent of the chat provider above. ---
+// Groq is the only viable STT option today, so this just toggles between the
+// shared trial and whatever Groq key is already saved (the same one chat BYOK
+// uses, if any) — no separate provider dropdown needed for a single option.
+
+export function getSttUsesOwnKey(): boolean {
+  return loadState().sttUsesOwnKey ?? false;
+}
+
+export function setSttUsesOwnKey(useOwnKey: boolean): void {
+  const state = loadState();
+  state.sttUsesOwnKey = useOwnKey;
+  saveState(state);
+}
+
+/** null means "use the shared free STT trial." */
+export function getActiveStt(): { apiKey: string } | null {
+  const state = loadState();
+  if (!state.sttUsesOwnKey) return null;
+  const saved = state.keys.groq;
+  return saved ? { apiKey: saved.apiKey } : null;
 }

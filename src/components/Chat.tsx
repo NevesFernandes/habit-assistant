@@ -1,13 +1,15 @@
 import { useState } from "react";
 import type { ChatMessage } from "../lib/agentClient";
+import VoiceButton from "./VoiceButton";
 
 interface ChatProps {
   messages: ChatMessage[];
   onSend: (message: string) => void;
   sending: boolean;
+  sttApiKey: string | null;
 }
 
-export default function Chat({ messages, onSend, sending }: ChatProps) {
+export default function Chat({ messages, onSend, sending, sttApiKey }: ChatProps) {
   const [draft, setDraft] = useState("");
 
   function handleSubmit(event: React.FormEvent) {
@@ -56,6 +58,7 @@ export default function Chat({ messages, onSend, sending }: ChatProps) {
           Send
         </button>
       </form>
+      <VoiceButton sttApiKey={sttApiKey} disabled={sending} onTranscribed={onSend} />
     </div>
   );
 }

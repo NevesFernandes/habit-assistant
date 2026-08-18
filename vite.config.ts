@@ -7,6 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { handleAgentRequest, type AgentEnv, type Byok } from "./src/server/handleAgentRequest.ts";
 import type { IncomingMessage } from "./src/server/providers/types.ts";
+import { handleTranscribeRequest, type TranscribeEnv } from "./src/server/handleTranscribeRequest.ts";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,11 +49,57 @@ function localAgentApiPlugin(): Plugin {
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(result.body));
       });
+
+      server.middlewares.use("/api/transcribe", async (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        const body = Buffer.concat(chunks);
+
+        let form: FormData;
+        try {
+          const request = new Request("http://localhost/api/transcribe", {
+            method: "POST",
+            headers: req.headers as Record<string, string>,
+            body,
+          });
+          form = await request.formData();
+        } catch {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "Invalid multipart body." }));
+          return;
+        }
+
+        const audio = form.get("audio");
+        const apiKey = form.get("apiKey");
+        if (!(audio instanceof Blob)) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "Expected a multipart `audio` field." }));
+          return;
+        }
+
+        const result = await handleTranscribeRequest(
+          audio,
+          audio.type,
+          loadDevVars(),
+          typeof apiKey === "string" && apiKey ? apiKey : undefined,
+        );
+        res.statusCode = result.status;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(result.body));
+      });
     },
   };
 }
 
-function loadDevVars(): AgentEnv {
+function loadDevVars(): AgentEnv & TranscribeEnv {
   const filePath = path.join(rootDir, ".dev.vars");
   const values: Record<string, string> = {};
   if (fs.existsSync(filePath)) {
@@ -68,6 +115,7 @@ function loadDevVars(): AgentEnv {
     TRIAL_PROVIDER: values.TRIAL_PROVIDER,
     TRIAL_API_KEY: values.TRIAL_API_KEY,
     TRIAL_MODEL: values.TRIAL_MODEL,
+    STT_TRIAL_API_KEY: values.STT_TRIAL_API_KEY,
   };
 }
 
