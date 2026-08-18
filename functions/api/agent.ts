@@ -12,20 +12,23 @@ export const onRequestPost: PagesFunction<AgentEnv> = async (context) => {
   let messages: IncomingMessage[];
   let byok: Byok | undefined;
   let categories: Category[] | undefined;
+  let hasPendingConfirmation = false;
   try {
     const body = (await context.request.json()) as {
       messages: IncomingMessage[];
       byok?: Byok;
       categories?: Category[];
+      hasPendingConfirmation?: boolean;
     };
     messages = body.messages;
     byok = body.byok;
     categories = body.categories;
+    hasPendingConfirmation = body.hasPendingConfirmation ?? false;
   } catch {
     return jsonResponse({ error: "Invalid JSON body." }, 400);
   }
 
-  const result = await handleAgentRequest(messages, context.env, byok, categories);
+  const result = await handleAgentRequest(messages, context.env, byok, categories, hasPendingConfirmation);
   return jsonResponse(result.body, result.status);
 };
 

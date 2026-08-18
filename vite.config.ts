@@ -37,8 +37,11 @@ function localAgentApiPlugin(): Plugin {
         let messages: IncomingMessage[];
         let byok: Byok | undefined;
         let categories: Category[] | undefined;
+        let hasPendingConfirmation: boolean | undefined;
         try {
-          ({ messages, byok, categories } = JSON.parse(Buffer.concat(chunks).toString("utf-8")));
+          ({ messages, byok, categories, hasPendingConfirmation } = JSON.parse(
+            Buffer.concat(chunks).toString("utf-8"),
+          ));
         } catch {
           res.statusCode = 400;
           res.setHeader("Content-Type", "application/json");
@@ -46,7 +49,13 @@ function localAgentApiPlugin(): Plugin {
           return;
         }
 
-        const result = await handleAgentRequest(messages, loadDevVars(), byok, categories);
+        const result = await handleAgentRequest(
+          messages,
+          loadDevVars(),
+          byok,
+          categories,
+          hasPendingConfirmation ?? false,
+        );
         res.statusCode = result.status;
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(result.body));

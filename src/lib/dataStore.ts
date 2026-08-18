@@ -145,3 +145,55 @@ export function toggleHabitCompletion(data: AppData, habitId: string, dateISO: s
   };
   return { ...data, completionLog: [...data.completionLog, entry] };
 }
+
+export type DeleteScope = "all" | "byName" | "byCategory" | "byDate";
+
+export interface DeleteCriteria {
+  scope: DeleteScope;
+  name?: string; // byName: case-insensitive substring match against item name
+  categoryId?: string; // byCategory
+  date?: string; // byDate (SingleTask only): matched against startDate
+}
+
+/** Defensive by design: a malformed/incomplete criteria object from the model resolves to zero matches, never a crash. */
+function matchesCriteria(item: SingleTask | Habit, criteria: DeleteCriteria): boolean {
+  switch (criteria.scope) {
+    case "all":
+      return true;
+    case "byName":
+      return (
+        typeof criteria.name === "string" &&
+        criteria.name.trim().length > 0 &&
+        item.name.toLowerCase().includes(criteria.name.trim().toLowerCase())
+      );
+    case "byCategory":
+      return !!criteria.categoryId && item.categoryId === criteria.categoryId;
+    case "byDate":
+      return !!criteria.date && item.startDate === criteria.date;
+    default:
+      return false;
+  }
+}
+
+export function resolveSingleTasks(data: AppData, criteria: DeleteCriteria): SingleTask[] {
+  return data.singleTasks.filter((task) => matchesCriteria(task, criteria));
+}
+
+export function resolveHabits(data: AppData, criteria: DeleteCriteria): Habit[] {
+  return data.habits.filter((habit) => matchesCriteria(habit, criteria));
+}
+
+export function deleteSingleTasks(data: AppData, ids: string[]): AppData {
+  const idSet = new Set(ids);
+  return { ...data, singleTasks: data.singleTasks.filter((task) => !idSet.has(task.id)) };
+}
+
+/** Cascade-deletes matching CompletionLogEntry rows too — the "tracked history" the confirmation warns about. */
+export function deleteHabits(data: AppData, ids: string[]): AppData {
+  const idSet = new Set(ids);
+  return {
+    ...data,
+    habits: data.habits.filter((habit) => !idSet.has(habit.id)),
+    completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
+  };
+}

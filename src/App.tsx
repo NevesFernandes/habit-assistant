@@ -17,7 +17,17 @@ import {
   type DriveFileRef,
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
-import { addHabit, addSingleTask, toggleHabitCompletion, toggleSingleTaskDone } from "./lib/dataStore";
+import {
+  addHabit,
+  addSingleTask,
+  deleteHabits,
+  deleteSingleTasks,
+  resolveHabits,
+  resolveSingleTasks,
+  toggleHabitCompletion,
+  toggleSingleTaskDone,
+  type DeleteCriteria,
+} from "./lib/dataStore";
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
@@ -25,6 +35,27 @@ type Tab = "chat" | "today" | "tasks";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+interface PendingDeletion {
+  itemKind: "singleTask" | "habit";
+  ids: string[];
+  names: string[];
+}
+
+function formatQuotedList(names: string[]): string {
+  return names.map((name) => `"${name}"`).join(", ");
+}
+
+function buildDeleteConfirmationQuestion(kind: "singleTask" | "habit", names: string[]): string {
+  const noun = kind === "habit" ? "habit" : "task";
+  const subject =
+    names.length === 1
+      ? `the ${noun} ${formatQuotedList(names)}`
+      : `these ${names.length} ${noun}s: ${formatQuotedList(names)}`;
+  const historyWarning =
+    kind === "habit" ? " This will also permanently delete its tracked completion history." : "";
+  return `Are you sure you want to delete ${subject}?${historyWarning}`;
 }
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -46,6 +77,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
 
   useEffect(() => {
     setByok(getActiveByok());
@@ -111,15 +143,59 @@ export default function App() {
     setMessages((prev) => [...prev, { role: "assistant", content }]);
   }
 
+  async function handleDeleteRequest(kind: "singleTask" | "habit", criteria: DeleteCriteria) {
+    if (!data) return;
+    const matches = kind === "habit" ? resolveHabits(data, criteria) : resolveSingleTasks(data, criteria);
+
+    if (matches.length === 0) {
+      pushAssistantMessage("I couldn't find anything matching that to delete.");
+      return;
+    }
+
+    const ids = matches.map((match) => match.id);
+    const names = matches.map((match) => match.name);
+
+    if (kind === "singleTask" && criteria.scope === "byName" && matches.length === 1) {
+      const saved = await persist(deleteSingleTasks(data, ids));
+      if (saved) pushAssistantMessage(`Deleted "${names[0]}".`);
+      return;
+    }
+
+    setPendingDeletion({ itemKind: kind, ids, names });
+    pushAssistantMessage(buildDeleteConfirmationQuestion(kind, names));
+  }
+
+  async function resolvePendingDeletion(confirmed: boolean) {
+    const pending = pendingDeletion;
+    setPendingDeletion(null);
+    if (!pending || !data) return;
+
+    if (!confirmed) {
+      pushAssistantMessage("Okay, I won't delete that.");
+      return;
+    }
+
+    const nextData =
+      pending.itemKind === "habit" ? deleteHabits(data, pending.ids) : deleteSingleTasks(data, pending.ids);
+    const saved = await persist(nextData);
+    if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`);
+  }
+
   async function handleSend(userText: string) {
     if (!data) return;
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userText }];
     setMessages(nextMessages);
     setSending(true);
     try {
-      const response = await sendMessage(nextMessages, byok, data.categories);
+      const response = await sendMessage(nextMessages, byok, data.categories, pendingDeletion !== null);
 
-      if (response.toolCall?.name === "createSingleTask") {
+      if (pendingDeletion) {
+        // Tools were restricted server-side to confirmPendingDeletion only; anything else
+        // (a plain reply, no tool call) is treated as a decline — fail closed on a destructive action.
+        const confirmed =
+          response.toolCall?.name === "confirmPendingDeletion" && response.toolCall.input.confirmed === true;
+        await resolvePendingDeletion(confirmed);
+      } else if (response.toolCall?.name === "createSingleTask") {
         const nextData = addSingleTask(data, response.toolCall.input);
         const saved = await persist(nextData);
         if (saved) {
@@ -131,6 +207,10 @@ export default function App() {
         if (saved) {
           pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`);
         }
+      } else if (response.toolCall?.name === "deleteSingleTasks") {
+        await handleDeleteRequest("singleTask", response.toolCall.input);
+      } else if (response.toolCall?.name === "deleteHabits") {
+        await handleDeleteRequest("habit", response.toolCall.input);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
@@ -140,6 +220,9 @@ export default function App() {
       pushAssistantMessage(
         `Something went wrong talking to the assistant: ${err instanceof Error ? err.message : "unknown error"}.`,
       );
+      // pendingDeletion is deliberately left untouched here — only a real
+      // response (or explicit decline) clears it, so a transient network
+      // failure while awaiting confirmation doesn't silently drop it.
     } finally {
       setSending(false);
     }

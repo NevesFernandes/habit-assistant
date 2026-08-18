@@ -44,13 +44,21 @@ Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any re
 
 Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically.
 
-You can take two kinds of action:
+You can take these actions:
 1. createSingleTask — a one-off task, done/not-done, no recurrence.
 2. createHabit — a recurring habit tracked over time. Recurring Tasks (same recurrence, but simple done/not-done tracking) aren't supported yet — if the user clearly wants a recurring task rather than a habit, use createHabit anyway rather than turning them away.
+3. deleteSingleTasks — delete one-off tasks matching criteria you specify.
+4. deleteHabits — delete habits matching criteria you specify.
 
-Only call one of these tools when the user is clearly and explicitly asking you to add or create something new. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+Only call a tool when the user is clearly and explicitly asking you to add, create, or delete something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
-If you don't have enough information to act — at minimum, a clear name — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty name.
+If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
+
+For deleteSingleTasks and deleteHabits: you only express *what* to delete, via the criteria object below. You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your criteria against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort criteria whenever the user is clearly asking to delete something.
+- scope "all": every item of that kind.
+- scope "byName": name is a text fragment to match (e.g. "delete the gym habit" → name: "gym").
+- scope "byCategory": categoryId from this list: ${categoryList}.
+- scope "byDate" (deleteSingleTasks only): an ISO date — e.g. "delete all tasks for today" → date: "${todayISO}".
 
 For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
@@ -67,7 +75,36 @@ For createHabit specifically:
 Keep replies brief and conversational.`;
 }
 
-function buildTools(categories: Category[]): ToolDefinition[] {
+function buildConfirmationSystemPrompt(todayISO: string): string {
+  return `You are the in-app assistant for Habit Assistant. Today's date is ${todayISO}.
+
+A destructive deletion is currently pending the user's confirmation — they were already shown exactly what would be deleted in the previous message. The user's latest message is their answer to that question.
+
+Call confirmPendingDeletion with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should be deleted on anything less than a clear yes. Do not call any other tool.`;
+}
+
+function buildTools(categories: Category[], hasPendingConfirmation: boolean): ToolDefinition[] {
+  if (hasPendingConfirmation) {
+    return [
+      {
+        name: "confirmPendingDeletion",
+        description:
+          "Record whether the user just confirmed or declined a pending deletion. Call this exactly once, interpreting the user's latest message as their answer.",
+        parameters: {
+          type: "object",
+          properties: {
+            confirmed: {
+              type: "boolean",
+              description:
+                "true only if the user clearly agreed (e.g. 'yes', 'confirm', 'go ahead'). false if they declined, corrected you, or their message is ambiguous/off-topic/unrelated to the pending question.",
+            },
+          },
+          required: ["confirmed"],
+        },
+      },
+    ];
+  }
+
   return [
     {
       name: "createSingleTask",
@@ -159,6 +196,55 @@ function buildTools(categories: Category[]): ToolDefinition[] {
         required: ["name", "categoryId", "recurrenceType"],
       },
     },
+    {
+      name: "deleteSingleTasks",
+      description:
+        "Delete one or more one-off tasks matching criteria. You express what to delete; the app resolves matches and handles any confirmation — never ask a confirmation question yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            description:
+              "'all' = every task. 'byName' = name is a fragment to match against task names. 'byCategory' = categoryId. 'byDate' = date matches the task's start date.",
+            enum: ["all", "byName", "byCategory", "byDate"],
+          },
+          name: { type: "string", description: "Used when scope is byName: a fragment of the task's name." },
+          categoryId: {
+            type: "string",
+            description: "Used when scope is byCategory.",
+            enum: categories.map((category) => category.id),
+          },
+          date: {
+            type: "string",
+            description: "Used when scope is byDate: ISO date (YYYY-MM-DD).",
+          },
+        },
+        required: ["scope"],
+      },
+    },
+    {
+      name: "deleteHabits",
+      description:
+        "Delete one or more habits matching criteria. You express what to delete; the app resolves matches and always confirms before deleting a habit (deleting a habit also deletes its tracked completion history) — never ask a confirmation question yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            description: "'all' = every habit. 'byName' = name is a fragment to match. 'byCategory' = categoryId.",
+            enum: ["all", "byName", "byCategory"],
+          },
+          name: { type: "string", description: "Used when scope is byName: a fragment of the habit's name." },
+          categoryId: {
+            type: "string",
+            description: "Used when scope is byCategory.",
+            enum: categories.map((category) => category.id),
+          },
+        },
+        required: ["scope"],
+      },
+    },
   ];
 }
 
@@ -167,6 +253,7 @@ export async function handleAgentRequest(
   env: AgentEnv,
   byok?: Byok,
   categories: Category[] = [],
+  hasPendingConfirmation = false,
 ): Promise<AgentResult> {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { status: 400, body: { error: "Expected a non-empty `messages` array." } };
@@ -193,10 +280,13 @@ export async function handleAgentRequest(
   }
 
   try {
+    const todayISO = new Date().toISOString().slice(0, 10);
     const result = await provider.send({
       messages,
-      tools: buildTools(availableCategories),
-      systemPrompt: buildSystemPrompt(availableCategories, new Date().toISOString().slice(0, 10)),
+      tools: buildTools(availableCategories, hasPendingConfirmation),
+      systemPrompt: hasPendingConfirmation
+        ? buildConfirmationSystemPrompt(todayISO)
+        : buildSystemPrompt(availableCategories, todayISO),
       apiKey: apiKey ?? "",
       model,
     });

@@ -4,7 +4,7 @@
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
-import type { CreateHabitInput } from "./dataStore";
+import type { CreateHabitInput, DeleteCriteria } from "./dataStore";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -21,9 +21,31 @@ export interface CreateHabitToolCall {
   input: CreateHabitInput;
 }
 
+export interface DeleteSingleTasksToolCall {
+  name: "deleteSingleTasks";
+  input: DeleteCriteria;
+}
+
+export interface DeleteHabitsToolCall {
+  name: "deleteHabits";
+  input: DeleteCriteria;
+}
+
+export interface ConfirmPendingDeletionToolCall {
+  name: "confirmPendingDeletion";
+  input: { confirmed: boolean };
+}
+
+export type AgentToolCall =
+  | CreateSingleTaskToolCall
+  | CreateHabitToolCall
+  | DeleteSingleTasksToolCall
+  | DeleteHabitsToolCall
+  | ConfirmPendingDeletionToolCall;
+
 export interface AgentResponse {
   reply?: string;
-  toolCall?: CreateSingleTaskToolCall | CreateHabitToolCall;
+  toolCall?: AgentToolCall;
   error?: string;
 }
 
@@ -31,11 +53,17 @@ export async function sendMessage(
   history: ChatMessage[],
   byok?: ByokSettings | null,
   categories?: Category[],
+  hasPendingConfirmation?: boolean,
 ): Promise<AgentResponse> {
   const res = await fetch("/api/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: history, byok: byok ?? undefined, categories }),
+    body: JSON.stringify({
+      messages: history,
+      byok: byok ?? undefined,
+      categories,
+      hasPendingConfirmation: hasPendingConfirmation || undefined,
+    }),
   });
   const body = (await res.json()) as AgentResponse;
   if (!res.ok) {
