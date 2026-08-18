@@ -16,6 +16,37 @@ export interface TranscribeResult {
 
 const WHISPER_MODEL = "whisper-large-v3-turbo";
 const TOO_SHORT_MESSAGE = "Audio too short — please keep the button pressed while you speak.";
+const NO_SPEECH_MESSAGE = "No speech detected — please try again.";
+
+// Whisper is known to hallucinate these stock phrases (among a handful of
+// others) for silent/near-silent audio rather than returning empty text —
+// confirmed by testing: 1.2s of pure silence came back as "Thank you.",
+// with the API's own confidence signals (no_speech_prob, avg_logprob) not
+// flagging it either. This is a stopgap phrase-list mitigation; the more
+// thorough fix (client-side silence detection before ever calling the API)
+// is tracked separately — see CLAUDE.md's "Voice input" section.
+const HALLUCINATION_PHRASES = new Set([
+  "thank you",
+  "thanks for watching",
+  "thank you for watching",
+  "please subscribe",
+  "please subscribe to my channel",
+  "like and subscribe",
+  "bye",
+  "bye bye",
+  "goodbye",
+  "see you next time",
+  "you",
+]);
+
+function looksLikeHallucination(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/, "")
+    .trim();
+  return normalized.length === 0 || HALLUCINATION_PHRASES.has(normalized);
+}
 
 export async function handleTranscribeRequest(
   audio: Blob,
@@ -51,5 +82,9 @@ export async function handleTranscribeRequest(
   }
 
   const result = (await res.json()) as { text?: string };
-  return { status: 200, body: { text: result.text ?? "" } };
+  const text = result.text ?? "";
+  if (looksLikeHallucination(text)) {
+    return { status: 400, body: { error: NO_SPEECH_MESSAGE } };
+  }
+  return { status: 200, body: { text } };
 }
