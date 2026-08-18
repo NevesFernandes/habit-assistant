@@ -64,8 +64,23 @@ export async function signIn(clientId: string): Promise<DriveSession> {
   });
 }
 
+const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Drive's own guidance treats 5xx responses as generally transient — retry
+ * once after a short delay before giving up. Request bodies here are always
+ * plain strings (JSON or a multipart string), so replaying them is safe.
+ */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
+  if (!RETRYABLE_STATUS.has(res.status)) return res;
+  await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+  return fetch(url, init);
+}
+
 async function driveFetch(session: DriveSession, path: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(`${DRIVE_API}${path}`, {
+  const res = await fetchWithRetry(`${DRIVE_API}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${session.accessToken}` },
   });
@@ -112,7 +127,7 @@ export async function createDataFile(
     `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n` +
     `--${boundary}--`;
 
-  const res = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,modifiedTime`, {
+  const res = await fetchWithRetry(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,modifiedTime`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${session.accessToken}`,
@@ -146,7 +161,7 @@ export async function writeDataFile(
     throw new DriveConflictError();
   }
 
-  const res = await fetch(`${DRIVE_UPLOAD_API}/files/${ref.fileId}?uploadType=media&fields=id,modifiedTime`, {
+  const res = await fetchWithRetry(`${DRIVE_UPLOAD_API}/files/${ref.fileId}?uploadType=media&fields=id,modifiedTime`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${session.accessToken}`,

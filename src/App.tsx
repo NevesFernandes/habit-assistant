@@ -72,12 +72,14 @@ export default function App() {
     }
   }
 
-  async function persist(nextData: AppData) {
-    if (!session || !fileRef) return;
+  /** Returns whether the save actually succeeded, so callers don't confirm an action that didn't happen. */
+  async function persist(nextData: AppData): Promise<boolean> {
+    if (!session || !fileRef) return false;
     try {
       const newRef = await writeDataFile(session, fileRef, nextData);
       setFileRef(newRef);
       setData(nextData);
+      return true;
     } catch (err) {
       if (err instanceof DriveConflictError) {
         const latest = await readDataFile(session, fileRef.fileId);
@@ -85,11 +87,12 @@ export default function App() {
         pushAssistantMessage(
           "Your data changed on another device, so I reloaded the latest version — please try that again.",
         );
-        return;
+        return false;
       }
       pushAssistantMessage(
         `Sorry, I couldn't save that: ${err instanceof Error ? err.message : "unknown error"}.`,
       );
+      return false;
     }
   }
 
@@ -107,8 +110,10 @@ export default function App() {
 
       if (response.toolCall?.name === "createSingleTask") {
         const nextData = addSingleTask(data, response.toolCall.input);
-        await persist(nextData);
-        pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`);
+        const saved = await persist(nextData);
+        if (saved) {
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`);
+        }
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
