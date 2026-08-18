@@ -126,6 +126,15 @@ export default defineConfig({
     localAgentApiPlugin(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // Default is 2 MiB; the self-hosted onnxruntime-web WASM runtime
+        // (public/ort/, used for client-side voice-activity detection) is
+        // ~13MB. Precaching it means it's a one-time download, not
+        // re-fetched on every visit — see CLAUDE.md's "Voice input" section.
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        // Default glob doesn't include the VAD model/loader extensions.
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,wasm,mjs,onnx}"],
+      },
       manifest: {
         name: "Habit Assistant",
         short_name: "Habits",

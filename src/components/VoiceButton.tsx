@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { transcribeAudio } from "../lib/transcribeClient";
+import { hasSpeech } from "../lib/voiceActivityDetection";
 
 interface VoiceButtonProps {
   sttApiKey: string | null;
@@ -10,6 +11,7 @@ interface VoiceButtonProps {
 const CANDIDATE_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 const MIN_RECORDING_MS = 400; // below this, it's almost certainly an accidental tap, not speech
 const TOO_SHORT_MESSAGE = "Audio too short — please keep the button pressed while you speak.";
+const NO_SPEECH_MESSAGE = "No speech detected — please try again.";
 
 function pickSupportedMimeType(): string | undefined {
   return CANDIDATE_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
@@ -67,6 +69,10 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
 
     setTranscribing(true);
     try {
+      if (!(await hasSpeech(blob))) {
+        setError(NO_SPEECH_MESSAGE);
+        return;
+      }
       const text = await transcribeAudio(blob, sttApiKey);
       if (text.trim()) onTranscribed(text.trim());
     } catch (err) {
