@@ -3,29 +3,24 @@
 // middleware (vite.config.ts, used because the Workers emulator can't run
 // in this sandboxed environment — see README.md's "Local dev note").
 // Runtime-agnostic: takes plain data in, returns a plain {status, body} out.
+//
+// Provider-agnostic by design (see CLAUDE.md's "Cost model / provider
+// strategy"): a BYOK request uses the caller's own provider/key; otherwise
+// it falls back to the shared free trial configured via env vars.
+import { resolveProvider } from "./providers/index.ts";
+import { ProviderRequestError, type IncomingMessage, type ToolDefinition } from "./providers/types.ts";
 
 export interface AgentEnv {
-  ANTHROPIC_API_KEY: string;
-  ANTHROPIC_MODEL?: string;
+  TRIAL_PROVIDER?: string;
+  TRIAL_API_KEY?: string;
+  TRIAL_MODEL?: string;
 }
 
-export interface IncomingMessage {
-  role: "user" | "assistant";
-  content: string;
+export interface Byok {
+  provider: string;
+  apiKey: string;
+  model?: string;
 }
-
-interface AnthropicTextBlock {
-  type: "text";
-  text: string;
-}
-
-interface AnthropicToolUseBlock {
-  type: "tool_use";
-  name: string;
-  input: Record<string, unknown>;
-}
-
-type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock;
 
 export interface AgentResult {
   status: number;
@@ -42,11 +37,11 @@ Right now, the only action you can take is creating a simple one-off task via th
 
 If you don't have enough information to act — at minimum, a clear task name — ask a short, single clarifying question instead of guessing. Keep replies brief and conversational.`;
 
-const TOOLS = [
+const TOOLS: ToolDefinition[] = [
   {
     name: "createSingleTask",
     description: "Create a single one-off task (not recurring).",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "Short name of the task." },
@@ -64,49 +59,43 @@ const TOOLS = [
 export async function handleAgentRequest(
   messages: IncomingMessage[],
   env: AgentEnv,
+  byok?: Byok,
 ): Promise<AgentResult> {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { status: 400, body: { error: "Expected a non-empty `messages` array." } };
   }
-  if (!env.ANTHROPIC_API_KEY) {
-    return { status: 500, body: { error: "ANTHROPIC_API_KEY is not configured." } };
+
+  const providerId = byok?.provider ?? env.TRIAL_PROVIDER ?? "groq";
+  const apiKey = byok?.apiKey ?? env.TRIAL_API_KEY;
+  const model = byok?.model ?? (byok ? undefined : env.TRIAL_MODEL);
+
+  if (!apiKey && providerId !== "mock") {
+    return {
+      status: 500,
+      body: { error: `No API key available for provider "${providerId}".` },
+    };
   }
 
-  const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
+  let provider;
+  try {
+    provider = resolveProvider(providerId);
+  } catch (err) {
+    return { status: 400, body: { error: err instanceof Error ? err.message : "Unknown provider." } };
+  }
+
+  try {
+    const result = await provider.send({
       messages,
-    }),
-  });
-
-  if (!anthropicRes.ok) {
-    return { status: 502, body: { error: await anthropicRes.text() } };
+      tools: TOOLS,
+      systemPrompt: SYSTEM_PROMPT,
+      apiKey: apiKey ?? "",
+      model,
+    });
+    return { status: 200, body: result };
+  } catch (err) {
+    if (err instanceof ProviderRequestError) {
+      return { status: err.status, body: { error: err.message } };
+    }
+    return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
   }
-
-  const result = (await anthropicRes.json()) as { content: AnthropicContentBlock[] };
-
-  const toolUse = result.content.find(
-    (block): block is AnthropicToolUseBlock => block.type === "tool_use",
-  );
-  const text = result.content
-    .filter((block): block is AnthropicTextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
-
-  return {
-    status: 200,
-    body: {
-      reply: text || undefined,
-      toolCall: toolUse ? { name: toolUse.name, input: toolUse.input } : undefined,
-    },
-  };
 }

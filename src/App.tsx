@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import ItemList from "./components/ItemList";
+import SettingsPanel from "./components/Settings";
 import {
   signIn,
   findOrCreateFolder,
@@ -15,6 +16,7 @@ import {
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
 import { addSingleTask, toggleSingleTaskDone } from "./lib/dataStore";
+import { loadByokSettings, saveByokSettings, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -29,6 +31,13 @@ export default function App() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+
+  const [byok, setByok] = useState<ByokSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    setByok(loadByokSettings());
+  }, []);
 
   async function handleSignIn() {
     setSigningIn(true);
@@ -87,7 +96,7 @@ export default function App() {
     setMessages(nextMessages);
     setSending(true);
     try {
-      const response = await sendMessage(nextMessages);
+      const response = await sendMessage(nextMessages, byok);
 
       if (response.toolCall?.name === "createSingleTask") {
         const nextData = addSingleTask(data, response.toolCall.input);
@@ -118,7 +127,31 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">Habit Assistant</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Habit Assistant</h1>
+        <button
+          onClick={() => setSettingsOpen((open) => !open)}
+          className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
+        >
+          {byok ? `Using your ${byok.provider} key` : "Using free trial"} ⚙
+        </button>
+      </div>
+
+      {settingsOpen && (
+        <SettingsPanel
+          current={byok}
+          onSave={(settings) => {
+            saveByokSettings(settings);
+            setByok(settings);
+          }}
+          onClear={() => {
+            saveByokSettings(null);
+            setByok(null);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
         <div className="min-h-[60vh] md:min-h-0">
           <Chat messages={messages} onSend={handleSend} sending={sending} />

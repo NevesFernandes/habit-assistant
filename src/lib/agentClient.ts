@@ -1,5 +1,8 @@
-// Talks to our own /api/agent function (never to Anthropic directly — the
-// API key stays server-side, see CLAUDE.md's "Agent / LLM" architecture note).
+// Talks to our own /api/agent function (never to a provider directly — the
+// shared trial key stays server-side; a BYOK key, when set, is sent
+// per-request and never stored server-side). See CLAUDE.md's "Cost model /
+// provider strategy".
+import type { ByokSettings } from "./settingsStore";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -14,16 +17,21 @@ export interface CreateSingleTaskToolCall {
 export interface AgentResponse {
   reply?: string;
   toolCall?: CreateSingleTaskToolCall;
+  error?: string;
 }
 
-export async function sendMessage(history: ChatMessage[]): Promise<AgentResponse> {
+export async function sendMessage(
+  history: ChatMessage[],
+  byok?: ByokSettings | null,
+): Promise<AgentResponse> {
   const res = await fetch("/api/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: history }),
+    body: JSON.stringify({ messages: history, byok: byok ?? undefined }),
   });
+  const body = (await res.json()) as AgentResponse;
   if (!res.ok) {
-    throw new Error(`Agent request failed (${res.status}): ${await res.text()}`);
+    throw new Error(body.error ?? `Agent request failed (${res.status}).`);
   }
-  return res.json();
+  return body;
 }

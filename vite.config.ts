@@ -5,7 +5,8 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { handleAgentRequest, type AgentEnv, type IncomingMessage } from "./src/server/handleAgentRequest.ts";
+import { handleAgentRequest, type AgentEnv, type Byok } from "./src/server/handleAgentRequest.ts";
+import type { IncomingMessage } from "./src/server/providers/types.ts";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,8 +33,9 @@ function localAgentApiPlugin(): Plugin {
         for await (const chunk of req) chunks.push(chunk as Buffer);
 
         let messages: IncomingMessage[];
+        let byok: Byok | undefined;
         try {
-          ({ messages } = JSON.parse(Buffer.concat(chunks).toString("utf-8")));
+          ({ messages, byok } = JSON.parse(Buffer.concat(chunks).toString("utf-8")));
         } catch {
           res.statusCode = 400;
           res.setHeader("Content-Type", "application/json");
@@ -41,7 +43,7 @@ function localAgentApiPlugin(): Plugin {
           return;
         }
 
-        const result = await handleAgentRequest(messages, loadDevVars());
+        const result = await handleAgentRequest(messages, loadDevVars(), byok);
         res.statusCode = result.status;
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(result.body));
@@ -62,7 +64,11 @@ function loadDevVars(): AgentEnv {
       values[trimmed.slice(0, separatorIndex).trim()] = trimmed.slice(separatorIndex + 1).trim();
     }
   }
-  return { ANTHROPIC_API_KEY: values.ANTHROPIC_API_KEY ?? "", ANTHROPIC_MODEL: values.ANTHROPIC_MODEL };
+  return {
+    TRIAL_PROVIDER: values.TRIAL_PROVIDER,
+    TRIAL_API_KEY: values.TRIAL_API_KEY,
+    TRIAL_MODEL: values.TRIAL_MODEL,
+  };
 }
 
 export default defineConfig({
