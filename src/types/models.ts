@@ -40,6 +40,7 @@ export type CompletionType = "yesno" | "value" | "timer" | "checklist";
 
 export interface Habit extends BaseItem {
   kind: "habit";
+  categoryId: string; // required for Habits specifically, to enable category aggregate stats later
   recurrence: RecurrenceRule;
   completionType: CompletionType;
   checklist?: ChecklistItem[]; // only meaningful when completionType === "checklist"

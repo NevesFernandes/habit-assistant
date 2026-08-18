@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import ItemList from "./components/ItemList";
+import DayStrip from "./components/DayStrip";
+import HabitDayView from "./components/HabitDayView";
 import SettingsPanel from "./components/Settings";
 import {
   signIn,
@@ -15,9 +17,15 @@ import {
   type DriveFileRef,
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
-import { addSingleTask, toggleSingleTaskDone } from "./lib/dataStore";
+import { addHabit, addSingleTask, toggleHabitCompletion, toggleSingleTaskDone } from "./lib/dataStore";
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
+
+type Tab = "chat" | "today" | "tasks";
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -35,6 +43,9 @@ export default function App() {
   const [byok, setByok] = useState<ByokSettings | null>(null);
   const [sttApiKey, setSttApiKey] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [selectedDate, setSelectedDate] = useState(todayISO());
 
   useEffect(() => {
     setByok(getActiveByok());
@@ -106,13 +117,19 @@ export default function App() {
     setMessages(nextMessages);
     setSending(true);
     try {
-      const response = await sendMessage(nextMessages, byok);
+      const response = await sendMessage(nextMessages, byok, data.categories);
 
       if (response.toolCall?.name === "createSingleTask") {
         const nextData = addSingleTask(data, response.toolCall.input);
         const saved = await persist(nextData);
         if (saved) {
           pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`);
+        }
+      } else if (response.toolCall?.name === "createHabit") {
+        const nextData = addHabit(data, response.toolCall.input);
+        const saved = await persist(nextData);
+        if (saved) {
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`);
         }
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
@@ -131,6 +148,11 @@ export default function App() {
   function handleToggle(taskId: string) {
     if (!data) return;
     void persist(toggleSingleTaskDone(data, taskId));
+  }
+
+  function handleHabitToggle(habitId: string) {
+    if (!data) return;
+    void persist(toggleHabitCompletion(data, habitId, selectedDate));
   }
 
   if (!session || !data) {
@@ -157,16 +179,44 @@ export default function App() {
         />
       )}
 
-      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="min-h-[60vh] md:min-h-0">
+      <div className="flex gap-2">
+        {(["chat", "today", "tasks"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`rounded-md px-3 py-1.5 text-sm capitalize ${
+              activeTab === tab ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-[60vh] flex-1">
+        {activeTab === "chat" && (
           <Chat messages={messages} onSend={handleSend} sending={sending} sttApiKey={sttApiKey} />
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-400">
-            Tasks
-          </h2>
-          <ItemList tasks={data.singleTasks} onToggle={handleToggle} />
-        </div>
+        )}
+
+        {activeTab === "today" && (
+          <div className="flex flex-col gap-4">
+            <DayStrip selectedDate={selectedDate} onSelect={setSelectedDate} />
+            <HabitDayView
+              selectedDate={selectedDate}
+              habits={data.habits}
+              completionLog={data.completionLog}
+              categories={data.categories}
+              onToggle={handleHabitToggle}
+            />
+          </div>
+        )}
+
+        {activeTab === "tasks" && (
+          <div>
+            <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-400">Tasks</h2>
+            <ItemList tasks={data.singleTasks} onToggle={handleToggle} />
+          </div>
+        )}
       </div>
     </div>
   );

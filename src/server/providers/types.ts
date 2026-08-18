@@ -11,12 +11,19 @@ export interface IncomingMessage {
 // Plain JSON Schema — close enough to what Anthropic, Groq (OpenAI-style),
 // and Gemini all expect that each adapter can map it with a thin rename,
 // rather than needing a heavier schema abstraction.
+export interface ToolProperty {
+  type: string;
+  description?: string;
+  enum?: string[];
+  items?: { type: string };
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, { type: string; description?: string }>;
+    properties: Record<string, ToolProperty>;
     required?: string[];
   };
 }

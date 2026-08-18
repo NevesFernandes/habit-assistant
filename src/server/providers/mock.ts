@@ -5,6 +5,7 @@ import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.
 // path can be exercised for free while iterating on anything that isn't
 // specifically about agent reasoning quality.
 const CREATE_PATTERNS = [/^add (?:a )?task to (.+)/i, /^add (?:a )?task[: ]+(.+)/i, /^remind me to (.+)/i];
+const HABIT_PATTERNS = [/^add (?:a )?habit to (.+)/i, /^add (?:a )?habit[: ]+(.+)/i];
 
 const mockAdapter: ProviderAdapter = {
   defaultModel: "mock",
@@ -12,6 +13,19 @@ const mockAdapter: ProviderAdapter = {
   async send({ messages }: ProviderCallArgs): Promise<ProviderResult> {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
     const text = lastUserMessage?.content.trim() ?? "";
+
+    for (const pattern of HABIT_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) {
+        const name = capitalize(match[1].replace(/\.$/, "").trim());
+        return {
+          toolCall: {
+            name: "createHabit",
+            input: { name, categoryId: "other", recurrenceType: "daily" },
+          },
+        };
+      }
+    }
 
     for (const pattern of CREATE_PATTERNS) {
       const match = text.match(pattern);

@@ -8,6 +8,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { handleAgentRequest, type AgentEnv, type Byok } from "./src/server/handleAgentRequest.ts";
 import type { IncomingMessage } from "./src/server/providers/types.ts";
 import { handleTranscribeRequest, type TranscribeEnv } from "./src/server/handleTranscribeRequest.ts";
+import type { Category } from "./src/types/models.ts";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,8 +36,9 @@ function localAgentApiPlugin(): Plugin {
 
         let messages: IncomingMessage[];
         let byok: Byok | undefined;
+        let categories: Category[] | undefined;
         try {
-          ({ messages, byok } = JSON.parse(Buffer.concat(chunks).toString("utf-8")));
+          ({ messages, byok, categories } = JSON.parse(Buffer.concat(chunks).toString("utf-8")));
         } catch {
           res.statusCode = 400;
           res.setHeader("Content-Type", "application/json");
@@ -44,7 +46,7 @@ function localAgentApiPlugin(): Plugin {
           return;
         }
 
-        const result = await handleAgentRequest(messages, loadDevVars(), byok);
+        const result = await handleAgentRequest(messages, loadDevVars(), byok, categories);
         res.statusCode = result.status;
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(result.body));
