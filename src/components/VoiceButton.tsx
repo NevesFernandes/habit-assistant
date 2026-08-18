@@ -8,6 +8,8 @@ interface VoiceButtonProps {
 }
 
 const CANDIDATE_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+const MIN_RECORDING_MS = 400; // below this, it's almost certainly an accidental tap, not speech
+const TOO_SHORT_MESSAGE = "Audio too short — please keep the button pressed while you speak.";
 
 function pickSupportedMimeType(): string | undefined {
   return CANDIDATE_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
@@ -21,6 +23,7 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const startTimeRef = useRef(0);
 
   async function startRecording() {
     setError(null);
@@ -38,6 +41,7 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
 
       recorder.start();
       recorderRef.current = recorder;
+      startTimeRef.current = Date.now();
       setRecording(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't access the microphone.");
@@ -54,7 +58,12 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
   async function handleStopped(mimeType: string) {
     const blob = new Blob(chunksRef.current, { type: mimeType });
     chunksRef.current = [];
-    if (blob.size === 0) return;
+
+    const durationMs = Date.now() - startTimeRef.current;
+    if (durationMs < MIN_RECORDING_MS || blob.size === 0) {
+      setError(TOO_SHORT_MESSAGE);
+      return;
+    }
 
     setTranscribing(true);
     try {

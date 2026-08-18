@@ -15,6 +15,7 @@ export interface TranscribeResult {
 }
 
 const WHISPER_MODEL = "whisper-large-v3-turbo";
+const TOO_SHORT_MESSAGE = "Audio too short — please keep the button pressed while you speak.";
 
 export async function handleTranscribeRequest(
   audio: Blob,
@@ -42,7 +43,11 @@ export async function handleTranscribeRequest(
   });
 
   if (!res.ok) {
-    return { status: 502, body: { error: await res.text() } };
+    const errorText = await res.text();
+    if (errorText.includes("too short")) {
+      return { status: 400, body: { error: TOO_SHORT_MESSAGE } };
+    }
+    return { status: 502, body: { error: errorText } };
   }
 
   const result = (await res.json()) as { text?: string };
