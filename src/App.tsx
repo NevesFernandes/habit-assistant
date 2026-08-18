@@ -16,7 +16,7 @@ import {
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
 import { addSingleTask, toggleSingleTaskDone } from "./lib/dataStore";
-import { loadByokSettings, saveByokSettings, type ByokSettings } from "./lib/settingsStore";
+import { getActiveByok, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -36,7 +36,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    setByok(loadByokSettings());
+    setByok(getActiveByok());
   }, []);
 
   async function handleSignIn() {
@@ -139,15 +139,8 @@ export default function App() {
 
       {settingsOpen && (
         <SettingsPanel
-          current={byok}
-          onSave={(settings) => {
-            saveByokSettings(settings);
-            setByok(settings);
-          }}
-          onClear={() => {
-            saveByokSettings(null);
-            setByok(null);
-          }}
+          activeProvider={byok?.provider ?? null}
+          onChange={() => setByok(getActiveByok())}
           onClose={() => setSettingsOpen(false)}
         />
       )}

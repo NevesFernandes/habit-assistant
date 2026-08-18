@@ -1,10 +1,15 @@
 import { useState } from "react";
-import type { ByokProvider, ByokSettings } from "../lib/settingsStore";
+import {
+  getSavedKey,
+  saveProviderKey,
+  setActiveProvider,
+  forgetProviderKey,
+  type ByokProvider,
+} from "../lib/settingsStore";
 
 interface SettingsProps {
-  current: ByokSettings | null;
-  onSave: (settings: ByokSettings) => void;
-  onClear: () => void;
+  activeProvider: ByokProvider | null;
+  onChange: () => void;
   onClose: () => void;
 }
 
@@ -14,46 +19,73 @@ const PROVIDERS: { id: ByokProvider; label: string }[] = [
   { id: "gemini", label: "Google Gemini" },
 ];
 
-export default function Settings({ current, onSave, onClear, onClose }: SettingsProps) {
-  const [provider, setProvider] = useState<ByokProvider>(current?.provider ?? "anthropic");
-  const [apiKey, setApiKey] = useState(current?.apiKey ?? "");
-  const [model, setModel] = useState(current?.model ?? "");
+export default function Settings({ activeProvider, onChange, onClose }: SettingsProps) {
+  const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
+  const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
+  const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
+
+  function handleSelect(provider: ByokProvider) {
+    setSelected(provider);
+    const saved = getSavedKey(provider);
+    setApiKey(saved?.apiKey ?? "");
+    setModel(saved?.model ?? "");
+  }
 
   function handleSave() {
     if (!apiKey.trim()) return;
-    onSave({ provider, apiKey: apiKey.trim(), model: model.trim() || undefined });
-    onClose();
+    saveProviderKey(selected, apiKey.trim(), model.trim() || undefined);
+    onChange();
   }
 
-  function handleClear() {
+  function handleUseTrial() {
+    setActiveProvider(null);
+    onChange();
+  }
+
+  function handleForget() {
+    forgetProviderKey(selected);
     setApiKey("");
     setModel("");
-    onClear();
+    onChange();
   }
+
+  const hasSavedKey = getSavedKey(selected) !== null;
 
   return (
     <div className="rounded-md bg-slate-800 p-4 text-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-medium">Your own API key (optional)</h2>
+        <h2 className="font-medium">API keys</h2>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
           ✕
         </button>
       </div>
       <p className="mb-3 text-slate-400">
-        By default you're using a shared free trial. Add your own key here for unlimited use with
-        the provider of your choice — it's stored only in this browser, never synced to your Drive
-        data.
+        You're on the free shared trial by default. Save a key per provider below, then switch
+        between them any time — each one stays saved in this browser (never synced to your Drive
+        data) until you remove it, so testing back and forth doesn't lose anything.
       </p>
+
+      <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">
+        <span>Free trial (shared)</span>
+        <button
+          onClick={handleUseTrial}
+          disabled={activeProvider === null}
+          className="rounded-md bg-violet-500 px-2 py-1 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+        >
+          {activeProvider === null ? "Active" : "Use this"}
+        </button>
+      </div>
 
       <label className="mb-1 block text-slate-300">Provider</label>
       <select
-        value={provider}
-        onChange={(event) => setProvider(event.target.value as ByokProvider)}
+        value={selected}
+        onChange={(event) => handleSelect(event.target.value as ByokProvider)}
         className="mb-3 w-full rounded-md bg-slate-900 px-2 py-1.5"
       >
         {PROVIDERS.map((option) => (
           <option key={option.id} value={option.id}>
             {option.label}
+            {activeProvider === option.id ? " (active)" : ""}
           </option>
         ))}
       </select>
@@ -81,11 +113,11 @@ export default function Settings({ current, onSave, onClear, onClose }: Settings
           disabled={!apiKey.trim()}
           className="rounded-md bg-violet-500 px-3 py-1.5 font-medium text-white hover:bg-violet-400 disabled:opacity-50"
         >
-          Save
+          {activeProvider === selected ? "Update" : "Save & use"}
         </button>
-        {current && (
-          <button onClick={handleClear} className="rounded-md bg-slate-700 px-3 py-1.5 hover:bg-slate-600">
-            Remove key (use free trial)
+        {hasSavedKey && (
+          <button onClick={handleForget} className="rounded-md bg-slate-700 px-3 py-1.5 hover:bg-slate-600">
+            Forget this key
           </button>
         )}
       </div>
