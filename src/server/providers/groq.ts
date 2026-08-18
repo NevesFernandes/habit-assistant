@@ -13,8 +13,13 @@ interface GroqResponse {
 
 // Free, no-credit-card tier with tool-calling support — the default for the
 // shared trial. OpenAI-compatible Chat Completions API.
+//
+// Model IDs on Groq's free tier shift over time (verify against
+// https://api.groq.com/openai/v1/models with a real key if this ever 404s
+// as "model_not_found") — openai/gpt-oss-20b is the current pick: fast,
+// supports tool calling, and this app's task doesn't need a bigger model.
 const groqAdapter: ProviderAdapter = {
-  defaultModel: "llama-3.3-70b-versatile",
+  defaultModel: "openai/gpt-oss-20b",
 
   async send({ messages, tools, systemPrompt, apiKey, model }: ProviderCallArgs): Promise<ProviderResult> {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
