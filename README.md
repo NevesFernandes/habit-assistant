@@ -13,6 +13,7 @@ See `CLAUDE.md` for the product vision and architecture decisions. This README i
 3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**: type *Web application*. Under "Authorized JavaScript origins" add `http://localhost:5173`.
 4. Copy the resulting **Client ID** (looks like `123...apps.googleusercontent.com`) — it's not secret.
 5. Copy `.env.example` to `.env.local` and set `VITE_GOOGLE_CLIENT_ID` to that value.
+6. **APIs & Services → Library**, search **Google Drive API**, open it, click **Enable**. (Easy to miss — the OAuth client alone doesn't turn the API on. Without this step, sign-in works but loading/creating the data file fails with a 403 `accessNotConfigured` error.)
 
 ### 2. Anthropic API key (for the chat assistant)
 
@@ -26,12 +27,12 @@ See `CLAUDE.md` for the product vision and architecture decisions. This README i
 
 ```bash
 npm install
-npm run pages:dev
+npm run dev
 ```
 
-This starts the Vite dev server *and* emulates the Cloudflare Pages Function together, so `/api/agent` works locally. Open the URL it prints (usually `http://localhost:8788`).
+Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real Cloudflare Function). It reads your Anthropic key straight from `.dev.vars`.
 
-If you only need the frontend (no chat, e.g. while styling), `npm run dev` alone is faster.
+There's also `npm run pages:dev`, which uses Cloudflare's own `wrangler pages dev` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
 
 ## Deploying (when you're ready)
 
