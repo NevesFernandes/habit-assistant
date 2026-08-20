@@ -7,7 +7,7 @@
 export interface Category {
   id: string;
   name: string;
-  icon: string; // an emoji for v1 — cheap, no asset pipeline needed
+  icon: string; // a lucide-react icon name (kebab-case, key into ICON_REGISTRY — see src/lib/icons.ts)
   isDefault: boolean;
 }
 
@@ -75,17 +75,17 @@ export interface AppData {
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  { id: "quit-bad-habit", name: "Quit a bad habit", icon: "🚫", isDefault: true },
-  { id: "study", name: "Study", icon: "🎓", isDefault: true },
-  { id: "sports", name: "Sports", icon: "🏃", isDefault: true },
-  { id: "social", name: "Social", icon: "💬", isDefault: true },
-  { id: "finance", name: "Finance", icon: "💲", isDefault: true },
-  { id: "health", name: "Health", icon: "➕", isDefault: true },
-  { id: "work", name: "Work", icon: "💼", isDefault: true },
-  { id: "nutrition", name: "Nutrition", icon: "🍴", isDefault: true },
-  { id: "home", name: "Home", icon: "🏠", isDefault: true },
-  { id: "outdoor", name: "Outdoor", icon: "🏞️", isDefault: true },
-  { id: "other", name: "Other", icon: "◻️", isDefault: true },
+  { id: "quit-bad-habit", name: "Quit a bad habit", icon: "ban", isDefault: true },
+  { id: "study", name: "Study", icon: "graduation-cap", isDefault: true },
+  { id: "sports", name: "Sports", icon: "dumbbell", isDefault: true },
+  { id: "social", name: "Social", icon: "users", isDefault: true },
+  { id: "finance", name: "Finance", icon: "dollar-sign", isDefault: true },
+  { id: "health", name: "Health", icon: "heart-pulse", isDefault: true },
+  { id: "work", name: "Work", icon: "briefcase", isDefault: true },
+  { id: "nutrition", name: "Nutrition", icon: "utensils", isDefault: true },
+  { id: "home", name: "Home", icon: "home", isDefault: true },
+  { id: "outdoor", name: "Outdoor", icon: "trees", isDefault: true },
+  { id: "other", name: "Other", icon: "square", isDefault: true },
 ];
 
 export function emptyAppData(): AppData {

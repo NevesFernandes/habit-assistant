@@ -4,6 +4,7 @@
 import type {
   AppData,
   BaseItem,
+  Category,
   CompletionLogEntry,
   CompletionType,
   Habit,
@@ -378,4 +379,59 @@ export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatc
       };
     }),
   };
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  icon: string;
+}
+
+export function addCategory(data: AppData, input: CreateCategoryInput): AppData {
+  const category: Category = {
+    id: crypto.randomUUID(),
+    name: input.name,
+    icon: input.icon,
+    isDefault: false,
+  };
+  return { ...data, categories: [...data.categories, category] };
+}
+
+// A separate shape from UpdatePatch — Category doesn't extend BaseItem, so it
+// shouldn't be force-fit into that item-shaped interface.
+export interface UpdateCategoryPatch {
+  newName?: string;
+  newIcon?: string;
+}
+
+export function updateCategory(data: AppData, id: string, patch: UpdateCategoryPatch): AppData {
+  return {
+    ...data,
+    categories: data.categories.map((category) =>
+      category.id === id
+        ? {
+            ...category,
+            name: patch.newName?.trim() ? patch.newName.trim() : category.name,
+            icon: patch.newIcon !== undefined ? patch.newIcon : category.icon,
+          }
+        : category,
+    ),
+  };
+}
+
+/** True if any habit, recurring task, or single task (past or current — there's no
+ * separate archive that removes old items from these arrays) still references this
+ * categoryId. Callers must check this before calling deleteCategory and block the
+ * delete in the UI if true — deleteCategory itself performs no guard, mirroring how
+ * deleteSingleTasks/deleteHabits/deleteRecurringTasks take pre-resolved ids without
+ * re-validating. */
+export function isCategoryInUse(data: AppData, categoryId: string): boolean {
+  return (
+    data.habits.some((habit) => habit.categoryId === categoryId) ||
+    data.recurringTasks.some((task) => task.categoryId === categoryId) ||
+    data.singleTasks.some((task) => task.categoryId === categoryId)
+  );
+}
+
+export function deleteCategory(data: AppData, id: string): AppData {
+  return { ...data, categories: data.categories.filter((category) => category.id !== id) };
 }

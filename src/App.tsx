@@ -4,6 +4,7 @@ import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
 import DayView from "./components/DayView";
 import SettingsPanel from "./components/Settings";
+import CategoriesView from "./components/CategoriesView";
 import {
   signIn,
   findOrCreateFolder,
@@ -17,26 +18,32 @@ import {
 } from "./lib/driveClient";
 import { sendMessage, type ChatMessage } from "./lib/agentClient";
 import {
+  addCategory,
   addHabit,
   addSingleTask,
+  deleteCategory,
   deleteHabits,
   deleteRecurringTasks,
   deleteSingleTasks,
+  isCategoryInUse,
   resolveHabits,
   resolveRecurringTasks,
   resolveSingleTasks,
   toggleHabitCompletion,
   toggleSingleTaskDone,
+  updateCategory,
   updateHabit,
   updateRecurringTask,
   updateSingleTask,
+  type CreateCategoryInput,
   type DeleteCriteria,
+  type UpdateCategoryPatch,
   type UpdatePatch,
 } from "./lib/dataStore";
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
-type Tab = "chat" | "today";
+type Tab = "chat" | "today" | "categories";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -314,6 +321,23 @@ export default function App() {
     void persist(toggleHabitCompletion(data, habitId, selectedDate));
   }
 
+  function handleAddCategory(input: CreateCategoryInput) {
+    if (!data) return;
+    void persist(addCategory(data, input));
+  }
+
+  function handleUpdateCategory(id: string, patch: UpdateCategoryPatch) {
+    if (!data) return;
+    void persist(updateCategory(data, id, patch));
+  }
+
+  function handleDeleteCategory(id: string): boolean {
+    if (!data) return false;
+    if (isCategoryInUse(data, id)) return false;
+    void persist(deleteCategory(data, id));
+    return true;
+  }
+
   if (!session || !data) {
     return <SignIn onClick={handleSignIn} loading={signingIn} error={authError} />;
   }
@@ -339,7 +363,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today"] as const).map((tab) => (
+        {(["chat", "today", "categories"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -370,6 +394,18 @@ export default function App() {
               onToggleTask={handleTaskToggle}
             />
           </div>
+        )}
+
+        {activeTab === "categories" && (
+          <CategoriesView
+            categories={data.categories}
+            habits={data.habits}
+            recurringTasks={data.recurringTasks}
+            singleTasks={data.singleTasks}
+            onAdd={handleAddCategory}
+            onUpdate={handleUpdateCategory}
+            onDelete={handleDeleteCategory}
+          />
         )}
       </div>
     </div>
