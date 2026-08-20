@@ -12,54 +12,47 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### 1. Single Task: date + persistency
+### 1. Remove the standalone Tasks view
 **[Now]**
 
-Every Single Task needs a date; if the user doesn't specify one when creating it, default to today. Add a `persistency` boolean parameter: if `true`, an incomplete task carries over to the next day; if `false`, an incomplete task "dies" (stays permanently uncompleted) at the end of the day it was created.
+Single Tasks now have a real `startDate` (defaulting to today) and a `persistency` flag, added via the previous roadmap item. Single Tasks and Habits can share the same date-grouped view (sorted by priority) instead of Tasks needing their own screen. Remove the dedicated Tasks view as redundant. This is also where "dies vs. carries forward" should become visible: a non-persistent task not done by the end of its start date should stop appearing as actionable in the unified view (while its record is preserved, not deleted).
 
-Open question to resolve during implementation: default value of `persistency` when the user doesn't specify one.
-
-### 2. Remove the standalone Tasks view
-**[Now]**
-
-Depends on #1. Once tasks have proper dates, Single Tasks and Habits can share the same date-grouped view (sorted by priority) instead of Tasks needing their own screen. Remove the dedicated Tasks view as redundant.
-
-### 3. Categories view (icons + CRUD)
+### 2. Categories view (icons + CRUD)
 **[Next]**
 
 Add a view listing all categories. Give each category an icon — evaluate free icon libraries. Seed the default category set + icons from `Notes/Categories.jpg` (HabitNow-style reference: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other). Let users add, edit, and delete categories — but block delete if it would orphan any habit or task (past or current) still assigned to that category.
 
-### 4. Archive habits & recurring tasks
+### 3. Archive habits & recurring tasks
 **[Next]**
 
 Add an "archive" action for Habits and Recurring Tasks: sets an end date as-of-today (soft-stops future occurrences) while preserving all existing completion history.
 
-### 5. Habits list view
+### 4. Habits list view
 **[Later]**
 
 A view listing all habits regardless of date, individually clickable into a per-habit detail screen showing its parameters.
 
-### 6. Single Tasks list view
+### 5. Single Tasks list view
 **[Later]**
 
-Same pattern as #5, for Single Tasks.
+Same pattern as #4, for Single Tasks.
 
-### 7. Recurring Tasks list view
+### 6. Recurring Tasks list view
 **[Later]**
 
-Same pattern as #5, for Recurring Tasks.
+Same pattern as #4, for Recurring Tasks.
 
-### 8. Per-habit statistics
+### 7. Per-habit statistics
 **[Later]**
 
 On a habit's detail view: current streak, best streak, completion percentage, and count of completions this week / this month / this year / all-time. Open to additional metrics beyond these.
 
-### 9. Per-category statistics
+### 8. Per-category statistics
 **[Later]**
 
-Aggregate the stats from #8 across all habits in a category. Open question: does "streak" mean anything at the category level, or should it be dropped for category aggregates?
+Aggregate the stats from #7 across all habits in a category. Open question: does "streak" mean anything at the category level, or should it be dropped for category aggregates?
 
-### 10. Text-to-speech layer for agent responses
+### 9. Text-to-speech layer for agent responses
 **[Later]**
 
 Have the agent's chat responses optionally read aloud (TTS), mirroring the existing voice *input* pipeline described in `CLAUDE.md`.
