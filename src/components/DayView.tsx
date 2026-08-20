@@ -1,6 +1,7 @@
 import type { Category, CompletionLogEntry, Habit, SingleTask } from "../types/models";
 import { completionsInPeriod, getHabitsForDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
+import CategoryIcon from "./CategoryIcon";
 
 type DayItem = { kind: "habit"; item: Habit } | { kind: "singleTask"; item: SingleTask };
 
@@ -80,7 +81,7 @@ function HabitRow({
   const isDone = completionLog.some((entry) => entry.itemId === habit.id && entry.date === selectedDate);
   return (
     <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
-      <span aria-hidden>{category?.icon ?? "◻️"}</span>
+      <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
       <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
         <div>{habit.name}</div>
         {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
@@ -119,7 +120,7 @@ function TaskRow({
   const category = categories.find((c) => c.id === task.categoryId);
   return (
     <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
-      <span aria-hidden>{category?.icon ?? "◻️"}</span>
+      <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
       <input
         type="checkbox"
         checked={task.done}
