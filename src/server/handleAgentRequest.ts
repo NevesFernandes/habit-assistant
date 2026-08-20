@@ -71,6 +71,10 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 
 For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. None of this ever touches a habit's already-logged completion history.
 
+For createSingleTask specifically:
+- startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
+- persistency defaults to true (the task keeps carrying forward until done) — leave it out unless the user's own phrasing signals a same-day/one-shot intent (e.g. "just for today", "don't need this tomorrow") or explicitly asks for it to persist or not. Never ask about this proactively; it has a sensible default.
+
 For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
 - priority is a positive whole number; higher means more important. Default to 1 (the lowest priority) unless the user signals otherwise (e.g. "this is really important" → a higher number).
@@ -130,6 +134,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           priority: {
             type: "number",
             description: "Optional numeric priority; higher values show first.",
+          },
+          startDate: {
+            type: "string",
+            description: "ISO date (YYYY-MM-DD), today or later. Omit to default to today.",
+          },
+          persistency: {
+            type: "boolean",
+            description:
+              "Whether an incomplete task keeps carrying forward until done (true, the default) or dies uncompleted at the end of its start date (false). Only set explicitly when the user's phrasing signals a one-shot/same-day intent (e.g. 'just for today', 'don't need this tomorrow') or explicitly asks it to persist — otherwise omit.",
           },
         },
         required: ["name"],
@@ -316,6 +329,11 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newDone: { type: "boolean", description: "New completion status: true = done, false = not done." },
+          newPersistency: {
+            type: "boolean",
+            description:
+              "New persistency: true = carries forward until done, false = dies uncompleted at the end of its start date if not done by then.",
+          },
         },
         required: ["name"],
       },

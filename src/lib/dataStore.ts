@@ -18,6 +18,8 @@ export interface CreateSingleTaskInput {
   description?: string;
   categoryId?: string;
   priority?: number;
+  startDate?: string;
+  persistency?: boolean;
 }
 
 export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppData {
@@ -28,8 +30,9 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
     description: input.description,
     categoryId: input.categoryId,
     priority: input.priority ?? 0,
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: normalizeStartDate(input.startDate),
     done: false,
+    persistency: input.persistency ?? true,
   };
   return { ...data, singleTasks: [...data.singleTasks, task] };
 }
@@ -278,6 +281,7 @@ export interface UpdatePatch {
   newStartDate?: string;
   newEndDate?: string;
   newDone?: boolean; // SingleTask only
+  newPersistency?: boolean; // SingleTask only
   newRecurrenceType?: RecurrenceRule["type"]; // Habit + RecurringTask
   newRecurrenceDays?: number[];
   newRecurrenceInterval?: number;
@@ -319,6 +323,7 @@ export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch):
         ...base,
         categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
         done: patch.newDone !== undefined ? patch.newDone : task.done,
+        persistency: patch.newPersistency !== undefined ? patch.newPersistency : task.persistency,
       };
     }),
   };

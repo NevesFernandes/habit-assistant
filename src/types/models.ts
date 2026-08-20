@@ -55,6 +55,7 @@ export interface RecurringTask extends BaseItem {
 export interface SingleTask extends BaseItem {
   kind: "singleTask";
   done: boolean;
+  persistency: boolean; // true: carries forward until done; false: dies uncompleted at end of startDate
   checklist?: ChecklistItem[];
 }
 
