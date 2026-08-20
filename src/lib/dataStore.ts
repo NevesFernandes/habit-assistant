@@ -37,6 +37,12 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
   return { ...data, singleTasks: [...data.singleTasks, task] };
 }
 
+/** Whether a task should appear on a given date: always on its own startDate (preserving history whether it was done or not), and on later dates only while persistent and still not done — otherwise it "dies" (stops appearing, record kept). Tasks saved before `persistency` existed have it `undefined`; default that to `true`, matching the field's own creation-time default. */
+export function isSingleTaskActiveOn(task: SingleTask, dateISO: string): boolean {
+  if (task.startDate === dateISO) return true;
+  return (task.persistency ?? true) && !task.done && task.startDate < dateISO;
+}
+
 export function toggleSingleTaskDone(data: AppData, taskId: string): AppData {
   return {
     ...data,

@@ -12,47 +12,42 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### 1. Remove the standalone Tasks view
-**[Now]**
-
-Single Tasks now have a real `startDate` (defaulting to today) and a `persistency` flag, added via the previous roadmap item. Single Tasks and Habits can share the same date-grouped view (sorted by priority) instead of Tasks needing their own screen. Remove the dedicated Tasks view as redundant. This is also where "dies vs. carries forward" should become visible: a non-persistent task not done by the end of its start date should stop appearing as actionable in the unified view (while its record is preserved, not deleted).
-
-### 2. Categories view (icons + CRUD)
+### 1. Categories view (icons + CRUD)
 **[Next]**
 
 Add a view listing all categories. Give each category an icon — evaluate free icon libraries. Seed the default category set + icons from `Notes/Categories.jpg` (HabitNow-style reference: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other). Let users add, edit, and delete categories — but block delete if it would orphan any habit or task (past or current) still assigned to that category.
 
-### 3. Archive habits & recurring tasks
+### 2. Archive habits & recurring tasks
 **[Next]**
 
 Add an "archive" action for Habits and Recurring Tasks: sets an end date as-of-today (soft-stops future occurrences) while preserving all existing completion history.
 
-### 4. Habits list view
+### 3. Habits list view
 **[Later]**
 
 A view listing all habits regardless of date, individually clickable into a per-habit detail screen showing its parameters.
 
-### 5. Single Tasks list view
+### 4. Single Tasks list view
 **[Later]**
 
-Same pattern as #4, for Single Tasks.
+Same pattern as #3, for Single Tasks.
 
-### 6. Recurring Tasks list view
+### 5. Recurring Tasks list view
 **[Later]**
 
-Same pattern as #4, for Recurring Tasks.
+Same pattern as #3, for Recurring Tasks.
 
-### 7. Per-habit statistics
+### 6. Per-habit statistics
 **[Later]**
 
 On a habit's detail view: current streak, best streak, completion percentage, and count of completions this week / this month / this year / all-time. Open to additional metrics beyond these.
 
-### 8. Per-category statistics
+### 7. Per-category statistics
 **[Later]**
 
-Aggregate the stats from #7 across all habits in a category. Open question: does "streak" mean anything at the category level, or should it be dropped for category aggregates?
+Aggregate the stats from #6 across all habits in a category. Open question: does "streak" mean anything at the category level, or should it be dropped for category aggregates?
 
-### 9. Text-to-speech layer for agent responses
+### 8. Text-to-speech layer for agent responses
 **[Later]**
 
 Have the agent's chat responses optionally read aloud (TTS), mirroring the existing voice *input* pipeline described in `CLAUDE.md`.

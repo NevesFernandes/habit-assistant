@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
-import ItemList from "./components/ItemList";
 import DayStrip from "./components/DayStrip";
-import HabitDayView from "./components/HabitDayView";
+import DayView from "./components/DayView";
 import SettingsPanel from "./components/Settings";
 import {
   signIn,
@@ -37,7 +36,7 @@ import {
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
-type Tab = "chat" | "today" | "tasks";
+type Tab = "chat" | "today";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -305,7 +304,7 @@ export default function App() {
     }
   }
 
-  function handleToggle(taskId: string) {
+  function handleTaskToggle(taskId: string) {
     if (!data) return;
     void persist(toggleSingleTaskDone(data, taskId));
   }
@@ -340,7 +339,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "tasks"] as const).map((tab) => (
+        {(["chat", "today"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -361,20 +360,15 @@ export default function App() {
         {activeTab === "today" && (
           <div className="flex flex-col gap-4">
             <DayStrip selectedDate={selectedDate} onSelect={setSelectedDate} />
-            <HabitDayView
+            <DayView
               selectedDate={selectedDate}
               habits={data.habits}
+              singleTasks={data.singleTasks}
               completionLog={data.completionLog}
               categories={data.categories}
-              onToggle={handleHabitToggle}
+              onToggleHabit={handleHabitToggle}
+              onToggleTask={handleTaskToggle}
             />
-          </div>
-        )}
-
-        {activeTab === "tasks" && (
-          <div>
-            <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-slate-400">Tasks</h2>
-            <ItemList tasks={data.singleTasks} onToggle={handleToggle} />
           </div>
         )}
       </div>
