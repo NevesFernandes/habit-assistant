@@ -296,9 +296,7 @@ export default function App() {
         pushAssistantMessage("I didn't get a usable response — try rephrasing?");
       }
     } catch (err) {
-      pushAssistantMessage(
-        `Something went wrong talking to the assistant: ${err instanceof Error ? err.message : "unknown error"}.`,
-      );
+      pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
       // pendingDeletion is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network
       // failure while awaiting confirmation doesn't silently drop it.

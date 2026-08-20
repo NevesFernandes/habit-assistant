@@ -5,6 +5,7 @@
 import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
 import type { CreateHabitInput, DeleteCriteria, UpdatePatch } from "./dataStore";
+import { fetchJson } from "./fetchJson";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -79,7 +80,7 @@ export async function sendMessage(
   categories?: Category[],
   hasPendingConfirmation?: boolean,
 ): Promise<AgentResponse> {
-  const res = await fetch("/api/agent", {
+  const { ok, status, body } = await fetchJson<AgentResponse>("/api/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -89,9 +90,8 @@ export async function sendMessage(
       hasPendingConfirmation: hasPendingConfirmation || undefined,
     }),
   });
-  const body = (await res.json()) as AgentResponse;
-  if (!res.ok) {
-    throw new Error(body.error ?? `Agent request failed (${res.status}).`);
+  if (!ok) {
+    throw new Error(body.error ?? `Agent request failed (${status}).`);
   }
   return body;
 }
