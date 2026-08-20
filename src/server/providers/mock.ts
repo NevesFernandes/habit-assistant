@@ -12,6 +12,10 @@ const DELETE_HABIT_BY_NAME = /^delete (?:the )?habit[: ]+(.+)/i;
 const DELETE_TASKS_TODAY = /^delete all tasks for today/i;
 const DELETE_ALL_TASKS = /^delete all tasks/i;
 const DELETE_TASK_BY_NAME = /^delete (?:the )?task[: ]+(.+)/i;
+const RENAME_TASK = /^rename (?:the )?task (.+?) to (.+)/i;
+const RENAME_HABIT = /^rename (?:the )?habit (.+?) to (.+)/i;
+const MARK_TASK_NOT_DONE = /^mark (?:the )?task (.+?) as not done\.?$/i;
+const MARK_TASK_DONE = /^mark (?:the )?task (.+?) as done\.?$/i;
 const YES_PATTERN = /^(yes|yep|yeah|confirm|do it|go ahead)\b/i;
 
 function today(): string {
@@ -55,6 +59,39 @@ const mockAdapter: ProviderAdapter = {
           input: { name: taskNameMatch[1].replace(/\.$/, "").trim() },
         },
       };
+    }
+
+    const renameTaskMatch = text.match(RENAME_TASK);
+    if (renameTaskMatch) {
+      return {
+        toolCall: {
+          name: "updateSingleTask",
+          input: {
+            name: renameTaskMatch[1].trim(),
+            newName: capitalize(renameTaskMatch[2].replace(/\.$/, "").trim()),
+          },
+        },
+      };
+    }
+    const renameHabitMatch = text.match(RENAME_HABIT);
+    if (renameHabitMatch) {
+      return {
+        toolCall: {
+          name: "updateHabit",
+          input: {
+            name: renameHabitMatch[1].trim(),
+            newName: capitalize(renameHabitMatch[2].replace(/\.$/, "").trim()),
+          },
+        },
+      };
+    }
+    const markNotDoneMatch = text.match(MARK_TASK_NOT_DONE);
+    if (markNotDoneMatch) {
+      return { toolCall: { name: "updateSingleTask", input: { name: markNotDoneMatch[1].trim(), newDone: false } } };
+    }
+    const markDoneMatch = text.match(MARK_TASK_DONE);
+    if (markDoneMatch) {
+      return { toolCall: { name: "updateSingleTask", input: { name: markDoneMatch[1].trim(), newDone: true } } };
     }
 
     for (const pattern of HABIT_PATTERNS) {

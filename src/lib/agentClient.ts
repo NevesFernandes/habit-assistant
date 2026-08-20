@@ -4,7 +4,7 @@
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
-import type { CreateHabitInput, DeleteCriteria } from "./dataStore";
+import type { CreateHabitInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -36,6 +36,21 @@ export interface DeleteRecurringTasksToolCall {
   input: DeleteCriteria;
 }
 
+export interface UpdateSingleTaskToolCall {
+  name: "updateSingleTask";
+  input: { name: string } & UpdatePatch;
+}
+
+export interface UpdateHabitToolCall {
+  name: "updateHabit";
+  input: { name: string } & UpdatePatch;
+}
+
+export interface UpdateRecurringTaskToolCall {
+  name: "updateRecurringTask";
+  input: { name: string } & UpdatePatch;
+}
+
 export interface ConfirmPendingDeletionToolCall {
   name: "confirmPendingDeletion";
   input: { confirmed: boolean };
@@ -47,6 +62,9 @@ export type AgentToolCall =
   | DeleteSingleTasksToolCall
   | DeleteHabitsToolCall
   | DeleteRecurringTasksToolCall
+  | UpdateSingleTaskToolCall
+  | UpdateHabitToolCall
+  | UpdateRecurringTaskToolCall
   | ConfirmPendingDeletionToolCall;
 
 export interface AgentResponse {

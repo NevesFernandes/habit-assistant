@@ -89,7 +89,12 @@ function resolveStartDate(input: CreateHabitInput): string {
   return normalizeStartDate(input.startDate);
 }
 
-function buildRecurrence(input: CreateHabitInput): RecurrenceRule {
+type RecurrenceInput = Pick<
+  CreateHabitInput,
+  "recurrenceType" | "recurrenceDays" | "recurrenceInterval" | "recurrencePeriod" | "recurrenceCount"
+>;
+
+function buildRecurrence(input: RecurrenceInput): RecurrenceRule {
   switch (input.recurrenceType) {
     case "daysOfWeek":
       return { type: "daysOfWeek", days: input.recurrenceDays ?? [] };
@@ -256,5 +261,110 @@ export function deleteRecurringTasks(data: AppData, ids: string[]): AppData {
     ...data,
     recurringTasks: data.recurringTasks.filter((task) => !idSet.has(task.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
+  };
+}
+
+// All fields optional; a field is only changed when its key is present with
+// a non-undefined value — omitted means "leave as-is". "" clears an
+// optional string field (description, endDate, and categoryId on
+// SingleTask/RecurringTask only — Habit's categoryId is required). Shared
+// across all three item kinds, mirroring DeleteCriteria's single-type shape
+// rather than one interface per kind.
+export interface UpdatePatch {
+  newName?: string;
+  newDescription?: string;
+  newCategoryId?: string;
+  newPriority?: number;
+  newStartDate?: string;
+  newEndDate?: string;
+  newDone?: boolean; // SingleTask only
+  newRecurrenceType?: RecurrenceRule["type"]; // Habit + RecurringTask
+  newRecurrenceDays?: number[];
+  newRecurrenceInterval?: number;
+  newRecurrencePeriod?: "week" | "month";
+  newRecurrenceCount?: number;
+  newCompletionType?: CompletionType; // Habit only
+  newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
+}
+
+function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T {
+  return {
+    ...item,
+    name: patch.newName?.trim() ? patch.newName.trim() : item.name,
+    description: patch.newDescription !== undefined ? patch.newDescription || undefined : item.description,
+    priority: patch.newPriority !== undefined ? normalizePriority(patch.newPriority) : item.priority,
+    startDate: patch.newStartDate !== undefined ? normalizeStartDate(patch.newStartDate) : item.startDate,
+    endDate: patch.newEndDate !== undefined ? patch.newEndDate || undefined : item.endDate,
+  };
+}
+
+function resolveRecurrence(current: RecurrenceRule, patch: UpdatePatch): RecurrenceRule {
+  if (patch.newRecurrenceType === undefined) return current;
+  return buildRecurrence({
+    recurrenceType: patch.newRecurrenceType,
+    recurrenceDays: patch.newRecurrenceDays,
+    recurrenceInterval: patch.newRecurrenceInterval,
+    recurrencePeriod: patch.newRecurrencePeriod,
+    recurrenceCount: patch.newRecurrenceCount,
+  });
+}
+
+export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((task) => {
+      if (task.id !== id) return task;
+      const base = applyBaseItemPatch(task, patch);
+      return {
+        ...base,
+        categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
+        done: patch.newDone !== undefined ? patch.newDone : task.done,
+      };
+    }),
+  };
+}
+
+export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppData {
+  return {
+    ...data,
+    habits: data.habits.map((habit) => {
+      if (habit.id !== id) return habit;
+      const base = applyBaseItemPatch(habit, patch);
+      const categoryId =
+        patch.newCategoryId !== undefined
+          ? data.categories.some((category) => category.id === patch.newCategoryId)
+            ? patch.newCategoryId
+            : "other"
+          : habit.categoryId;
+      const completionType = patch.newCompletionType ?? habit.completionType;
+      const checklist =
+        completionType !== "checklist"
+          ? undefined
+          : patch.newChecklistItems !== undefined
+            ? patch.newChecklistItems.map((text) => ({ id: crypto.randomUUID(), text, checked: false }))
+            : (habit.checklist ?? []);
+      return {
+        ...base,
+        categoryId,
+        recurrence: resolveRecurrence(habit.recurrence, patch),
+        completionType,
+        checklist,
+      };
+    }),
+  };
+}
+
+export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatch): AppData {
+  return {
+    ...data,
+    recurringTasks: data.recurringTasks.map((task) => {
+      if (task.id !== id) return task;
+      const base = applyBaseItemPatch(task, patch);
+      return {
+        ...base,
+        categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
+        recurrence: resolveRecurrence(task.recurrence, patch),
+      };
+    }),
   };
 }

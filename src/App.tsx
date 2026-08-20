@@ -28,7 +28,11 @@ import {
   resolveSingleTasks,
   toggleHabitCompletion,
   toggleSingleTaskDone,
+  updateHabit,
+  updateRecurringTask,
+  updateSingleTask,
   type DeleteCriteria,
+  type UpdatePatch,
 } from "./lib/dataStore";
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
@@ -51,14 +55,14 @@ function formatQuotedList(names: string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
 
-const DELETE_NOUNS: Record<DeletableItemKind, string> = {
+const ITEM_NOUNS: Record<DeletableItemKind, string> = {
   singleTask: "task",
   habit: "habit",
   recurringTask: "recurring task",
 };
 
 function buildDeleteConfirmationQuestion(kind: DeletableItemKind, names: string[]): string {
-  const noun = DELETE_NOUNS[kind];
+  const noun = ITEM_NOUNS[kind];
   const subject =
     names.length === 1
       ? `the ${noun} ${formatQuotedList(names)}`
@@ -207,6 +211,47 @@ export default function App() {
     if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`);
   }
 
+  function hasAnyPatchField(patch: UpdatePatch): boolean {
+    return Object.values(patch).some((value) => value !== undefined);
+  }
+
+  async function handleUpdateRequest(kind: DeletableItemKind, input: { name: string } & UpdatePatch) {
+    if (!data) return;
+    const { name: fragment, ...patch } = input;
+    const matches =
+      kind === "habit"
+        ? resolveHabits(data, { name: fragment })
+        : kind === "recurringTask"
+          ? resolveRecurringTasks(data, { name: fragment })
+          : resolveSingleTasks(data, { name: fragment });
+
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any ${ITEM_NOUNS[kind]} matching "${fragment}".`);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one ${ITEM_NOUNS[kind]} matching "${fragment}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+      );
+      return;
+    }
+    if (!hasAnyPatchField(patch)) {
+      pushAssistantMessage("What would you like to change about it?");
+      return;
+    }
+
+    const target = matches[0];
+    const nextData =
+      kind === "habit"
+        ? updateHabit(data, target.id, patch)
+        : kind === "recurringTask"
+          ? updateRecurringTask(data, target.id, patch)
+          : updateSingleTask(data, target.id, patch);
+
+    const saved = await persist(nextData);
+    if (saved) pushAssistantMessage(`Updated "${target.name}".`);
+  }
+
   async function handleSend(userText: string) {
     if (!data) return;
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userText }];
@@ -239,6 +284,12 @@ export default function App() {
         await handleDeleteRequest("habit", response.toolCall.input);
       } else if (response.toolCall?.name === "deleteRecurringTasks") {
         await handleDeleteRequest("recurringTask", response.toolCall.input);
+      } else if (response.toolCall?.name === "updateSingleTask") {
+        await handleUpdateRequest("singleTask", response.toolCall.input);
+      } else if (response.toolCall?.name === "updateHabit") {
+        await handleUpdateRequest("habit", response.toolCall.input);
+      } else if (response.toolCall?.name === "updateRecurringTask") {
+        await handleUpdateRequest("recurringTask", response.toolCall.input);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {

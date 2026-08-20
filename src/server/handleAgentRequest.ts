@@ -50,10 +50,13 @@ You can take these actions:
 3. deleteSingleTasks — delete one-off tasks matching filters you specify.
 4. deleteHabits — delete habits matching filters you specify.
 5. deleteRecurringTasks — delete recurring tasks matching filters you specify (there is currently no way to create one, so this will typically find nothing — only call it if the user explicitly refers to a "recurring task").
+6. updateSingleTask — change one or more fields on an existing one-off task.
+7. updateHabit — change one or more fields on an existing habit.
+8. updateRecurringTask — change one or more fields on an existing recurring task.
 
-Only call a tool when the user is clearly and explicitly asking you to add, create, or delete something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
-If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
+If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
 
 For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
 - all: set true to match every item of that kind, ignoring every other field below.
@@ -65,6 +68,8 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 - completionType (deleteHabits only): "yesno" | "value" | "timer" | "checklist" — only when the user explicitly refers to how a habit is tracked.
 - neverCompleted (deleteHabits and deleteRecurringTasks): true = only items with zero completions ever recorded (e.g. "delete habits I've never actually done").
 - inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.
+
+For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. None of this ever touches a habit's already-logged completion history.
 
 For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
@@ -290,6 +295,130 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           },
         },
         required: [],
+      },
+    },
+    {
+      name: "updateSingleTask",
+      description:
+        "Change one or more fields on an existing one-off task. name selects the task (a fragment, not a new value); every field you set replaces that field, everything else is left as-is. Never call this with no fields set besides name.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
+          newName: { type: "string", description: "New name for the task." },
+          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newCategoryId: {
+            type: "string",
+            description: `New category id from: ${categoryList}. Empty string clears the category.`,
+            enum: [...categories.map((category) => category.id), ""],
+          },
+          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
+          newDone: { type: "boolean", description: "New completion status: true = done, false = not done." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "updateHabit",
+      description:
+        "Change one or more fields on an existing habit. name selects the habit (a fragment, not a new value); every field you set replaces that field, everything else is left as-is. Never call this with no fields set besides name.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's current name, to find which habit to change." },
+          newName: { type: "string", description: "New name for the habit." },
+          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newCategoryId: {
+            type: "string",
+            description: `New category id from: ${categoryList}.`,
+            enum: categories.map((category) => category.id),
+          },
+          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
+          newRecurrenceType: {
+            type: "string",
+            description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
+            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+          },
+          newRecurrenceDays: {
+            type: "array",
+            description: "Used when newRecurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
+            items: { type: "number" },
+          },
+          newRecurrenceInterval: {
+            type: "number",
+            description: "Used when newRecurrenceType is intervalDays: repeat every N days.",
+          },
+          newRecurrencePeriod: {
+            type: "string",
+            description: "Used when newRecurrenceType is timesPerPeriod.",
+            enum: ["week", "month"],
+          },
+          newRecurrenceCount: {
+            type: "number",
+            description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
+          },
+          newCompletionType: {
+            type: "string",
+            description:
+              "New way completion is tracked. Switching to checklist requires newChecklistItems in the same call. Switching away from checklist clears the checklist.",
+            enum: ["yesno", "value", "timer", "checklist"],
+          },
+          newChecklistItems: {
+            type: "array",
+            description: "Fully replaces the checklist sub-items (used with completionType checklist).",
+            items: { type: "string" },
+          },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "updateRecurringTask",
+      description:
+        "Change one or more fields on an existing recurring task. name selects the task (a fragment, not a new value); every field you set replaces that field, everything else is left as-is. Never call this with no fields set besides name.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
+          newName: { type: "string", description: "New name for the task." },
+          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newCategoryId: {
+            type: "string",
+            description: `New category id from: ${categoryList}. Empty string clears the category.`,
+            enum: [...categories.map((category) => category.id), ""],
+          },
+          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
+          newRecurrenceType: {
+            type: "string",
+            description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
+            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+          },
+          newRecurrenceDays: {
+            type: "array",
+            description: "Used when newRecurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
+            items: { type: "number" },
+          },
+          newRecurrenceInterval: {
+            type: "number",
+            description: "Used when newRecurrenceType is intervalDays: repeat every N days.",
+          },
+          newRecurrencePeriod: {
+            type: "string",
+            description: "Used when newRecurrenceType is timesPerPeriod.",
+            enum: ["week", "month"],
+          },
+          newRecurrenceCount: {
+            type: "number",
+            description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
+          },
+        },
+        required: ["name"],
       },
     },
   ];
