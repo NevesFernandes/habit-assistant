@@ -4,7 +4,7 @@ An agent-driven habit tracker and task manager. Instead of navigating menus, for
 
 This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
 
-**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, a chat UI that can create a Single Task via one tool call, a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists.
+**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, a chat UI that can create a Single Task via one tool call, a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists, and `Roadmap.md` for the prioritized backlog of what's planned next.
 
 ## Interaction model
 
@@ -104,7 +104,7 @@ Researched three real options: the browser-native Web Speech API (free, but brok
 
 ## Open questions / to refine later
 
-These were deliberately left undecided rather than guessed at — surface them again before they become load-bearing:
+These were deliberately left undecided rather than guessed at — surface them again before they become load-bearing. (For concrete, actionable planned features rather than open design questions, see `Roadmap.md`.)
 
 - Does a recurring task's checklist reset each new occurrence, or carry unfinished items forward to the next cycle?
 - Exact conflict-resolution strategy for near-simultaneous edits to the Drive-stored data file from two devices.
