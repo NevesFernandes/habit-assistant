@@ -17,7 +17,7 @@ function todayISO(): string {
 export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
   const today = todayISO();
   const dates = Array.from({ length: DAYS_BEFORE + DAYS_AFTER + 1 }, (_, i) =>
-    addDays(today, i - DAYS_BEFORE),
+    addDays(selectedDate, i - DAYS_BEFORE),
   );
   const selectedRef = useRef<HTMLButtonElement | null>(null);
 
