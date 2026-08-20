@@ -15,22 +15,22 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 ---
 
 ### §4. Archive habits & recurring tasks
-**[Next]**
+**[Now]**
 
 Add an "archive" action for Habits and Recurring Tasks: sets an end date as-of-today (soft-stops future occurrences) while preserving all existing completion history.
 
 ### §5. Habits list view
-**[Later]**
+**[Next]**
 
 A view listing all habits regardless of date, individually clickable into a per-habit detail screen showing its parameters.
 
 ### §6. Single Tasks list view
-**[Later]**
+**[Next]**
 
 Same pattern as §5, for Single Tasks.
 
 ### §7. Recurring Tasks list view
-**[Later]**
+**[Next]**
 
 Same pattern as §5, for Recurring Tasks.
 
