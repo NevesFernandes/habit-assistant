@@ -17,7 +17,7 @@ export interface ChecklistItem {
   checked: boolean;
 }
 
-interface BaseItem {
+export interface BaseItem {
   id: string;
   name: string;
   description?: string;

@@ -47,18 +47,24 @@ Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next 
 You can take these actions:
 1. createSingleTask — a one-off task, done/not-done, no recurrence.
 2. createHabit — a recurring habit tracked over time. Recurring Tasks (same recurrence, but simple done/not-done tracking) aren't supported yet — if the user clearly wants a recurring task rather than a habit, use createHabit anyway rather than turning them away.
-3. deleteSingleTasks — delete one-off tasks matching criteria you specify.
-4. deleteHabits — delete habits matching criteria you specify.
+3. deleteSingleTasks — delete one-off tasks matching filters you specify.
+4. deleteHabits — delete habits matching filters you specify.
+5. deleteRecurringTasks — delete recurring tasks matching filters you specify (there is currently no way to create one, so this will typically find nothing — only call it if the user explicitly refers to a "recurring task").
 
 Only call a tool when the user is clearly and explicitly asking you to add, create, or delete something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
 If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
 
-For deleteSingleTasks and deleteHabits: you only express *what* to delete, via the criteria object below. You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your criteria against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort criteria whenever the user is clearly asking to delete something.
-- scope "all": every item of that kind.
-- scope "byName": name is a text fragment to match (e.g. "delete the gym habit" → name: "gym").
-- scope "byCategory": categoryId from this list: ${categoryList}.
-- scope "byDate" (deleteSingleTasks only): an ISO date — e.g. "delete all tasks for today" → date: "${todayISO}".
+For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
+- all: set true to match every item of that kind, ignoring every other field below.
+- name: a text fragment to match against the item's name (e.g. "delete the gym habit" → name: "gym").
+- categoryIds: one or more category ids from this list: ${categoryList} (e.g. "delete my Health and Finance tasks" → categoryIds: ["health", "finance"]).
+- startDateFrom / startDateTo: an inclusive ISO date range on the item's start date — e.g. "delete tasks from last week" → resolve that phrase to explicit from/to dates yourself, same as you do for other relative dates. "delete all tasks for today" → startDateFrom and startDateTo both "${todayISO}".
+- priorityMin / priorityMax: an inclusive numeric range on priority (e.g. "delete my low priority tasks" only if the user has given you a sense of what counts as low — otherwise ask).
+- done (deleteSingleTasks only): true = only completed tasks, false = only not-yet-done tasks.
+- completionType (deleteHabits only): "yesno" | "value" | "timer" | "checklist" — only when the user explicitly refers to how a habit is tracked.
+- neverCompleted (deleteHabits and deleteRecurringTasks): true = only items with zero completions ever recorded (e.g. "delete habits I've never actually done").
+- inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.
 
 For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
@@ -84,6 +90,8 @@ Call confirmPendingDeletion with confirmed=true only if they clearly agreed (e.g
 }
 
 function buildTools(categories: Category[], hasPendingConfirmation: boolean): ToolDefinition[] {
+  const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
+
   if (hasPendingConfirmation) {
     return [
       {
@@ -199,50 +207,89 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
     {
       name: "deleteSingleTasks",
       description:
-        "Delete one or more one-off tasks matching criteria. You express what to delete; the app resolves matches and handles any confirmation — never ask a confirmation question yourself.",
+        "Delete one-off tasks matching filters. Every filter field you set is combined with AND. Set all=true to match every task regardless of other filters. Leaving every field unset matches nothing. Never ask a confirmation question yourself — the app handles that.",
       parameters: {
         type: "object",
         properties: {
-          scope: {
-            type: "string",
-            description:
-              "'all' = every task. 'byName' = name is a fragment to match against task names. 'byCategory' = categoryId. 'byDate' = date matches the task's start date.",
-            enum: ["all", "byName", "byCategory", "byDate"],
+          all: { type: "boolean", description: "Set true to match every task, ignoring every other field." },
+          name: { type: "string", description: "Case-insensitive fragment to match against the task's name." },
+          categoryIds: {
+            type: "array",
+            description: `Match tasks in any of these categories. Valid ids: ${categoryList}.`,
+            items: { type: "string" },
           },
-          name: { type: "string", description: "Used when scope is byName: a fragment of the task's name." },
-          categoryId: {
-            type: "string",
-            description: "Used when scope is byCategory.",
-            enum: categories.map((category) => category.id),
-          },
-          date: {
-            type: "string",
-            description: "Used when scope is byDate: ISO date (YYYY-MM-DD).",
-          },
+          startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/after this date." },
+          startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/before this date." },
+          priorityMin: { type: "number", description: "Only tasks with priority >= this value." },
+          priorityMax: { type: "number", description: "Only tasks with priority <= this value." },
+          done: { type: "boolean", description: "true = only completed tasks, false = only not-yet-done tasks." },
         },
-        required: ["scope"],
+        required: [],
       },
     },
     {
       name: "deleteHabits",
       description:
-        "Delete one or more habits matching criteria. You express what to delete; the app resolves matches and always confirms before deleting a habit (deleting a habit also deletes its tracked completion history) — never ask a confirmation question yourself.",
+        "Delete habits matching filters. Every filter field you set is combined with AND. Set all=true to match every habit regardless of other filters. Leaving every field unset matches nothing. The app always confirms before deleting a habit (it also deletes its tracked completion history) — never ask a confirmation question yourself.",
       parameters: {
         type: "object",
         properties: {
-          scope: {
-            type: "string",
-            description: "'all' = every habit. 'byName' = name is a fragment to match. 'byCategory' = categoryId.",
-            enum: ["all", "byName", "byCategory"],
+          all: { type: "boolean", description: "Set true to match every habit, ignoring every other field." },
+          name: { type: "string", description: "Case-insensitive fragment to match against the habit's name." },
+          categoryIds: {
+            type: "array",
+            description: `Match habits in any of these categories. Valid ids: ${categoryList}.`,
+            items: { type: "string" },
           },
-          name: { type: "string", description: "Used when scope is byName: a fragment of the habit's name." },
-          categoryId: {
+          startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only habits starting on/after this date." },
+          startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only habits starting on/before this date." },
+          priorityMin: { type: "number", description: "Only habits with priority >= this value." },
+          priorityMax: { type: "number", description: "Only habits with priority <= this value." },
+          completionType: {
             type: "string",
-            description: "Used when scope is byCategory.",
-            enum: categories.map((category) => category.id),
+            description: "Only habits tracked this way.",
+            enum: ["yesno", "value", "timer", "checklist"],
+          },
+          neverCompleted: {
+            type: "boolean",
+            description: "true = only habits with zero completions ever recorded.",
+          },
+          inactiveSince: {
+            type: "string",
+            description: "ISO date (YYYY-MM-DD): only habits with no completions on/after this date.",
           },
         },
-        required: ["scope"],
+        required: [],
+      },
+    },
+    {
+      name: "deleteRecurringTasks",
+      description:
+        "Delete recurring tasks matching filters. Every filter field you set is combined with AND. Set all=true to match every recurring task regardless of other filters. Leaving every field unset matches nothing. The app always confirms before deleting (it also deletes tracked completion history) — never ask a confirmation question yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          all: { type: "boolean", description: "Set true to match every recurring task, ignoring every other field." },
+          name: { type: "string", description: "Case-insensitive fragment to match against the task's name." },
+          categoryIds: {
+            type: "array",
+            description: `Match tasks in any of these categories. Valid ids: ${categoryList}.`,
+            items: { type: "string" },
+          },
+          startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/after this date." },
+          startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/before this date." },
+          priorityMin: { type: "number", description: "Only tasks with priority >= this value." },
+          priorityMax: { type: "number", description: "Only tasks with priority <= this value." },
+          neverCompleted: {
+            type: "boolean",
+            description: "true = only tasks with zero completions ever recorded.",
+          },
+          inactiveSince: {
+            type: "string",
+            description: "ISO date (YYYY-MM-DD): only tasks with no completions on/after this date.",
+          },
+        },
+        required: [],
       },
     },
   ];

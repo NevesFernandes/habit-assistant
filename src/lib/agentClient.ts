@@ -31,6 +31,11 @@ export interface DeleteHabitsToolCall {
   input: DeleteCriteria;
 }
 
+export interface DeleteRecurringTasksToolCall {
+  name: "deleteRecurringTasks";
+  input: DeleteCriteria;
+}
+
 export interface ConfirmPendingDeletionToolCall {
   name: "confirmPendingDeletion";
   input: { confirmed: boolean };
@@ -41,6 +46,7 @@ export type AgentToolCall =
   | CreateHabitToolCall
   | DeleteSingleTasksToolCall
   | DeleteHabitsToolCall
+  | DeleteRecurringTasksToolCall
   | ConfirmPendingDeletionToolCall;
 
 export interface AgentResponse {

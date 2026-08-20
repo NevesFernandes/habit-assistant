@@ -1,7 +1,16 @@
 // Pure functions over AppData. Kept as plain reducers (not a class or a
 // state-management library) — the app is small enough that App.tsx owning
 // the state and calling these directly is simpler than adding a dependency.
-import type { AppData, CompletionLogEntry, Habit, RecurrenceRule, SingleTask } from "../types/models";
+import type {
+  AppData,
+  BaseItem,
+  CompletionLogEntry,
+  CompletionType,
+  Habit,
+  RecurrenceRule,
+  RecurringTask,
+  SingleTask,
+} from "../types/models";
 import { resolveWeekdayDate } from "./recurrence";
 
 export interface CreateSingleTaskInput {
@@ -146,41 +155,83 @@ export function toggleHabitCompletion(data: AppData, habitId: string, dateISO: s
   return { ...data, completionLog: [...data.completionLog, entry] };
 }
 
-export type DeleteScope = "all" | "byName" | "byCategory" | "byDate";
-
+// All fields are optional and ANDed together (categoryIds ORs within
+// itself). `all: true` bypasses every other field. Kept flat (no nested
+// objects) to match the provider-adapter tool-schema contract — see
+// providers/types.ts.
 export interface DeleteCriteria {
-  scope: DeleteScope;
-  name?: string; // byName: case-insensitive substring match against item name
-  categoryId?: string; // byCategory
-  date?: string; // byDate (SingleTask only): matched against startDate
+  all?: boolean;
+  name?: string; // case-insensitive substring match against item name
+  categoryIds?: string[];
+  startDateFrom?: string; // ISO date, inclusive lower bound on startDate
+  startDateTo?: string; // ISO date, inclusive upper bound on startDate
+  priorityMin?: number;
+  priorityMax?: number;
+  done?: boolean; // SingleTask only
+  completionType?: CompletionType; // Habit only
+  neverCompleted?: boolean; // Habit + RecurringTask: zero completionLog entries ever
+  inactiveSince?: string; // Habit + RecurringTask: ISO date, no completions on/after this date
 }
 
-/** Defensive by design: a malformed/incomplete criteria object from the model resolves to zero matches, never a crash. */
-function matchesCriteria(item: SingleTask | Habit, criteria: DeleteCriteria): boolean {
-  switch (criteria.scope) {
-    case "all":
-      return true;
-    case "byName":
-      return (
-        typeof criteria.name === "string" &&
-        criteria.name.trim().length > 0 &&
-        item.name.toLowerCase().includes(criteria.name.trim().toLowerCase())
-      );
-    case "byCategory":
-      return !!criteria.categoryId && item.categoryId === criteria.categoryId;
-    case "byDate":
-      return !!criteria.date && item.startDate === criteria.date;
-    default:
-      return false;
+function matchesBaseCriteria(item: BaseItem, criteria: DeleteCriteria): boolean {
+  if (criteria.name) {
+    if (!item.name.toLowerCase().includes(criteria.name.trim().toLowerCase())) return false;
   }
+  if (criteria.categoryIds && criteria.categoryIds.length > 0) {
+    if (!item.categoryId || !criteria.categoryIds.includes(item.categoryId)) return false;
+  }
+  if (criteria.startDateFrom && item.startDate < criteria.startDateFrom) return false;
+  if (criteria.startDateTo && item.startDate > criteria.startDateTo) return false;
+  if (criteria.priorityMin !== undefined && item.priority < criteria.priorityMin) return false;
+  if (criteria.priorityMax !== undefined && item.priority > criteria.priorityMax) return false;
+  return true;
+}
+
+function matchesCompletionCriteria(
+  itemId: string,
+  completionLog: CompletionLogEntry[],
+  criteria: DeleteCriteria,
+): boolean {
+  if (!criteria.neverCompleted && !criteria.inactiveSince) return true;
+  const completions = completionLog.filter((entry) => entry.itemId === itemId);
+  if (criteria.neverCompleted && completions.length > 0) return false;
+  if (criteria.inactiveSince && completions.some((entry) => entry.date >= criteria.inactiveSince!)) return false;
+  return true;
+}
+
+/** Defensive by design: a criteria object with no fields set (malformed/incomplete model output) matches nothing, never everything. */
+function hasActiveFilter(criteria: DeleteCriteria): boolean {
+  const { all: _all, ...rest } = criteria;
+  return Object.values(rest).some((value) => value !== undefined);
 }
 
 export function resolveSingleTasks(data: AppData, criteria: DeleteCriteria): SingleTask[] {
-  return data.singleTasks.filter((task) => matchesCriteria(task, criteria));
+  if (!criteria.all && !hasActiveFilter(criteria)) return [];
+  return data.singleTasks.filter((task) => {
+    if (criteria.all) return true;
+    if (!matchesBaseCriteria(task, criteria)) return false;
+    if (criteria.done !== undefined && task.done !== criteria.done) return false;
+    return true;
+  });
 }
 
 export function resolveHabits(data: AppData, criteria: DeleteCriteria): Habit[] {
-  return data.habits.filter((habit) => matchesCriteria(habit, criteria));
+  if (!criteria.all && !hasActiveFilter(criteria)) return [];
+  return data.habits.filter((habit) => {
+    if (criteria.all) return true;
+    if (!matchesBaseCriteria(habit, criteria)) return false;
+    if (criteria.completionType && habit.completionType !== criteria.completionType) return false;
+    return matchesCompletionCriteria(habit.id, data.completionLog, criteria);
+  });
+}
+
+export function resolveRecurringTasks(data: AppData, criteria: DeleteCriteria): RecurringTask[] {
+  if (!criteria.all && !hasActiveFilter(criteria)) return [];
+  return data.recurringTasks.filter((task) => {
+    if (criteria.all) return true;
+    if (!matchesBaseCriteria(task, criteria)) return false;
+    return matchesCompletionCriteria(task.id, data.completionLog, criteria);
+  });
 }
 
 export function deleteSingleTasks(data: AppData, ids: string[]): AppData {
@@ -194,6 +245,16 @@ export function deleteHabits(data: AppData, ids: string[]): AppData {
   return {
     ...data,
     habits: data.habits.filter((habit) => !idSet.has(habit.id)),
+    completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
+  };
+}
+
+/** Cascade-deletes matching CompletionLogEntry rows too, mirroring deleteHabits. */
+export function deleteRecurringTasks(data: AppData, ids: string[]): AppData {
+  const idSet = new Set(ids);
+  return {
+    ...data,
+    recurringTasks: data.recurringTasks.filter((task) => !idSet.has(task.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
   };
 }

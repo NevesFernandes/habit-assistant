@@ -21,8 +21,10 @@ import {
   addHabit,
   addSingleTask,
   deleteHabits,
+  deleteRecurringTasks,
   deleteSingleTasks,
   resolveHabits,
+  resolveRecurringTasks,
   resolveSingleTasks,
   toggleHabitCompletion,
   toggleSingleTaskDone,
@@ -37,8 +39,10 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+type DeletableItemKind = "singleTask" | "habit" | "recurringTask";
+
 interface PendingDeletion {
-  itemKind: "singleTask" | "habit";
+  itemKind: DeletableItemKind;
   ids: string[];
   names: string[];
 }
@@ -47,15 +51,28 @@ function formatQuotedList(names: string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
 
-function buildDeleteConfirmationQuestion(kind: "singleTask" | "habit", names: string[]): string {
-  const noun = kind === "habit" ? "habit" : "task";
+const DELETE_NOUNS: Record<DeletableItemKind, string> = {
+  singleTask: "task",
+  habit: "habit",
+  recurringTask: "recurring task",
+};
+
+function buildDeleteConfirmationQuestion(kind: DeletableItemKind, names: string[]): string {
+  const noun = DELETE_NOUNS[kind];
   const subject =
     names.length === 1
       ? `the ${noun} ${formatQuotedList(names)}`
       : `these ${names.length} ${noun}s: ${formatQuotedList(names)}`;
   const historyWarning =
-    kind === "habit" ? " This will also permanently delete its tracked completion history." : "";
+    kind !== "singleTask" ? " This will also permanently delete its tracked completion history." : "";
   return `Are you sure you want to delete ${subject}?${historyWarning}`;
+}
+
+/** Fast-path eligibility: only an unambiguous single-name filter, nothing else composed with it. */
+function isNameOnlyCriteria(criteria: DeleteCriteria): boolean {
+  const { name, ...rest } = criteria;
+  if (typeof name !== "string" || name.trim().length === 0) return false;
+  return Object.values(rest).every((value) => value === undefined);
 }
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -143,9 +160,14 @@ export default function App() {
     setMessages((prev) => [...prev, { role: "assistant", content }]);
   }
 
-  async function handleDeleteRequest(kind: "singleTask" | "habit", criteria: DeleteCriteria) {
+  async function handleDeleteRequest(kind: DeletableItemKind, criteria: DeleteCriteria) {
     if (!data) return;
-    const matches = kind === "habit" ? resolveHabits(data, criteria) : resolveSingleTasks(data, criteria);
+    const matches =
+      kind === "habit"
+        ? resolveHabits(data, criteria)
+        : kind === "recurringTask"
+          ? resolveRecurringTasks(data, criteria)
+          : resolveSingleTasks(data, criteria);
 
     if (matches.length === 0) {
       pushAssistantMessage("I couldn't find anything matching that to delete.");
@@ -155,7 +177,7 @@ export default function App() {
     const ids = matches.map((match) => match.id);
     const names = matches.map((match) => match.name);
 
-    if (kind === "singleTask" && criteria.scope === "byName" && matches.length === 1) {
+    if (kind === "singleTask" && isNameOnlyCriteria(criteria) && matches.length === 1) {
       const saved = await persist(deleteSingleTasks(data, ids));
       if (saved) pushAssistantMessage(`Deleted "${names[0]}".`);
       return;
@@ -176,7 +198,11 @@ export default function App() {
     }
 
     const nextData =
-      pending.itemKind === "habit" ? deleteHabits(data, pending.ids) : deleteSingleTasks(data, pending.ids);
+      pending.itemKind === "habit"
+        ? deleteHabits(data, pending.ids)
+        : pending.itemKind === "recurringTask"
+          ? deleteRecurringTasks(data, pending.ids)
+          : deleteSingleTasks(data, pending.ids);
     const saved = await persist(nextData);
     if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`);
   }
@@ -211,6 +237,8 @@ export default function App() {
         await handleDeleteRequest("singleTask", response.toolCall.input);
       } else if (response.toolCall?.name === "deleteHabits") {
         await handleDeleteRequest("habit", response.toolCall.input);
+      } else if (response.toolCall?.name === "deleteRecurringTasks") {
+        await handleDeleteRequest("recurringTask", response.toolCall.input);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {

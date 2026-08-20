@@ -31,26 +31,28 @@ const mockAdapter: ProviderAdapter = {
     }
 
     if (DELETE_ALL_HABITS.test(text)) {
-      return { toolCall: { name: "deleteHabits", input: { scope: "all" } } };
+      return { toolCall: { name: "deleteHabits", input: { all: true } } };
     }
     const habitNameMatch = text.match(DELETE_HABIT_BY_NAME);
     if (habitNameMatch) {
       return {
-        toolCall: { name: "deleteHabits", input: { scope: "byName", name: habitNameMatch[1].replace(/\.$/, "").trim() } },
+        toolCall: { name: "deleteHabits", input: { name: habitNameMatch[1].replace(/\.$/, "").trim() } },
       };
     }
     if (DELETE_TASKS_TODAY.test(text)) {
-      return { toolCall: { name: "deleteSingleTasks", input: { scope: "byDate", date: today() } } };
+      return {
+        toolCall: { name: "deleteSingleTasks", input: { startDateFrom: today(), startDateTo: today() } },
+      };
     }
     if (DELETE_ALL_TASKS.test(text)) {
-      return { toolCall: { name: "deleteSingleTasks", input: { scope: "all" } } };
+      return { toolCall: { name: "deleteSingleTasks", input: { all: true } } };
     }
     const taskNameMatch = text.match(DELETE_TASK_BY_NAME);
     if (taskNameMatch) {
       return {
         toolCall: {
           name: "deleteSingleTasks",
-          input: { scope: "byName", name: taskNameMatch[1].replace(/\.$/, "").trim() },
+          input: { name: taskNameMatch[1].replace(/\.$/, "").trim() },
         },
       };
     }
