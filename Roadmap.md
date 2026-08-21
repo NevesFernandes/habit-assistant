@@ -14,11 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §9. Per-category statistics
-**[Later]**
-
-Aggregate the stats from §8 across all habits in a category. Open question: does "streak" mean anything at the category level, or should it be dropped for category aggregates?
-
 ### §10. Text-to-speech layer for agent responses
 **[Later]**
 
