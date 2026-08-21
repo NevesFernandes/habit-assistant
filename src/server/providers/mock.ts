@@ -7,6 +7,8 @@ import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.
 const CREATE_PATTERNS = [/^add (?:a )?task to (.+)/i, /^add (?:a )?task[: ]+(.+)/i, /^remind me to (.+)/i];
 const HABIT_PATTERNS = [/^add (?:a )?habit to (.+)/i, /^add (?:a )?habit[: ]+(.+)/i];
 
+const ARCHIVE_HABIT = /^archive (?:the )?habit[: ]+(.+)/i;
+const ARCHIVE_RECURRING_TASK = /^archive (?:the )?recurring task[: ]+(.+)/i;
 const DELETE_ALL_HABITS = /^delete all habits/i;
 const DELETE_HABIT_BY_NAME = /^delete (?:the )?habit[: ]+(.+)/i;
 const DELETE_TASKS_TODAY = /^delete all tasks for today/i;
@@ -32,6 +34,22 @@ const mockAdapter: ProviderAdapter = {
     // A pending deletion restricts the real tool list to just this one entry.
     if (tools.some((tool) => tool.name === "confirmPendingDeletion")) {
       return { toolCall: { name: "confirmPendingDeletion", input: { confirmed: YES_PATTERN.test(text) } } };
+    }
+
+    const archiveHabitMatch = text.match(ARCHIVE_HABIT);
+    if (archiveHabitMatch) {
+      return {
+        toolCall: { name: "archiveHabit", input: { name: archiveHabitMatch[1].replace(/\.$/, "").trim() } },
+      };
+    }
+    const archiveRecurringTaskMatch = text.match(ARCHIVE_RECURRING_TASK);
+    if (archiveRecurringTaskMatch) {
+      return {
+        toolCall: {
+          name: "archiveRecurringTask",
+          input: { name: archiveRecurringTaskMatch[1].replace(/\.$/, "").trim() },
+        },
+      };
     }
 
     if (DELETE_ALL_HABITS.test(text)) {

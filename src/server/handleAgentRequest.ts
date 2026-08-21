@@ -53,6 +53,8 @@ You can take these actions:
 6. updateSingleTask — change one or more fields on an existing one-off task.
 7. updateHabit — change one or more fields on an existing habit.
 8. updateRecurringTask — change one or more fields on an existing recurring task.
+9. archiveHabit — archive an existing habit.
+10. archiveRecurringTask — archive an existing recurring task (there is currently no way to create one, so this will typically find nothing unless the user explicitly refers to an existing "recurring task").
 
 Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
@@ -70,6 +72,8 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 - inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.
 
 For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. None of this ever touches a habit's already-logged completion history.
+
+For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.
 
 For createSingleTask specifically:
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
@@ -435,6 +439,30 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
             type: "number",
             description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
           },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "archiveHabit",
+      description:
+        "Archive a habit: sets its end date to today, stopping future occurrences while permanently preserving all of its already-logged completion history. Use for 'archive', 'retire', 'stop tracking' intents — not the same as deleting, which erases history.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's current name, to find which habit to archive." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "archiveRecurringTask",
+      description:
+        "Archive a recurring task: sets its end date to today, stopping future occurrences while permanently preserving all of its already-logged completion history. Use for 'archive', 'retire', 'stop tracking' intents — not the same as deleting, which erases history.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's current name, to find which recurring task to archive." },
         },
         required: ["name"],
       },
