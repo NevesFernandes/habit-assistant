@@ -434,7 +434,9 @@ export default function App() {
           />
         )}
 
-        {activeTab === "habits" && <HabitsView habits={data.habits} categories={data.categories} />}
+        {activeTab === "habits" && (
+          <HabitsView habits={data.habits} categories={data.categories} completionLog={data.completionLog} />
+        )}
 
         {activeTab === "single tasks" && (
           <SingleTasksView singleTasks={data.singleTasks} categories={data.categories} />

@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from "react";
-import type { Category, Habit } from "../types/models";
-import { describeRecurrence, isArchived } from "../lib/recurrence";
+import type { Category, CompletionLogEntry, Habit } from "../types/models";
+import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
+import { computeHabitStats } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
 
 interface HabitsViewProps {
   habits: Habit[];
   categories: Category[];
+  completionLog: CompletionLogEntry[];
 }
 
 const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
@@ -15,14 +17,19 @@ const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
   checklist: "Checklist",
 };
 
-export default function HabitsView({ habits, categories }: HabitsViewProps) {
+export default function HabitsView({ habits, categories, completionLog }: HabitsViewProps) {
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
 
   if (selectedHabit) {
     return (
-      <HabitDetail habit={selectedHabit} categories={categories} onBack={() => setSelectedHabitId(null)} />
+      <HabitDetail
+        habit={selectedHabit}
+        categories={categories}
+        completionLog={completionLog}
+        onBack={() => setSelectedHabitId(null)}
+      />
     );
   }
 
@@ -64,14 +71,19 @@ export default function HabitsView({ habits, categories }: HabitsViewProps) {
 function HabitDetail({
   habit,
   categories,
+  completionLog,
   onBack,
 }: {
   habit: Habit;
   categories: Category[];
+  completionLog: CompletionLogEntry[];
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
   const archived = isArchived(habit);
+  const stats = computeHabitStats(habit, completionLog, todayISO());
+  const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
+  const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
 
   return (
     <div className="flex flex-col gap-3">
@@ -129,7 +141,41 @@ function HabitDetail({
             </ul>
           </DetailRow>
         )}
+
+        <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Statistics
+        </div>
+
+        <DetailRow label="Current streak">
+          <span>{formatStreak(stats.currentStreak)}</span>
+        </DetailRow>
+
+        <DetailRow label="Best streak">
+          <span>{formatStreak(stats.bestStreak)}</span>
+        </DetailRow>
+
+        <DetailRow label="Completion rate">
+          <span>{stats.completionPercentage}%</span>
+        </DetailRow>
+
+        <DetailRow label="Completions">
+          <div className="flex gap-4">
+            <StatTile value={stats.completionsThisWeek} label="This week" />
+            <StatTile value={stats.completionsThisMonth} label="This month" />
+            <StatTile value={stats.completionsThisYear} label="This year" />
+            <StatTile value={stats.completionsAllTime} label="All-time" />
+          </div>
+        </DetailRow>
       </div>
+    </div>
+  );
+}
+
+function StatTile({ value, label }: { value: number; label: string }) {
+  return (
+    <div>
+      <div className="text-base font-medium">{value}</div>
+      <div className="text-xs text-slate-500">{label}</div>
     </div>
   );
 }
