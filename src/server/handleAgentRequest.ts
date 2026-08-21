@@ -46,15 +46,16 @@ Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next 
 
 You can take these actions:
 1. createSingleTask — a one-off task, done/not-done, no recurrence.
-2. createHabit — a recurring habit tracked over time. Recurring Tasks (same recurrence, but simple done/not-done tracking) aren't supported yet — if the user clearly wants a recurring task rather than a habit, use createHabit anyway rather than turning them away.
-3. deleteSingleTasks — delete one-off tasks matching filters you specify.
-4. deleteHabits — delete habits matching filters you specify.
-5. deleteRecurringTasks — delete recurring tasks matching filters you specify (there is currently no way to create one, so this will typically find nothing — only call it if the user explicitly refers to a "recurring task").
-6. updateSingleTask — change one or more fields on an existing one-off task.
-7. updateHabit — change one or more fields on an existing habit.
-8. updateRecurringTask — change one or more fields on an existing recurring task.
-9. archiveHabit — archive an existing habit.
-10. archiveRecurringTask — archive an existing recurring task (there is currently no way to create one, so this will typically find nothing unless the user explicitly refers to an existing "recurring task").
+2. createHabit — a recurring habit tracked over time, with a completion type (yes/no, numeric, timer, or checklist).
+3. createRecurringTask — a recurring task with the same recurrence options as a habit, but simple done/not-done tracking only (no completion type). Use this instead of createHabit when the user clearly wants a "recurring task" or a plain repeating to-do rather than something with detailed tracking.
+4. deleteSingleTasks — delete one-off tasks matching filters you specify.
+5. deleteHabits — delete habits matching filters you specify.
+6. deleteRecurringTasks — delete recurring tasks matching filters you specify.
+7. updateSingleTask — change one or more fields on an existing one-off task.
+8. updateHabit — change one or more fields on an existing habit.
+9. updateRecurringTask — change one or more fields on an existing recurring task.
+10. archiveHabit — archive an existing habit.
+11. archiveRecurringTask — archive an existing recurring task.
 
 Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
@@ -90,6 +91,11 @@ For createHabit specifically:
   - "N times a week/month" (not pinned to specific days) → recurrenceType "timesPerPeriod" with recurrencePeriod ("week" or "month") and recurrenceCount = N
   - If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing.
 - completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names).
+
+For createRecurringTask specifically:
+- categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
+- priority, startDate/startWeekday/startWeekdayMode, and recurrenceType (with its matching fields) all work exactly as they do for createHabit — see above.
+- There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
 
 Keep replies brief and conversational.`;
 }
@@ -224,6 +230,71 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           },
         },
         required: ["name", "categoryId", "recurrenceType"],
+      },
+    },
+    {
+      name: "createRecurringTask",
+      description:
+        "Create a recurring task to track over time. Same recurrence options as createHabit, but simple done/not-done tracking only — no completion type.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Short name of the task." },
+          description: { type: "string", description: "Optional extra detail." },
+          categoryId: {
+            type: "string",
+            description: "Optional best-fit category id for this task.",
+            enum: categories.map((category) => category.id),
+          },
+          priority: {
+            type: "number",
+            description: "Positive whole number; higher means more important. Defaults to 1.",
+          },
+          startDate: {
+            type: "string",
+            description:
+              "ISO date (YYYY-MM-DD), today or later. Omit to default to today. Do not use this for a start day given by weekday name — use startWeekday/startWeekdayMode instead.",
+          },
+          startWeekday: {
+            type: "number",
+            description:
+              "Use instead of startDate when the user names the start day by weekday (e.g. 'next Tuesday'). 0=Sunday..6=Saturday.",
+          },
+          startWeekdayMode: {
+            type: "string",
+            description:
+              "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
+          endDate: {
+            type: "string",
+            description: "Optional ISO date (YYYY-MM-DD) after which the task stops recurring.",
+          },
+          recurrenceType: {
+            type: "string",
+            description: "How this task repeats.",
+            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+          },
+          recurrenceDays: {
+            type: "array",
+            description: "Used when recurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
+            items: { type: "number" },
+          },
+          recurrenceInterval: {
+            type: "number",
+            description: "Used when recurrenceType is intervalDays: repeat every N days.",
+          },
+          recurrencePeriod: {
+            type: "string",
+            description: "Used when recurrenceType is timesPerPeriod.",
+            enum: ["week", "month"],
+          },
+          recurrenceCount: {
+            type: "number",
+            description: "Used when recurrenceType is timesPerPeriod: how many times per period.",
+          },
+        },
+        required: ["name", "recurrenceType"],
       },
     },
     {

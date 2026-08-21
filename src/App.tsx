@@ -20,6 +20,7 @@ import { sendMessage, type ChatMessage } from "./lib/agentClient";
 import {
   addCategory,
   addHabit,
+  addRecurringTask,
   addSingleTask,
   deleteCategory,
   deleteHabits,
@@ -287,6 +288,12 @@ export default function App() {
         const saved = await persist(nextData);
         if (saved) {
           pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`);
+        }
+      } else if (response.toolCall?.name === "createRecurringTask") {
+        const nextData = addRecurringTask(data, response.toolCall.input);
+        const saved = await persist(nextData);
+        if (saved) {
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a recurring task.`);
         }
       } else if (response.toolCall?.name === "deleteSingleTasks") {
         await handleDeleteRequest("singleTask", response.toolCall.input);

@@ -6,6 +6,10 @@ import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.
 // specifically about agent reasoning quality.
 const CREATE_PATTERNS = [/^add (?:a )?task to (.+)/i, /^add (?:a )?task[: ]+(.+)/i, /^remind me to (.+)/i];
 const HABIT_PATTERNS = [/^add (?:a )?habit to (.+)/i, /^add (?:a )?habit[: ]+(.+)/i];
+const RECURRING_TASK_PATTERNS = [
+  /^add (?:a )?recurring task to (.+)/i,
+  /^add (?:a )?recurring task[: ]+(.+)/i,
+];
 
 const ARCHIVE_HABIT = /^archive (?:the )?habit[: ]+(.+)/i;
 const ARCHIVE_RECURRING_TASK = /^archive (?:the )?recurring task[: ]+(.+)/i;
@@ -110,6 +114,16 @@ const mockAdapter: ProviderAdapter = {
     const markDoneMatch = text.match(MARK_TASK_DONE);
     if (markDoneMatch) {
       return { toolCall: { name: "updateSingleTask", input: { name: markDoneMatch[1].trim(), newDone: true } } };
+    }
+
+    for (const pattern of RECURRING_TASK_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) {
+        const name = capitalize(match[1].replace(/\.$/, "").trim());
+        return {
+          toolCall: { name: "createRecurringTask", input: { name, recurrenceType: "daily" } },
+        };
+      }
     }
 
     for (const pattern of HABIT_PATTERNS) {
