@@ -5,23 +5,28 @@
 // stock phrases like "Thank you." on silent audio) and the size trade-off
 // (~15MB one-time download for the ONNX model + WASM runtime, cached by the
 // service worker after first use).
-import { NonRealTimeVAD } from "@ricky0123/vad-web";
+import type { NonRealTimeVAD } from "@ricky0123/vad-web";
 
 let vadPromise: Promise<NonRealTimeVAD> | null = null;
 
 function getVad(): Promise<NonRealTimeVAD> {
   if (!vadPromise) {
-    vadPromise = NonRealTimeVAD.new({
-      // Self-hosted (public/ort/) rather than the library's default CDN
-      // fetch, consistent with this project's "don't depend on third-party
-      // runtime fetches" pattern (see the Drive-storage and API-key-proxy
-      // decisions in CLAUDE.md). Only the plain WASM execution provider is
-      // shipped — we don't need WebGPU (ort.env.wasm.wasmPaths) for a model
-      // this small.
-      ortConfig: (ort) => {
-        ort.env.wasm.wasmPaths = "/ort/";
-      },
-    });
+    // Dynamic import so onnxruntime-web's JS wrapper is split into its own
+    // chunk, fetched only on first recording rather than on every page load
+    // — see Roadmap.md §11.
+    vadPromise = import("@ricky0123/vad-web").then(({ NonRealTimeVAD }) =>
+      NonRealTimeVAD.new({
+        // Self-hosted (public/ort/) rather than the library's default CDN
+        // fetch, consistent with this project's "don't depend on third-party
+        // runtime fetches" pattern (see the Drive-storage and API-key-proxy
+        // decisions in CLAUDE.md). Only the plain WASM execution provider is
+        // shipped — we don't need WebGPU (ort.env.wasm.wasmPaths) for a model
+        // this small.
+        ortConfig: (ort) => {
+          ort.env.wasm.wasmPaths = "/ort/";
+        },
+      }),
+    );
   }
   return vadPromise;
 }
