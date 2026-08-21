@@ -1,57 +1,54 @@
 import { useState, type ReactNode } from "react";
-import type { Category, Habit } from "../types/models";
+import type { Category, RecurringTask } from "../types/models";
 import { describeRecurrence, isArchived } from "../lib/recurrence";
 import CategoryIcon from "./CategoryIcon";
 
-interface HabitsViewProps {
-  habits: Habit[];
+interface RecurringTasksViewProps {
+  recurringTasks: RecurringTask[];
   categories: Category[];
 }
 
-const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
-  yesno: "Yes/No",
-  value: "Numeric value",
-  timer: "Timer",
-  checklist: "Checklist",
-};
+export default function RecurringTasksView({ recurringTasks, categories }: RecurringTasksViewProps) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-export default function HabitsView({ habits, categories }: HabitsViewProps) {
-  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const selectedTask = selectedTaskId ? recurringTasks.find((task) => task.id === selectedTaskId) : undefined;
 
-  const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
-
-  if (selectedHabit) {
+  if (selectedTask) {
     return (
-      <HabitDetail habit={selectedHabit} categories={categories} onBack={() => setSelectedHabitId(null)} />
+      <RecurringTaskDetail
+        task={selectedTask}
+        categories={categories}
+        onBack={() => setSelectedTaskId(null)}
+      />
     );
   }
 
-  const sortedHabits = habits
+  const sortedTasks = recurringTasks
     .slice()
     .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
 
-  if (sortedHabits.length === 0) {
-    return <p className="text-sm text-slate-500">No habits yet.</p>;
+  if (sortedTasks.length === 0) {
+    return <p className="text-sm text-slate-500">No recurring tasks yet.</p>;
   }
 
   return (
     <ul className="flex flex-col gap-2">
-      {sortedHabits.map((habit) => {
-        const category = categories.find((c) => c.id === habit.categoryId);
+      {sortedTasks.map((task) => {
+        const category = categories.find((c) => c.id === task.categoryId);
         return (
-          <li key={habit.id}>
+          <li key={task.id}>
             <button
-              onClick={() => setSelectedHabitId(habit.id)}
+              onClick={() => setSelectedTaskId(task.id)}
               className="flex w-full items-center gap-3 rounded-md bg-slate-800 px-3 py-2 text-left hover:bg-slate-700"
             >
               <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
               <div className="flex-1">
                 <div>
-                  {habit.name}
-                  {isArchived(habit) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
+                  {task.name}
+                  {isArchived(task) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
                 </div>
-                {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
-                <div className="text-xs text-slate-500">{describeRecurrence(habit.recurrence)}</div>
+                {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
+                <div className="text-xs text-slate-500">{describeRecurrence(task.recurrence)}</div>
               </div>
             </button>
           </li>
@@ -61,17 +58,17 @@ export default function HabitsView({ habits, categories }: HabitsViewProps) {
   );
 }
 
-function HabitDetail({
-  habit,
+function RecurringTaskDetail({
+  task,
   categories,
   onBack,
 }: {
-  habit: Habit;
+  task: RecurringTask;
   categories: Category[];
   onBack: () => void;
 }) {
-  const category = categories.find((c) => c.id === habit.categoryId);
-  const archived = isArchived(habit);
+  const category = categories.find((c) => c.id === task.categoryId);
+  const archived = isArchived(task);
 
   return (
     <div className="flex flex-col gap-3">
@@ -79,18 +76,18 @@ function HabitDetail({
         onClick={onBack}
         className="self-start rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
       >
-        ← Back to habits
+        ← Back to recurring tasks
       </button>
 
       <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
         <div className="flex items-center gap-2 text-lg font-medium">
           <CategoryIcon name={category?.icon} className="h-5 w-5 shrink-0" />
-          {habit.name}
+          {task.name}
         </div>
 
-        {habit.description && (
+        {task.description && (
           <DetailRow label="Description">
-            <span>{habit.description}</span>
+            <span>{task.description}</span>
           </DetailRow>
         )}
 
@@ -99,31 +96,27 @@ function HabitDetail({
         </DetailRow>
 
         <DetailRow label="Priority">
-          <span>{habit.priority}</span>
+          <span>{task.priority}</span>
         </DetailRow>
 
         <DetailRow label="Start date">
-          <span>{habit.startDate}</span>
+          <span>{task.startDate}</span>
         </DetailRow>
 
-        {habit.endDate && (
+        {task.endDate && (
           <DetailRow label={archived ? "Archived since" : "End date"}>
-            <span>{habit.endDate}</span>
+            <span>{task.endDate}</span>
           </DetailRow>
         )}
 
         <DetailRow label="Recurrence">
-          <span>{describeRecurrence(habit.recurrence)}</span>
+          <span>{describeRecurrence(task.recurrence)}</span>
         </DetailRow>
 
-        <DetailRow label="Completion type">
-          <span>{COMPLETION_TYPE_LABELS[habit.completionType]}</span>
-        </DetailRow>
-
-        {habit.completionType === "checklist" && habit.checklist && habit.checklist.length > 0 && (
+        {task.checklist && task.checklist.length > 0 && (
           <DetailRow label="Checklist items">
             <ul className="list-disc pl-5">
-              {habit.checklist.map((item) => (
+              {task.checklist.map((item) => (
                 <li key={item.id}>{item.text}</li>
               ))}
             </ul>
