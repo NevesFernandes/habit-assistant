@@ -86,6 +86,14 @@ export function getHabitsForDate(habits: Habit[], dateISO: string): Habit[] {
     .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
 }
 
+export function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function isArchived(item: { endDate?: string }): boolean {
+  return !!item.endDate && item.endDate <= todayISO();
+}
+
 const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function describeRecurrence(rule: RecurrenceRule): string {

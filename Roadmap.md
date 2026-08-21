@@ -14,16 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §6. Single Tasks list view
-**[Next]**
-
-Same pattern as §5, for Single Tasks.
-
-### §7. Recurring Tasks list view
-**[Next]**
-
-Same pattern as §5, for Recurring Tasks.
-
 ### §8. Per-habit statistics
 **[Later]**
 
