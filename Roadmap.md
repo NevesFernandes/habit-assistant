@@ -14,8 +14,3 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §10. Text-to-speech layer for agent responses
-**[Later]**
-
-Have the agent's chat responses optionally read aloud (TTS), mirroring the existing voice *input* pipeline described in `CLAUDE.md`.
-
