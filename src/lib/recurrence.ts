@@ -2,7 +2,7 @@
 // RecurrenceRule shape). Pure date-string arithmetic, no date library: the
 // project has none, and ISO ("YYYY-MM-DD") strings compare/sort lexically
 // so most of this doesn't need a Date object at all.
-import type { CompletionLogEntry, Habit } from "../types/models";
+import type { CompletionLogEntry, Habit, RecurrenceRule } from "../types/models";
 
 function parseISODate(dateISO: string): Date {
   const [year, month, day] = dateISO.split("-").map(Number);
@@ -84,6 +84,23 @@ export function getHabitsForDate(habits: Habit[], dateISO: string): Habit[] {
     .filter((habit) => occursOn(habit, dateISO))
     .slice()
     .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+}
+
+const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+export function describeRecurrence(rule: RecurrenceRule): string {
+  switch (rule.type) {
+    case "daily":
+      return "Every day";
+    case "daysOfWeek":
+      return rule.days.length === 0
+        ? "No days selected"
+        : `Every ${[...rule.days].sort((a, b) => a - b).map((d) => WEEKDAY_ABBREVIATIONS[d]).join(", ")}`;
+    case "intervalDays":
+      return rule.interval === 1 ? "Every day" : `Every ${rule.interval} days`;
+    case "timesPerPeriod":
+      return `${rule.count}x per ${rule.period}`;
+  }
 }
 
 export function completionsInPeriod(
