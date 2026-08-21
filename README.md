@@ -54,6 +54,31 @@ Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for 
 
 There's also `npm run pages:dev`, which uses Cloudflare's own `wrangler pages dev` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
 
+## Testing on your Android phone
+
+Since most real usage will be on a phone, it's worth testing there directly during development — without deploying anywhere public. `adb reverse` (standard Android developer tooling) forwards the phone's own `http://localhost:5173` to your laptop's dev server over the USB cable, so the phone's browser sees the exact same origin your laptop already uses. That means **no new Google OAuth origin, no HTTPS cert, no Vite config changes, and no traffic ever leaves the USB cable** — the cleanest way to avoid a public deployment just for testing.
+
+One-time setup:
+1. On the phone: **Settings → About phone** → tap "Build number" 7 times to unlock **Developer Options** → enable **USB debugging**.
+2. On the laptop: install `adb` (Debian/Ubuntu: `sudo apt install adb`).
+3. Connect via USB cable, and accept the "Allow USB debugging?" prompt that appears on the phone.
+4. Verify: `adb devices` should list the phone as `device` (not `unauthorized`).
+
+Day to day:
+```bash
+npm run dev:phone
+```
+This is just `adb reverse tcp:5173 tcp:5173 && vite` — then open `http://localhost:5173` in Chrome **on the phone**. It behaves identically to the laptop: same OAuth origin, same secure-context treatment for microphone access, live-reload included. For remote debugging (console, network, elements), open `chrome://inspect/#devices` in desktop Chrome to inspect the phone's tab directly.
+
+One caveat: this only covers the app itself, not the PWA install layer. `npm run dev` never enables the service worker (`vite-plugin-pwa` only turns it on for production builds), so no "Add to Home Screen" prompt and no offline caching will show up this way — that's true on the laptop too, not phone-specific. To test the actual installed-app experience, build first instead:
+```bash
+npm run build
+npm run preview
+```
+Note the port `vite preview` prints (`4173` by default), forward that one instead (`adb reverse tcp:4173 tcp:4173`), and open it on the phone — that's the build where the service worker, install prompt, and offline caching are all actually active.
+
+Prefer no cable? Android 11+ supports wireless `adb` (`adb pair`/`adb connect`, paired over the same Wi-Fi network) — same `adb reverse` command afterward, still fully local, nothing internet-facing.
+
 ## Deploying (when you're ready)
 
 1. Create a free [Cloudflare](https://dash.cloudflare.com/) account.
