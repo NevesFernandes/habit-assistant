@@ -14,11 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §4. Archive habits & recurring tasks
-**[Now]**
-
-Add an "archive" action for Habits and Recurring Tasks: sets an end date as-of-today (soft-stops future occurrences) while preserving all existing completion history.
-
 ### §5. Habits list view
 **[Next]**
 

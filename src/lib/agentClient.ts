@@ -52,6 +52,16 @@ export interface UpdateRecurringTaskToolCall {
   input: { name: string } & UpdatePatch;
 }
 
+export interface ArchiveHabitToolCall {
+  name: "archiveHabit";
+  input: { name: string };
+}
+
+export interface ArchiveRecurringTaskToolCall {
+  name: "archiveRecurringTask";
+  input: { name: string };
+}
+
 export interface ConfirmPendingDeletionToolCall {
   name: "confirmPendingDeletion";
   input: { confirmed: boolean };
@@ -66,6 +76,8 @@ export type AgentToolCall =
   | UpdateSingleTaskToolCall
   | UpdateHabitToolCall
   | UpdateRecurringTaskToolCall
+  | ArchiveHabitToolCall
+  | ArchiveRecurringTaskToolCall
   | ConfirmPendingDeletionToolCall;
 
 export interface AgentResponse {

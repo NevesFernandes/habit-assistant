@@ -221,7 +221,11 @@ export default function App() {
     return Object.values(patch).some((value) => value !== undefined);
   }
 
-  async function handleUpdateRequest(kind: DeletableItemKind, input: { name: string } & UpdatePatch) {
+  async function handleUpdateRequest(
+    kind: DeletableItemKind,
+    input: { name: string } & UpdatePatch,
+    actionVerb: string = "Updated",
+  ) {
     if (!data) return;
     const { name: fragment, ...patch } = input;
     const matches =
@@ -255,7 +259,7 @@ export default function App() {
           : updateSingleTask(data, target.id, patch);
 
     const saved = await persist(nextData);
-    if (saved) pushAssistantMessage(`Updated "${target.name}".`);
+    if (saved) pushAssistantMessage(`${actionVerb} "${target.name}".`);
   }
 
   async function handleSend(userText: string) {
@@ -296,6 +300,18 @@ export default function App() {
         await handleUpdateRequest("habit", response.toolCall.input);
       } else if (response.toolCall?.name === "updateRecurringTask") {
         await handleUpdateRequest("recurringTask", response.toolCall.input);
+      } else if (response.toolCall?.name === "archiveHabit") {
+        await handleUpdateRequest(
+          "habit",
+          { name: response.toolCall.input.name, newEndDate: todayISO() },
+          "Archived",
+        );
+      } else if (response.toolCall?.name === "archiveRecurringTask") {
+        await handleUpdateRequest(
+          "recurringTask",
+          { name: response.toolCall.input.name, newEndDate: todayISO() },
+          "Archived",
+        );
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
