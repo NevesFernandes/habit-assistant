@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
@@ -44,7 +44,8 @@ import {
   type UpdateCategoryPatch,
   type UpdatePatch,
 } from "./lib/dataStore";
-import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
+import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from "./lib/settingsStore";
+import { speak } from "./lib/textToSpeech";
 import { emptyAppData, type AppData } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks";
@@ -104,6 +105,7 @@ export default function App() {
 
   const [byok, setByok] = useState<ByokSettings | null>(null);
   const [sttApiKey, setSttApiKey] = useState<string | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("chat");
@@ -113,12 +115,24 @@ export default function App() {
   useEffect(() => {
     setByok(getActiveByok());
     setSttApiKey(getActiveStt()?.apiKey ?? null);
+    setTtsEnabled(getTtsEnabled());
   }, []);
 
   function refreshSettings() {
     setByok(getActiveByok());
     setSttApiKey(getActiveStt()?.apiKey ?? null);
+    setTtsEnabled(getTtsEnabled());
   }
+
+  const prevMessageCountRef = useRef(0);
+
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (!ttsEnabled || messages.length <= prevCount) return;
+    const last = messages[messages.length - 1];
+    if (last.role === "assistant") speak(last.content);
+  }, [messages, ttsEnabled]);
 
   async function handleSignIn() {
     setSigningIn(true);
