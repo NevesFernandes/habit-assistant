@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { Category, Habit, RecurringTask, SingleTask } from "../types/models";
+import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
 import type { CreateCategoryInput, UpdateCategoryPatch } from "../lib/dataStore";
+import { aggregateCategoryStats } from "../lib/habitStats";
+import { todayISO } from "../lib/recurrence";
 import CategoryIcon from "./CategoryIcon";
 import IconPicker from "./IconPicker";
 import { DEFAULT_ICON_NAME } from "../lib/icons";
@@ -10,17 +12,26 @@ interface CategoriesViewProps {
   habits: Habit[];
   recurringTasks: RecurringTask[];
   singleTasks: SingleTask[];
+  completionLog: CompletionLogEntry[];
   onAdd: (input: CreateCategoryInput) => void;
   onUpdate: (id: string, patch: UpdateCategoryPatch) => void;
   onDelete: (id: string) => boolean;
 }
 
-export default function CategoriesView({ categories, onAdd, onUpdate, onDelete }: CategoriesViewProps) {
+export default function CategoriesView({
+  categories,
+  habits,
+  completionLog,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: CategoriesViewProps) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftIcon, setDraftIcon] = useState(DEFAULT_ICON_NAME);
   const [blockedDeleteId, setBlockedDeleteId] = useState<string | null>(null);
+  const [viewingStatsForId, setViewingStatsForId] = useState<string | null>(null);
 
   function startAdding() {
     setEditingId(null);
@@ -61,6 +72,18 @@ export default function CategoriesView({ categories, onAdd, onUpdate, onDelete }
     if (!deleted) setBlockedDeleteId(id);
   }
 
+  const viewingStatsFor = viewingStatsForId ? categories.find((c) => c.id === viewingStatsForId) : undefined;
+  if (viewingStatsFor) {
+    return (
+      <CategoryStatsView
+        category={viewingStatsFor}
+        habits={habits.filter((h) => h.categoryId === viewingStatsFor.id)}
+        completionLog={completionLog}
+        onBack={() => setViewingStatsForId(null)}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {categories.length === 0 ? (
@@ -83,6 +106,12 @@ export default function CategoriesView({ categories, onAdd, onUpdate, onDelete }
                 <div className="flex items-center gap-3">
                   <CategoryIcon name={category.icon} className="h-4 w-4 shrink-0" />
                   <div className="flex-1">{category.name}</div>
+                  <button
+                    onClick={() => setViewingStatsForId(category.id)}
+                    className="rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
+                  >
+                    Stats
+                  </button>
                   <button
                     onClick={() => startEditing(category)}
                     className="rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
@@ -127,6 +156,77 @@ export default function CategoriesView({ categories, onAdd, onUpdate, onDelete }
           + Add category
         </button>
       )}
+    </div>
+  );
+}
+
+function CategoryStatsView({
+  category,
+  habits,
+  completionLog,
+  onBack,
+}: {
+  category: Category;
+  habits: Habit[];
+  completionLog: CompletionLogEntry[];
+  onBack: () => void;
+}) {
+  const stats = aggregateCategoryStats(habits, completionLog, todayISO());
+
+  return (
+    <div className="flex flex-col gap-3">
+      <button
+        onClick={onBack}
+        className="self-start rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
+      >
+        ← Back to categories
+      </button>
+
+      <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
+        <div className="flex items-center gap-2 text-lg font-medium">
+          <CategoryIcon name={category.icon} className="h-5 w-5 shrink-0" />
+          {category.name}
+        </div>
+
+        {habits.length === 0 ? (
+          <p className="text-sm text-slate-500">No habits in this category yet.</p>
+        ) : (
+          <>
+            <div>
+              <div className="text-xs text-slate-500">Completion rate</div>
+              <div>{stats.completionPercentage}%</div>
+            </div>
+
+            <div>
+              <div className="text-xs text-slate-500">Completions</div>
+              <div className="flex gap-4">
+                <StatTile value={stats.completionsThisWeek} label="This week" />
+                <StatTile value={stats.completionsThisMonth} label="This month" />
+                <StatTile value={stats.completionsThisYear} label="This year" />
+                <StatTile value={stats.completionsAllTime} label="All-time" />
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-slate-500">Habits in this category</div>
+              <ul className="list-disc pl-5">
+                {habits.map((habit) => (
+                  <li key={habit.id}>{habit.name}</li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatTile({ value, label }: { value: number; label: string }) {
+  return (
+    <div>
+      <div className="text-base font-medium">{value}</div>
+      <div className="text-xs text-slate-500">{label}</div>
     </div>
   );
 }
