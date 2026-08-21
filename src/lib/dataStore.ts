@@ -92,7 +92,9 @@ function normalizeStartDate(startDate: string | undefined): string {
   return startDate;
 }
 
-function resolveStartDate(input: CreateHabitInput): string {
+type StartDateInput = Pick<CreateHabitInput, "startDate" | "startWeekday" | "startWeekdayMode">;
+
+function resolveStartDate(input: StartDateInput): string {
   if (input.startWeekday !== undefined) {
     return resolveWeekdayDate(today(), input.startWeekday, input.startWeekdayMode ?? "closest");
   }
@@ -168,6 +170,37 @@ export function toggleHabitCompletion(data: AppData, habitId: string, dateISO: s
     date: dateISO,
   };
   return { ...data, completionLog: [...data.completionLog, entry] };
+}
+
+export interface CreateRecurringTaskInput {
+  name: string;
+  description?: string;
+  categoryId?: string;
+  priority?: number;
+  startDate?: string;
+  startWeekday?: number;
+  startWeekdayMode?: "closest" | "next";
+  endDate?: string;
+  recurrenceType: RecurrenceRule["type"];
+  recurrenceDays?: number[];
+  recurrenceInterval?: number;
+  recurrencePeriod?: "week" | "month";
+  recurrenceCount?: number;
+}
+
+export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
+  const task: RecurringTask = {
+    kind: "recurringTask",
+    id: crypto.randomUUID(),
+    name: input.name,
+    description: input.description,
+    categoryId: input.categoryId,
+    priority: normalizePriority(input.priority),
+    startDate: resolveStartDate(input),
+    endDate: input.endDate,
+    recurrence: buildRecurrence(input),
+  };
+  return { ...data, recurringTasks: [...data.recurringTasks, task] };
 }
 
 // All fields are optional and ANDed together (categoryIds ORs within

@@ -4,7 +4,7 @@
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
-import type { CreateHabitInput, DeleteCriteria, UpdatePatch } from "./dataStore";
+import type { CreateHabitInput, CreateRecurringTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson } from "./fetchJson";
 
 export interface ChatMessage {
@@ -20,6 +20,11 @@ export interface CreateSingleTaskToolCall {
 export interface CreateHabitToolCall {
   name: "createHabit";
   input: CreateHabitInput;
+}
+
+export interface CreateRecurringTaskToolCall {
+  name: "createRecurringTask";
+  input: CreateRecurringTaskInput;
 }
 
 export interface DeleteSingleTasksToolCall {
@@ -70,6 +75,7 @@ export interface ConfirmPendingDeletionToolCall {
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
+  | CreateRecurringTaskToolCall
   | DeleteSingleTasksToolCall
   | DeleteHabitsToolCall
   | DeleteRecurringTasksToolCall
