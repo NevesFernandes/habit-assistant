@@ -14,11 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §5. Habits list view
-**[Next]**
-
-A view listing all habits regardless of date, individually clickable into a per-habit detail screen showing its parameters.
-
 ### §6. Single Tasks list view
 **[Next]**
 
