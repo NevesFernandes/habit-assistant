@@ -5,6 +5,7 @@ import DayStrip from "./components/DayStrip";
 import DayView from "./components/DayView";
 import SettingsPanel from "./components/Settings";
 import CategoriesView from "./components/CategoriesView";
+import HabitsView from "./components/HabitsView";
 import {
   signIn,
   findOrCreateFolder,
@@ -44,7 +45,7 @@ import {
 import { getActiveByok, getActiveStt, type ByokSettings } from "./lib/settingsStore";
 import { emptyAppData, type AppData } from "./types/models";
 
-type Tab = "chat" | "today" | "categories";
+type Tab = "chat" | "today" | "categories" | "habits";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -386,7 +387,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "categories"] as const).map((tab) => (
+        {(["chat", "today", "categories", "habits"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -430,6 +431,8 @@ export default function App() {
             onDelete={handleDeleteCategory}
           />
         )}
+
+        {activeTab === "habits" && <HabitsView habits={data.habits} categories={data.categories} />}
       </div>
     </div>
   );
