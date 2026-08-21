@@ -18,6 +18,7 @@ interface StoredState {
   activeProvider: ByokProvider | null; // null = use the shared free trial (chat)
   keys: Partial<Record<ByokProvider, { apiKey: string; model?: string }>>;
   sttUsesOwnKey?: boolean; // independent of `activeProvider` — see getActiveStt()
+  ttsEnabled?: boolean; // independent of everything above — see getTtsEnabled()
 }
 
 const STORAGE_KEY = "habit-assistant:byok";
@@ -95,4 +96,18 @@ export function getActiveStt(): { apiKey: string } | null {
   if (!state.sttUsesOwnKey) return null;
   const saved = state.keys.groq;
   return saved ? { apiKey: saved.apiKey } : null;
+}
+
+// --- Text-to-speech: whether assistant replies are read aloud. Uses the
+// browser's built-in SpeechSynthesis, so there's no key/provider to choose —
+// just an on/off toggle, off by default (opt-in, like voice input itself). ---
+
+export function getTtsEnabled(): boolean {
+  return loadState().ttsEnabled ?? false;
+}
+
+export function setTtsEnabled(enabled: boolean): void {
+  const state = loadState();
+  state.ttsEnabled = enabled;
+  saveState(state);
 }

@@ -6,8 +6,11 @@ import {
   forgetProviderKey,
   getSttUsesOwnKey,
   setSttUsesOwnKey,
+  getTtsEnabled,
+  setTtsEnabled,
   type ByokProvider,
 } from "../lib/settingsStore";
+import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
@@ -26,6 +29,7 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
   const [sttOwnKey, setSttOwnKey] = useState(getSttUsesOwnKey());
+  const [ttsOn, setTtsOn] = useState(getTtsEnabled());
 
   function handleSelect(provider: ByokProvider) {
     setSelected(provider);
@@ -59,6 +63,16 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
     const next = !sttOwnKey;
     setSttOwnKey(next);
     setSttUsesOwnKey(next);
+    onChange();
+  }
+
+  const ttsSupported = isTtsSupported();
+
+  function handleToggleTts() {
+    const next = !ttsOn;
+    setTtsOn(next);
+    setTtsEnabled(next);
+    if (!next) cancelSpeech();
     onChange();
   }
 
@@ -153,6 +167,25 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
       {!hasGroqKey && !sttOwnKey && (
         <p className="mt-1 text-xs text-slate-500">Save a Groq key above first to enable this.</p>
       )}
+
+      <hr className="my-4 border-slate-700" />
+
+      <h2 className="mb-2 font-medium">Spoken responses</h2>
+      <p className="mb-3 text-slate-400">
+        Read the assistant's replies aloud using your browser's built-in voice — no key or trial
+        involved.
+      </p>
+      <div className="flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">
+        <span>{ttsOn ? "Reading replies aloud" : "Not reading replies aloud"}</span>
+        <button
+          onClick={handleToggleTts}
+          disabled={!ttsSupported}
+          className="rounded-md bg-violet-500 px-2 py-1 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+        >
+          {ttsOn ? "Turn off" : "Turn on"}
+        </button>
+      </div>
+      {!ttsSupported && <p className="mt-1 text-xs text-slate-500">Not supported in this browser.</p>}
     </div>
   );
 }
