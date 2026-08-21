@@ -14,11 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-### §8. Per-habit statistics
-**[Later]**
-
-On a habit's detail view: current streak, best streak, completion percentage, and count of completions this week / this month / this year / all-time. Open to additional metrics beyond these.
-
 ### §9. Per-category statistics
 **[Later]**
 

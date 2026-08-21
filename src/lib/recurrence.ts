@@ -38,6 +38,10 @@ export function startOfMonth(dateISO: string): string {
   return `${year}-${month}-01`;
 }
 
+export function startOfYear(dateISO: string): string {
+  return `${dateISO.slice(0, 4)}-01-01`;
+}
+
 /**
  * Resolves "(next) <weekday>" phrasing to an exact date, deterministically —
  * small free LLM tiers are unreliable at this specific kind of day-counting
