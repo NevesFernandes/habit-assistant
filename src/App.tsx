@@ -428,6 +428,7 @@ export default function App() {
             habits={data.habits}
             recurringTasks={data.recurringTasks}
             singleTasks={data.singleTasks}
+            completionLog={data.completionLog}
             onAdd={handleAddCategory}
             onUpdate={handleUpdateCategory}
             onDelete={handleDeleteCategory}

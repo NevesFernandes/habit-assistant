@@ -38,14 +38,10 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
 
   let bestStreak = 0;
   let run = 0;
-  let scheduled = 0;
-  let completed = 0;
   let d = habit.startDate;
   while (d <= todayISO) {
     if (occursOn(habit, d)) {
-      scheduled += 1;
       if (isCompletedOn(completionLog, habit.id, d)) {
-        completed += 1;
         run += 1;
         bestStreak = Math.max(bestStreak, run);
       } else {
@@ -55,11 +51,34 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
     d = addDays(d, 1);
   }
 
+  const { launched, completed } = dayOccurrenceCounts(habit, completionLog, todayISO);
   return {
     currentStreak,
     bestStreak,
-    completionPercentage: scheduled === 0 ? 0 : Math.round((completed / scheduled) * 100),
+    completionPercentage: launched === 0 ? 0 : Math.round((completed / launched) * 100),
   };
+}
+
+// Raw scheduled/completed day counts for daily/daysOfWeek/intervalDays habits — the same
+// counting dayBasedStats uses for its own completionPercentage, exposed separately so
+// category-level aggregation (aggregateCategoryStats) can sum raw counts across habits of
+// different recurrence types before computing one overall percentage.
+function dayOccurrenceCounts(
+  habit: Habit,
+  completionLog: CompletionLogEntry[],
+  todayISO: string,
+): { launched: number; completed: number } {
+  let launched = 0;
+  let completed = 0;
+  let d = habit.startDate;
+  while (d <= todayISO) {
+    if (occursOn(habit, d)) {
+      launched += 1;
+      if (isCompletedOn(completionLog, habit.id, d)) completed += 1;
+    }
+    d = addDays(d, 1);
+  }
+  return { launched, completed };
 }
 
 function addMonths(dateISO: string, months: number): string {
@@ -151,5 +170,88 @@ export function computeHabitStats(habit: Habit, completionLog: CompletionLogEntr
     completionsThisMonth: completionsInPeriod(completionLog, habit.id, todayISO, "month"),
     completionsThisYear: habitCompletions.filter((e) => e.date >= startOfYear(todayISO)).length,
     completionsAllTime: habitCompletions.length,
+  };
+}
+
+// timesPerPeriod has no single due day (every day is eligible), so unlike day-based habits
+// there's no natural "scheduled day" to count. For category-level aggregation, each elapsed
+// period "launches" `count` occurrences (target x periods elapsed) — a separate calculation
+// from periodBasedStats's own period-hit-rate completionPercentage above, which is untouched.
+function periodOccurrenceCounts(
+  habit: Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
+  completionLog: CompletionLogEntry[],
+  todayISO: string,
+): { launched: number; completed: number } {
+  const { period, count: target } = habit.recurrence;
+  const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO) : startOfMonth(dateISO));
+  const step = (p: string) => (period === "week" ? addDays(p, 7) : addMonths(p, 1));
+  const startPeriod = periodStart(habit.startDate);
+  const currentPeriod = periodStart(todayISO);
+
+  let periodsElapsed = 0;
+  for (let p = startPeriod; p <= currentPeriod; p = step(p)) periodsElapsed += 1;
+
+  const completed = completionLog.filter(
+    (e) => e.itemId === habit.id && e.date >= startPeriod && e.date <= todayISO,
+  ).length;
+
+  return { launched: periodsElapsed * target, completed };
+}
+
+function habitOccurrenceCounts(
+  habit: Habit,
+  completionLog: CompletionLogEntry[],
+  todayISO: string,
+): { launched: number; completed: number } {
+  return habit.recurrence.type === "timesPerPeriod"
+    ? periodOccurrenceCounts(
+        habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
+        completionLog,
+        todayISO,
+      )
+    : dayOccurrenceCounts(habit, completionLog, todayISO);
+}
+
+export interface CategoryStats {
+  completionPercentage: number; // sum(completed) / sum(launched) across the habits; 0 if no habits or nothing launched
+  completionsThisWeek: number;
+  completionsThisMonth: number;
+  completionsThisYear: number;
+  completionsAllTime: number;
+  habitCount: number;
+}
+
+export function aggregateCategoryStats(
+  habits: Habit[],
+  completionLog: CompletionLogEntry[],
+  todayISO: string,
+): CategoryStats {
+  if (habits.length === 0) {
+    return {
+      completionPercentage: 0,
+      completionsThisWeek: 0,
+      completionsThisMonth: 0,
+      completionsThisYear: 0,
+      completionsAllTime: 0,
+      habitCount: 0,
+    };
+  }
+
+  let totalLaunched = 0;
+  let totalCompleted = 0;
+  for (const habit of habits) {
+    const { launched, completed } = habitOccurrenceCounts(habit, completionLog, todayISO);
+    totalLaunched += launched;
+    totalCompleted += completed;
+  }
+
+  const perHabitWindowCounts = habits.map((habit) => computeHabitStats(habit, completionLog, todayISO));
+  return {
+    completionPercentage: totalLaunched === 0 ? 0 : Math.round((totalCompleted / totalLaunched) * 100),
+    completionsThisWeek: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsThisWeek, 0),
+    completionsThisMonth: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsThisMonth, 0),
+    completionsThisYear: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsThisYear, 0),
+    completionsAllTime: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsAllTime, 0),
+    habitCount: habits.length,
   };
 }
