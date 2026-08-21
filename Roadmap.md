@@ -24,9 +24,3 @@ Aggregate the stats from §8 across all habits in a category. Open question: doe
 
 Have the agent's chat responses optionally read aloud (TTS), mirroring the existing voice *input* pipeline described in `CLAUDE.md`.
 
-### §11. Code-split the onnxruntime-web voice-input bundle
-**[Later]**
-
-`src/lib/voiceActivityDetection.ts` statically imports `@ricky0123/vad-web` (which pulls in `onnxruntime-web`'s JS wrapper), and it's imported by `VoiceButton.tsx`, which is unconditionally rendered in `Chat.tsx` — the app's default tab. There are zero dynamic `import()` calls anywhere in the codebase, so nothing is code-split: onnxruntime-web's JS wrapper (not the ~13MB WASM binary already accounted for in `CLAUDE.md`'s "Voice input" section — this is separate, the JS glue code itself) makes up roughly 45% of the app's single ~662KB minified JS bundle (~120KB of the ~190KB gzipped payload), and it's downloaded/parsed on every page load whether or not the user ever presses the mic button. Confirmed via a one-off `rollup-plugin-visualizer` bundle analysis (not committed).
-
-Fix: change the static import in `voiceActivityDetection.ts` to a dynamic `import("@ricky0123/vad-web")` inside `hasSpeech()`, so it's split into its own chunk fetched only on first recording. Low-risk, narrow change; no correctness bug, purely a cold-start/time-to-interactive cost — worth prioritizing given the app's primary non-desktop target is installed PWAs on mobile.
