@@ -30,10 +30,26 @@ interface GroqResponse {
 // it surface as a raw provider error.
 const TOOL_USE_FAILED_MESSAGE = "Sorry, I didn't quite catch that — could you rephrase what you'd like me to do?";
 
+// The free trial's shared key is shared across every user, so its rate limit
+// (TPM-based) can be hit by cumulative usage that has nothing to do with the
+// current request. Groq returns this as a normal error response body rather
+// than anything a generic fetch failure would catch, so it needs the same
+// detect-and-substitute treatment as tool_use_failed above.
+const RATE_LIMIT_MESSAGE = "The free trial is getting a lot of use right now — please try again in a few seconds.";
+
 function isToolUseFailedError(errorText: string): boolean {
   try {
     const parsed = JSON.parse(errorText) as { error?: { code?: string } };
     return parsed.error?.code === "tool_use_failed";
+  } catch {
+    return false;
+  }
+}
+
+function isRateLimitError(errorText: string): boolean {
+  try {
+    const parsed = JSON.parse(errorText) as { error?: { code?: string } };
+    return parsed.error?.code === "rate_limit_exceeded";
   } catch {
     return false;
   }
@@ -63,6 +79,9 @@ const groqAdapter: ProviderAdapter = {
       const errorText = await res.text();
       if (isToolUseFailedError(errorText)) {
         return { reply: TOOL_USE_FAILED_MESSAGE };
+      }
+      if (isRateLimitError(errorText)) {
+        return { reply: RATE_LIMIT_MESSAGE };
       }
       throw new ProviderRequestError(502, errorText);
     }

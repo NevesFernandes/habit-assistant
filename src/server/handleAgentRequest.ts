@@ -586,7 +586,14 @@ export async function handleAgentRequest(
     return { status: 200, body: result };
   } catch (err) {
     if (err instanceof ProviderRequestError) {
-      return { status: err.status, body: { error: err.message } };
+      // Provider error bodies are raw, provider-specific JSON/text not meant
+      // for end users (e.g. Groq's rate-limit response) — log it for
+      // debugging but never forward it verbatim into the chat UI.
+      console.error(`Provider request failed (${err.status}):`, err.message);
+      return {
+        status: err.status,
+        body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
+      };
     }
     return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
   }
