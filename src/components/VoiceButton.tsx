@@ -91,9 +91,10 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
         onPointerUp={stopRecording}
         onPointerLeave={stopRecording}
         onPointerCancel={stopRecording}
+        onContextMenu={(event) => event.preventDefault()}
         title="Press and hold to speak"
         className={
-          "rounded-md px-3 py-2 font-medium text-white transition disabled:opacity-50 " +
+          "touch-none rounded-md px-3 py-2 font-medium text-white transition disabled:opacity-50 " +
           (recording ? "bg-red-500 hover:bg-red-400" : "bg-slate-700 hover:bg-slate-600")
         }
       >
