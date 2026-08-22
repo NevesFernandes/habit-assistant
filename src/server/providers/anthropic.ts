@@ -1,4 +1,4 @@
-import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
+import type { AgentHistoryMessage, ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
 import { ProviderRequestError } from "./types.ts";
 
 interface AnthropicTextBlock {
@@ -8,11 +8,49 @@ interface AnthropicTextBlock {
 
 interface AnthropicToolUseBlock {
   type: "tool_use";
+  id: string;
   name: string;
   input: Record<string, unknown>;
 }
 
 type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock;
+
+// Anthropic content-block history: a tool call is a `tool_use` block on an
+// assistant turn; its result is a `tool_result` block, but — unlike Groq's
+// separate role:"tool" — Anthropic requires that block inside the *next
+// user*-role turn. There is no role:"tool" at all in this API.
+type AnthropicUserBlock = { type: "text"; text: string } | { type: "tool_result"; tool_use_id: string; content: string };
+type AnthropicAssistantBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
+type AnthropicOutgoingMessage =
+  | { role: "user"; content: AnthropicUserBlock[] }
+  | { role: "assistant"; content: AnthropicAssistantBlock[] };
+
+function toAnthropicMessages(history: AgentHistoryMessage[]): AnthropicOutgoingMessage[] {
+  return history.map((message) => {
+    if (message.role === "user") {
+      return { role: "user", content: [{ type: "text", text: message.content }] };
+    }
+    if (message.role === "tool") {
+      return {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: message.toolCallId, content: message.result }],
+      };
+    }
+    const content: AnthropicAssistantBlock[] = [];
+    if (message.content) content.push({ type: "text", text: message.content });
+    if (message.toolCall) {
+      content.push({
+        type: "tool_use",
+        id: message.toolCall.id,
+        name: message.toolCall.name,
+        input: message.toolCall.input,
+      });
+    }
+    return { role: "assistant", content };
+  });
+}
 
 const anthropicAdapter: ProviderAdapter = {
   defaultModel: "claude-sonnet-5",
@@ -34,7 +72,7 @@ const anthropicAdapter: ProviderAdapter = {
           description: tool.description,
           input_schema: tool.parameters,
         })),
-        messages,
+        messages: toAnthropicMessages(messages),
       }),
     });
 
@@ -51,7 +89,7 @@ const anthropicAdapter: ProviderAdapter = {
 
     return {
       reply: text || undefined,
-      toolCall: toolUse ? { name: toolUse.name, input: toolUse.input } : undefined,
+      toolCall: toolUse ? { id: toolUse.id, name: toolUse.name, input: toolUse.input } : undefined,
     };
   },
 };

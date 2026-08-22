@@ -19,7 +19,8 @@ import {
   type DriveSession,
   type DriveFileRef,
 } from "./lib/driveClient";
-import { sendMessage, type ChatMessage } from "./lib/agentClient";
+import { sendMessage, type AgentHistoryMessage } from "./lib/agentClient";
+import { toDisplayMessages } from "./server/agentHistory";
 import {
   addCategory,
   addHabit,
@@ -62,6 +63,18 @@ interface PendingDeletion {
   names: string[];
 }
 
+// `input` is `unknown` here (not Record<string, unknown>) because callers
+// pass response.toolCall, whose `input` is one of AgentToolCall's concrete
+// per-tool interfaces (CreateHabitInput, DeleteCriteria, ...) — those don't
+// structurally satisfy an index signature. It's narrowed to
+// Record<string, unknown> once, inside pushAssistantMessage, to match
+// AgentHistoryMessage's shape.
+interface ToolCallRef {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
 function formatQuotedList(names: string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
@@ -100,7 +113,7 @@ export default function App() {
   const [fileRef, setFileRef] = useState<DriveFileRef | null>(null);
   const [data, setData] = useState<AppData | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<AgentHistoryMessage[]>([]);
   const [sending, setSending] = useState(false);
 
   const [byok, setByok] = useState<ByokSettings | null>(null);
@@ -130,8 +143,11 @@ export default function App() {
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
     if (!ttsEnabled || messages.length <= prevCount) return;
-    const last = messages[messages.length - 1];
-    if (last.role === "assistant") speak(last.content);
+    // Read off the display list, not the raw history — a role:"tool" entry
+    // can now be the actual last array element, and it has no visible text.
+    const display = toDisplayMessages(messages);
+    const last = display[display.length - 1];
+    if (last?.role === "assistant") speak(last.content);
   }, [messages, ttsEnabled]);
 
   async function handleSignIn() {
@@ -184,11 +200,22 @@ export default function App() {
     }
   }
 
-  function pushAssistantMessage(content: string) {
-    setMessages((prev) => [...prev, { role: "assistant", content }]);
+  function pushAssistantMessage(content: string, toolCall?: ToolCallRef) {
+    setMessages((prev) => {
+      if (!toolCall) return [...prev, { role: "assistant", content }];
+      // Record the paired tool result too, so the next turn's history to the
+      // LLM has a real "I called X with these args and got result Y" record
+      // instead of only this paraphrased sentence — see issue #4.
+      const input = toolCall.input as Record<string, unknown>;
+      return [
+        ...prev,
+        { role: "assistant", content, toolCall: { id: toolCall.id, name: toolCall.name, input } },
+        { role: "tool", toolCallId: toolCall.id, toolName: toolCall.name, result: content },
+      ];
+    });
   }
 
-  async function handleDeleteRequest(kind: DeletableItemKind, criteria: DeleteCriteria) {
+  async function handleDeleteRequest(kind: DeletableItemKind, criteria: DeleteCriteria, toolCall: ToolCallRef) {
     if (!data) return;
     const matches =
       kind === "habit"
@@ -198,7 +225,7 @@ export default function App() {
           : resolveSingleTasks(data, criteria);
 
     if (matches.length === 0) {
-      pushAssistantMessage("I couldn't find anything matching that to delete.");
+      pushAssistantMessage("I couldn't find anything matching that to delete.", toolCall);
       return;
     }
 
@@ -207,21 +234,21 @@ export default function App() {
 
     if (kind === "singleTask" && isNameOnlyCriteria(criteria) && matches.length === 1) {
       const saved = await persist(deleteSingleTasks(data, ids));
-      if (saved) pushAssistantMessage(`Deleted "${names[0]}".`);
+      if (saved) pushAssistantMessage(`Deleted "${names[0]}".`, toolCall);
       return;
     }
 
     setPendingDeletion({ itemKind: kind, ids, names });
-    pushAssistantMessage(buildDeleteConfirmationQuestion(kind, names));
+    pushAssistantMessage(buildDeleteConfirmationQuestion(kind, names), toolCall);
   }
 
-  async function resolvePendingDeletion(confirmed: boolean) {
+  async function resolvePendingDeletion(confirmed: boolean, toolCall?: ToolCallRef) {
     const pending = pendingDeletion;
     setPendingDeletion(null);
     if (!pending || !data) return;
 
     if (!confirmed) {
-      pushAssistantMessage("Okay, I won't delete that.");
+      pushAssistantMessage("Okay, I won't delete that.", toolCall);
       return;
     }
 
@@ -232,7 +259,7 @@ export default function App() {
           ? deleteRecurringTasks(data, pending.ids)
           : deleteSingleTasks(data, pending.ids);
     const saved = await persist(nextData);
-    if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`);
+    if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`, toolCall);
   }
 
   function hasAnyPatchField(patch: UpdatePatch): boolean {
@@ -242,6 +269,7 @@ export default function App() {
   async function handleUpdateRequest(
     kind: DeletableItemKind,
     input: { name: string } & UpdatePatch,
+    toolCall: ToolCallRef,
     actionVerb: string = "Updated",
   ) {
     if (!data) return;
@@ -254,17 +282,18 @@ export default function App() {
           : resolveSingleTasks(data, { name: fragment });
 
     if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any ${ITEM_NOUNS[kind]} matching "${fragment}".`);
+      pushAssistantMessage(`I couldn't find any ${ITEM_NOUNS[kind]} matching "${fragment}".`, toolCall);
       return;
     }
     if (matches.length > 1) {
       pushAssistantMessage(
         `I found more than one ${ITEM_NOUNS[kind]} matching "${fragment}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
       );
       return;
     }
     if (!hasAnyPatchField(patch)) {
-      pushAssistantMessage("What would you like to change about it?");
+      pushAssistantMessage("What would you like to change about it?", toolCall);
       return;
     }
 
@@ -277,12 +306,12 @@ export default function App() {
           : updateSingleTask(data, target.id, patch);
 
     const saved = await persist(nextData);
-    if (saved) pushAssistantMessage(`${actionVerb} "${target.name}".`);
+    if (saved) pushAssistantMessage(`${actionVerb} "${target.name}".`, toolCall);
   }
 
   async function handleSend(userText: string) {
     if (!data) return;
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userText }];
+    const nextMessages: AgentHistoryMessage[] = [...messages, { role: "user", content: userText }];
     setMessages(nextMessages);
     setSending(true);
     try {
@@ -291,49 +320,51 @@ export default function App() {
       if (pendingDeletion) {
         // Tools were restricted server-side to confirmPendingDeletion only; anything else
         // (a plain reply, no tool call) is treated as a decline — fail closed on a destructive action.
-        const confirmed =
-          response.toolCall?.name === "confirmPendingDeletion" && response.toolCall.input.confirmed === true;
-        await resolvePendingDeletion(confirmed);
+        const confirmTc = response.toolCall?.name === "confirmPendingDeletion" ? response.toolCall : undefined;
+        const confirmed = confirmTc?.input.confirmed === true;
+        await resolvePendingDeletion(confirmed, confirmTc);
       } else if (response.toolCall?.name === "createSingleTask") {
         const nextData = addSingleTask(data, response.toolCall.input);
         const saved = await persist(nextData);
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`);
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`, response.toolCall);
         }
       } else if (response.toolCall?.name === "createHabit") {
         const nextData = addHabit(data, response.toolCall.input);
         const saved = await persist(nextData);
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`);
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`, response.toolCall);
         }
       } else if (response.toolCall?.name === "createRecurringTask") {
         const nextData = addRecurringTask(data, response.toolCall.input);
         const saved = await persist(nextData);
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a recurring task.`);
+          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a recurring task.`, response.toolCall);
         }
       } else if (response.toolCall?.name === "deleteSingleTasks") {
-        await handleDeleteRequest("singleTask", response.toolCall.input);
+        await handleDeleteRequest("singleTask", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "deleteHabits") {
-        await handleDeleteRequest("habit", response.toolCall.input);
+        await handleDeleteRequest("habit", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "deleteRecurringTasks") {
-        await handleDeleteRequest("recurringTask", response.toolCall.input);
+        await handleDeleteRequest("recurringTask", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "updateSingleTask") {
-        await handleUpdateRequest("singleTask", response.toolCall.input);
+        await handleUpdateRequest("singleTask", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "updateHabit") {
-        await handleUpdateRequest("habit", response.toolCall.input);
+        await handleUpdateRequest("habit", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "updateRecurringTask") {
-        await handleUpdateRequest("recurringTask", response.toolCall.input);
+        await handleUpdateRequest("recurringTask", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "archiveHabit") {
         await handleUpdateRequest(
           "habit",
           { name: response.toolCall.input.name, newEndDate: todayISO() },
+          response.toolCall,
           "Archived",
         );
       } else if (response.toolCall?.name === "archiveRecurringTask") {
         await handleUpdateRequest(
           "recurringTask",
           { name: response.toolCall.input.name, newEndDate: todayISO() },
+          response.toolCall,
           "Archived",
         );
       } else if (response.reply) {

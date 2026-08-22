@@ -1,7 +1,8 @@
-import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
+import type { AgentHistoryMessage, ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
 import { ProviderRequestError } from "./types.ts";
 
 interface GroqToolCall {
+  id: string;
   function: { name: string; arguments: string };
 }
 
@@ -11,8 +12,43 @@ interface GroqResponse {
   }>;
 }
 
+// OpenAI-style Chat Completions history: a tool call lives as a `tool_calls`
+// array on the assistant turn, and its result is a separate `role: "tool"`
+// message keyed by `tool_call_id`.
+type GroqOutgoingMessage =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+function toGroqMessages(history: AgentHistoryMessage[]): GroqOutgoingMessage[] {
+  return history.map((message) => {
+    if (message.role === "user") return { role: "user", content: message.content };
+    if (message.role === "tool") {
+      return { role: "tool", tool_call_id: message.toolCallId, content: message.result };
+    }
+    return {
+      role: "assistant",
+      content: message.content ?? null,
+      tool_calls: message.toolCall
+        ? [
+            {
+              id: message.toolCall.id,
+              type: "function",
+              function: { name: message.toolCall.name, arguments: JSON.stringify(message.toolCall.input) },
+            },
+          ]
+        : undefined,
+    };
+  });
+}
+
 // Free, no-credit-card tier with tool-calling support — the default for the
 // shared trial. OpenAI-compatible Chat Completions API.
+//
+// If a second OpenAI-compatible provider (OpenAI itself, Together,
+// Fireworks, Mistral, DeepSeek, ...) is ever added, toGroqMessages() below
+// and this fetch call are good candidates to factor into a reusable
+// openaiCompatibleAdapter(baseUrl, model) — not worth it for one provider.
 //
 // Model IDs on Groq's free tier shift over time (verify against
 // https://api.groq.com/openai/v1/models with a real key if this ever 404s
@@ -67,7 +103,7 @@ const groqAdapter: ProviderAdapter = {
       },
       body: JSON.stringify({
         model: model ?? groqAdapter.defaultModel,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        messages: [{ role: "system", content: systemPrompt }, ...toGroqMessages(messages)],
         tools: tools.map((tool) => ({
           type: "function",
           function: { name: tool.name, description: tool.description, parameters: tool.parameters },
@@ -93,7 +129,7 @@ const groqAdapter: ProviderAdapter = {
     return {
       reply: message?.content ?? undefined,
       toolCall: toolCall
-        ? { name: toolCall.function.name, input: JSON.parse(toolCall.function.arguments) }
+        ? { id: toolCall.id, name: toolCall.function.name, input: JSON.parse(toolCall.function.arguments) }
         : undefined,
     };
   },

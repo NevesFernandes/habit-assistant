@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { ChatMessage } from "../lib/agentClient";
+import type { AgentHistoryMessage } from "../lib/agentClient";
+import { toDisplayMessages } from "../server/agentHistory";
 import VoiceButton from "./VoiceButton";
 
 interface ChatProps {
-  messages: ChatMessage[];
+  messages: AgentHistoryMessage[];
   onSend: (message: string) => void;
   sending: boolean;
   sttApiKey: string | null;
@@ -28,7 +29,7 @@ export default function Chat({ messages, onSend, sending, sttApiKey }: ChatProps
             Try: "add a task to buy milk" — or something vague, to see it ask a follow-up.
           </p>
         )}
-        {messages.map((message, index) => (
+        {toDisplayMessages(messages).map((message, index) => (
           <div
             key={index}
             className={

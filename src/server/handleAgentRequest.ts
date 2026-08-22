@@ -8,7 +8,8 @@
 // strategy"): a BYOK request uses the caller's own provider/key; otherwise
 // it falls back to the shared free trial configured via env vars.
 import { resolveProvider } from "./providers/index.ts";
-import { ProviderRequestError, type IncomingMessage, type ToolDefinition } from "./providers/types.ts";
+import { ProviderRequestError, type ToolDefinition } from "./providers/types.ts";
+import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category } from "../types/models.ts";
 
 export interface AgentEnv {
@@ -27,7 +28,7 @@ export interface AgentResult {
   status: number;
   body: {
     reply?: string;
-    toolCall?: { name: string; input: Record<string, unknown> };
+    toolCall?: { id: string; name: string; input: Record<string, unknown> };
     error?: string;
   };
 }
@@ -542,7 +543,7 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
 }
 
 export async function handleAgentRequest(
-  messages: IncomingMessage[],
+  messages: AgentHistoryMessage[],
   env: AgentEnv,
   byok?: Byok,
   categories: Category[] = [],
@@ -583,7 +584,10 @@ export async function handleAgentRequest(
       apiKey: apiKey ?? "",
       model,
     });
-    return { status: 200, body: result };
+    const toolCall = result.toolCall
+      ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
+      : undefined;
+    return { status: 200, body: { reply: result.reply, toolCall } };
   } catch (err) {
     if (err instanceof ProviderRequestError) {
       // Provider error bodies are raw, provider-specific JSON/text not meant

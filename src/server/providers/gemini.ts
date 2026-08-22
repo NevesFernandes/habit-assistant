@@ -1,4 +1,4 @@
-import type { ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
+import type { AgentHistoryMessage, ProviderAdapter, ProviderCallArgs, ProviderResult } from "./types.ts";
 import { ProviderRequestError } from "./types.ts";
 
 interface GeminiPart {
@@ -8,6 +8,46 @@ interface GeminiPart {
 
 interface GeminiResponse {
   candidates: Array<{ content: { parts: GeminiPart[] } }>;
+}
+
+interface GeminiOutgoingContent {
+  role: "user" | "model";
+  parts: Array<
+    | { text: string }
+    | { functionCall: { name: string; args: Record<string, unknown> } }
+    | { functionResponse: { name: string; response: { result: string } } }
+  >;
+}
+
+// Gemini has no id in its tool-call format at all — a call and its result
+// are correlated purely by function name/position, unlike Groq's/
+// Anthropic's id-keyed pairing. AgentHistoryMessage's toolCall.id /
+// toolCallId still exist (used to build the paired history entries
+// upstream) but are simply not part of the wire payload here.
+//
+// TODO(verify before relying on this in production): the function-response
+// turn's `role` is inconsistent across Gemini's docs/API versions ("user"
+// vs "function"). Using "user" here per the REST examples at the time of
+// writing — confirm against a live call with a real key before treating
+// this as settled, and adjust if the API rejects it.
+function toGeminiMessages(history: AgentHistoryMessage[]): GeminiOutgoingContent[] {
+  return history.map((message) => {
+    if (message.role === "user") {
+      return { role: "user", parts: [{ text: message.content }] };
+    }
+    if (message.role === "tool") {
+      return {
+        role: "user",
+        parts: [{ functionResponse: { name: message.toolName, response: { result: message.result } } }],
+      };
+    }
+    const parts: GeminiOutgoingContent["parts"] = [];
+    if (message.content) parts.push({ text: message.content });
+    if (message.toolCall) {
+      parts.push({ functionCall: { name: message.toolCall.name, args: message.toolCall.input } });
+    }
+    return { role: "model", parts };
+  });
 }
 
 // Documented fallback free tier alongside Groq. "-latest" alias avoids
@@ -24,10 +64,7 @@ const geminiAdapter: ProviderAdapter = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: messages.map((message) => ({
-            role: message.role === "assistant" ? "model" : "user",
-            parts: [{ text: message.content }],
-          })),
+          contents: toGeminiMessages(messages),
           tools: [
             {
               functionDeclarations: tools.map((tool) => ({

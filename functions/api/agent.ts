@@ -5,17 +5,17 @@
 // strategy". Actual logic lives in src/server/handleAgentRequest.ts, shared
 // with the local Vite dev path.
 import { handleAgentRequest, type AgentEnv, type Byok } from "../../src/server/handleAgentRequest.ts";
-import type { IncomingMessage } from "../../src/server/providers/types.ts";
+import type { AgentHistoryMessage } from "../../src/server/agentHistory.ts";
 import type { Category } from "../../src/types/models.ts";
 
 export const onRequestPost: PagesFunction<AgentEnv> = async (context) => {
-  let messages: IncomingMessage[];
+  let messages: AgentHistoryMessage[];
   let byok: Byok | undefined;
   let categories: Category[] | undefined;
   let hasPendingConfirmation = false;
   try {
     const body = (await context.request.json()) as {
-      messages: IncomingMessage[];
+      messages: AgentHistoryMessage[];
       byok?: Byok;
       categories?: Category[];
       hasPendingConfirmation?: boolean;

@@ -6,11 +6,9 @@ import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
 import type { CreateHabitInput, CreateRecurringTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson } from "./fetchJson";
+import type { AgentHistoryMessage } from "../server/agentHistory";
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+export type { AgentHistoryMessage } from "../server/agentHistory";
 
 export interface CreateSingleTaskToolCall {
   name: "createSingleTask";
@@ -88,12 +86,15 @@ export type AgentToolCall =
 
 export interface AgentResponse {
   reply?: string;
-  toolCall?: AgentToolCall;
+  // id is always present here (handleAgentRequest.ts synthesizes a fallback
+  // for providers, like Gemini, whose wire format has none) — it round-trips
+  // back into the next request's history to pair this call with its result.
+  toolCall?: AgentToolCall & { id: string };
   error?: string;
 }
 
 export async function sendMessage(
-  history: ChatMessage[],
+  history: AgentHistoryMessage[],
   byok?: ByokSettings | null,
   categories?: Category[],
   hasPendingConfirmation?: boolean,

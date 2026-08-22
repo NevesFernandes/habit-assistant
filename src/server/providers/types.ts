@@ -3,10 +3,9 @@
 // picks one via resolveProvider() and never talks to a provider directly.
 // See CLAUDE.md's "Cost model / provider strategy" for why this exists.
 
-export interface IncomingMessage {
-  role: "user" | "assistant";
-  content: string;
-}
+import type { AgentHistoryMessage } from "../agentHistory.ts";
+
+export type { AgentHistoryMessage } from "../agentHistory.ts";
 
 // Plain JSON Schema — close enough to what Anthropic, Groq (OpenAI-style),
 // and Gemini all expect that each adapter can map it with a thin rename,
@@ -29,7 +28,7 @@ export interface ToolDefinition {
 }
 
 export interface ProviderCallArgs {
-  messages: IncomingMessage[];
+  messages: AgentHistoryMessage[];
   tools: ToolDefinition[];
   systemPrompt: string;
   apiKey: string;
@@ -38,7 +37,10 @@ export interface ProviderCallArgs {
 
 export interface ProviderResult {
   reply?: string;
-  toolCall?: { name: string; input: Record<string, unknown> };
+  // id is optional here: not every provider's wire format returns one
+  // natively (Gemini has none) — handleAgentRequest.ts synthesizes a
+  // fallback centrally so adapters don't each need their own.
+  toolCall?: { id?: string; name: string; input: Record<string, unknown> };
 }
 
 export interface ProviderAdapter {
