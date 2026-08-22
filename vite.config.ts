@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { handleAgentRequest, type AgentEnv, type Byok } from "./src/server/handleAgentRequest.ts";
-import type { IncomingMessage } from "./src/server/providers/types.ts";
+import type { AgentHistoryMessage } from "./src/server/agentHistory.ts";
 import { handleTranscribeRequest, type TranscribeEnv } from "./src/server/handleTranscribeRequest.ts";
 import type { Category } from "./src/types/models.ts";
 
@@ -34,7 +34,7 @@ function localAgentApiPlugin(): Plugin {
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(chunk as Buffer);
 
-        let messages: IncomingMessage[];
+        let messages: AgentHistoryMessage[];
         let byok: Byok | undefined;
         let categories: Category[] | undefined;
         let hasPendingConfirmation: boolean | undefined;
