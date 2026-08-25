@@ -38,10 +38,9 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
   return { ...data, singleTasks: [...data.singleTasks, task] };
 }
 
-/** Whether a task should appear on a given date: always on its own startDate (preserving history whether it was done or not), and on later dates only while persistent and still not done — otherwise it "dies" (stops appearing, record kept). Tasks saved before `persistency` existed have it `undefined`; default that to `true`, matching the field's own creation-time default. */
+/** Whether a task should appear on a given date: only on its current startDate. Persistent incomplete tasks are moved forward to today by rolloverPersistentTasks, not by a range check here. */
 export function isSingleTaskActiveOn(task: SingleTask, dateISO: string): boolean {
-  if (task.startDate === dateISO) return true;
-  return (task.persistency ?? true) && !task.done && task.startDate < dateISO;
+  return task.startDate === dateISO;
 }
 
 export function toggleSingleTaskDone(data: AppData, taskId: string): AppData {
@@ -51,6 +50,19 @@ export function toggleSingleTaskDone(data: AppData, taskId: string): AppData {
       task.id === taskId ? { ...task, done: !task.done } : task,
     ),
   };
+}
+
+/** Bumps each persistent, incomplete, past-dated single task's startDate straight to today. Call once per app session after loading data, before render. Non-persistent tasks and already-done tasks are left untouched (the latter stays pinned to its original day, preserving history). Returns `data` unchanged (same reference) if nothing moved, so callers can skip a Drive write when there's nothing to roll. Tasks saved before `persistency` existed have it `undefined`; default that to `true`, matching the field's own creation-time default. */
+export function rolloverPersistentTasks(data: AppData, todayISO: string): AppData {
+  let changed = false;
+  const singleTasks = data.singleTasks.map((task) => {
+    if ((task.persistency ?? true) && !task.done && task.startDate < todayISO) {
+      changed = true;
+      return { ...task, startDate: todayISO };
+    }
+    return task;
+  });
+  return changed ? { ...data, singleTasks } : data;
 }
 
 export interface CreateHabitInput {
