@@ -4,7 +4,7 @@ An agent-driven habit tracker and task manager. Instead of navigating menus, for
 
 This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
 
-**Status: initial scaffold exists.** Sign-in with Google, Drive-backed data storage, a chat UI that can create a Single Task via one tool call, a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. Habits, Recurring Tasks, the fuller recurrence engine, and the stats dashboard are not built yet — see `README.md` for how to run what exists, and `Roadmap.md` for the prioritized backlog of what's planned next.
+**Status: core loop built, depth still filling in.** Sign-in with Google, Drive-backed data storage, a chat UI backed by a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. The agent can create, update, delete, and archive Single Tasks, Habits, and Recurring Tasks, and manage Categories; the v1 recurrence engine (daily, specific weekdays, every-N-days, N-times-per-week) works, and per-habit/per-category stats (streaks, completion %, period counts) are already computed and shown. Still missing: real tracking for Habit completion types other than Yes/No (Numeric/Timer/Checklist exist only as labels so far), a genuinely shared/interactive checklist component, the fast-follow recurrence types (nth-weekday-of-month, yearly dates, on/off cycles), and any chart-based dashboard visuals — see `README.md` for how to run what exists, and `Roadmap.md` for the prioritized backlog of what's planned next.
 
 ## Interaction model
 
@@ -31,10 +31,14 @@ Recurring. Has a **completion type**:
 - Timer (duration-based, e.g. "meditate 10 min")
 - Checklist (percent-complete toward that occurrence's completion — partial or 100%)
 
-Habits are meant to build a detailed tracking/statistics dashboard over time (streaks, history, charts). **The dashboard UI itself is a future phase**, but completion history must be logged from day one (every occurrence, every completion event) so stats can be computed later without backfilling data.
+**v1 only actually tracks Yes/No.** All four types can be picked when creating a habit, but Numeric/Timer/Checklist currently store just the label — completion is still a single "mark done" toggle, with no number/duration input and no interactive checklist. Building out real tracking for the other three is still open.
+
+Habits already build a real tracking/statistics view over time: streak, best streak, completion %, and this-week/month/year/all-time counts are computed (`src/lib/habitStats.ts`) and shown per-habit in `HabitsView` and per-category in `CategoriesView`. **Chart-based visuals and a dedicated dashboard page are still a future phase.** Completion history is logged as habits are completed, but un-completing currently removes that log entry rather than recording the toggle as its own event — so today the log reflects current per-occurrence completion state, not a full history of every completion/uncompletion event.
 
 ### 2. Recurring Task
 Same structural shape as a Habit (category, priority, dates, periodicity) but tracking is simple: **done / not-done per occurrence only**. No completion-type machinery, no stats dashboard.
+
+**Archiving** (Habits and Recurring Tasks only): sets `endDate` to today, keeping every completion already logged and stopping future occurrences, without permanently deleting the item or its history — distinct from delete, which erases both. Single Tasks have no separate archive action; they're just marked done or deleted.
 
 ### 3. Single Task
 One-off. No periodicity. Done / not-done.
@@ -43,7 +47,7 @@ One-off. No periodicity. Done / not-done.
 - As a **Habit's completion type**: defines what "done" means for that occurrence (e.g. a morning-routine checklist resets and must be filled each day).
 - As an **attachment on either Task type**: a freeform, growing list of sub-items unrelated to the done/not-done status of the task itself. Example: a weekly recurring task "go shopping," where items get added throughout the week, functioning as a running shopping list.
 
-These are the same underlying checklist component used in two different roles — don't build two separate implementations. Exact reset/carry-over behavior of a *task's* checklist across recurring occurrences (does it clear each cycle, or carry unfinished items forward?) is intentionally undecided — see Open Questions.
+These are meant to be the same underlying checklist component used in two different roles — don't build two separate implementations. **Not there yet**: today each view (`HabitsView`, `RecurringTasksView`, `SingleTasksView`) independently renders its checklist as a static, read-only list — no shared component, and no check/uncheck or add-item interaction anywhere yet. Consolidating into one real, interactive component is still open. Exact reset/carry-over behavior of a *task's* checklist across recurring occurrences (does it clear each cycle, or carry unfinished items forward?) is intentionally undecided — see Open Questions.
 
 ## Categories
 
@@ -108,6 +112,6 @@ These were deliberately left undecided rather than guessed at — surface them a
 
 - Does a recurring task's checklist reset each new occurrence, or carry unfinished items forward to the next cycle?
 - Exact conflict-resolution strategy for near-simultaneous edits to the Drive-stored data file from two devices.
-- Design of the stats/dashboard view for Habits (streaks, charts, etc.) — functionality is expected, visuals/metrics are not yet specified.
+- Design of a dedicated stats/dashboard page for Habits — the underlying numbers (streaks, completion %, period counts) are already computed and shown inline in `HabitsView`/`CategoriesView`; what's undecided is a standalone dashboard's layout and any chart visuals.
 - Whether/when to revisit push notifications, given "no reminders" was affirmed for now but not ruled out permanently.
 - Whether/when to build slide-to-lock recording and/or client-side WASM Whisper (see "Voice input" above).
