@@ -34,6 +34,7 @@ import {
   resolveHabits,
   resolveRecurringTasks,
   resolveSingleTasks,
+  rolloverPersistentTasks,
   toggleHabitCompletion,
   toggleSingleTaskDone,
   updateCategory,
@@ -161,8 +162,22 @@ export default function App() {
       const existing = await findDataFile(newSession, folderId);
       if (existing) {
         const loaded = await readDataFile(newSession, existing.fileId);
-        setFileRef(existing);
-        setData(loaded);
+        const rolled = rolloverPersistentTasks(loaded, todayISO());
+        if (rolled !== loaded) {
+          try {
+            const newRef = await writeDataFile(newSession, existing, rolled);
+            setFileRef(newRef);
+            setData(rolled);
+          } catch {
+            // Rollover write failed (conflict, network, etc.) — don't block sign-in over
+            // a nice-to-have UI correction; just show the un-rolled-over data this session.
+            setFileRef(existing);
+            setData(loaded);
+          }
+        } else {
+          setFileRef(existing);
+          setData(loaded);
+        }
       } else {
         const initial = emptyAppData();
         const created = await createDataFile(newSession, folderId, initial);
