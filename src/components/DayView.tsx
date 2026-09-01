@@ -1,8 +1,9 @@
 import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
-import { isHabitEntryComplete } from "../lib/habitStats";
+import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
+import Checklist from "./Checklist";
 
 type DayItem =
   | { kind: "habit"; item: Habit }
@@ -19,6 +20,7 @@ interface DayViewProps {
   onToggleHabit: (habitId: string) => void;
   onToggleTask: (taskId: string) => void;
   onToggleRecurringTask: (taskId: string) => void;
+  onToggleHabitChecklistItem: (habitId: string, itemId: string) => void;
 }
 
 function getItemsForDate(
@@ -50,6 +52,7 @@ export default function DayView({
   onToggleHabit,
   onToggleTask,
   onToggleRecurringTask,
+  onToggleHabitChecklistItem,
 }: DayViewProps) {
   const items = getItemsForDate(habits, singleTasks, recurringTasks, selectedDate);
 
@@ -73,6 +76,7 @@ export default function DayView({
               completionLog={completionLog}
               categories={categories}
               onToggle={onToggleHabit}
+              onToggleChecklistItem={onToggleHabitChecklistItem}
             />
           );
         }
@@ -100,46 +104,54 @@ function HabitRow({
   completionLog,
   categories,
   onToggle,
+  onToggleChecklistItem,
 }: {
   habit: Habit;
   selectedDate: string;
   completionLog: CompletionLogEntry[];
   categories: Category[];
   onToggle: (habitId: string) => void;
+  onToggleChecklistItem: (habitId: string, itemId: string) => void;
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
   const entry = completionLog.find((e) => e.itemId === habit.id && e.date === selectedDate);
   const isDone = isHabitEntryComplete(habit, entry);
+  const checklistItems = habit.completionType === "checklist" ? checklistItemsForEntry(habit, entry) : [];
+  const progress = habit.completionType === "checklist" ? checklistProgress(habit, entry) : null;
   return (
-    <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
-      <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
-      <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
-        <div>{habit.name}</div>
-        {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
-        {habit.recurrence.type === "timesPerPeriod" && (
-          <div className="text-xs text-violet-300">
-            {completionsInPeriod(completionLog, habit.id, selectedDate, habit.recurrence.period)}/
-            {habit.recurrence.count} this {habit.recurrence.period}
-          </div>
-        )}
+    <li
+      className={`flex gap-3 rounded-md bg-slate-800 px-3 py-2 ${
+        habit.completionType === "checklist" ? "flex-col" : "items-center"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
+        <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
+          <div>{habit.name}</div>
+          {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
+          {habit.recurrence.type === "timesPerPeriod" && (
+            <div className="text-xs text-violet-300">
+              {completionsInPeriod(completionLog, habit.id, selectedDate, habit.recurrence.period)}/
+              {habit.recurrence.count} this {habit.recurrence.period}
+            </div>
+          )}
+        </div>
+        {habit.completionType === "yesno" ? (
+          <input type="checkbox" checked={isDone} onChange={() => onToggle(habit.id)} className="h-4 w-4" />
+        ) : habit.completionType === "value" || habit.completionType === "timer" ? (
+          <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
+            {entry?.value ?? "—"}
+            {habit.target !== undefined ? ` / ${habit.target}` : ""}
+            {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+          </span>
+        ) : progress ? (
+          <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
+            {progress.checked}/{progress.total}
+          </span>
+        ) : null}
       </div>
-      {habit.completionType === "yesno" ? (
-        <input type="checkbox" checked={isDone} onChange={() => onToggle(habit.id)} className="h-4 w-4" />
-      ) : habit.completionType === "value" || habit.completionType === "timer" ? (
-        <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
-          {entry?.value ?? "—"}
-          {habit.target !== undefined ? ` / ${habit.target}` : ""}
-          {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
-        </span>
-      ) : (
-        <button
-          onClick={() => onToggle(habit.id)}
-          className={`shrink-0 rounded-md px-2 py-1 text-xs ${
-            isDone ? "bg-violet-500 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-          }`}
-        >
-          {isDone ? "Done" : "Mark done"}
-        </button>
+      {habit.completionType === "checklist" && (
+        <Checklist items={checklistItems} onToggle={(itemId) => onToggleChecklistItem(habit.id, itemId)} />
       )}
     </li>
   );

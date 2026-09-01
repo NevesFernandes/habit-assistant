@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
-import { computeHabitStats } from "../lib/habitStats";
+import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 
@@ -89,6 +89,9 @@ function HabitDetail({
   const stats = computeHabitStats(habit, completionLog, todayISO());
   const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
   const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
+  const todayEntry = completionLog.find((e) => e.itemId === habit.id && e.date === todayISO());
+  const todayChecklistItems = checklistItemsForEntry(habit, todayEntry);
+  const todayEntryProgress = checklistProgress(habit, todayEntry);
 
   return (
     <div className="flex flex-col gap-3">
@@ -147,9 +150,9 @@ function HabitDetail({
         )}
 
         {habit.completionType === "checklist" && (
-          <DetailRow label="Checklist items">
+          <DetailRow label={`Today's checklist (${todayEntryProgress.checked}/${todayEntryProgress.total})`}>
             <Checklist
-              items={habit.checklist ?? []}
+              items={todayChecklistItems}
               onToggle={(itemId) => onToggleChecklistItem(habit.id, itemId)}
             />
           </DetailRow>

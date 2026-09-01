@@ -20,9 +20,6 @@ _Nothing queued right now — see Next below for what's up next._
 
 ## Next
 
-### §15 — Real tracking for Habit completion type: Checklist
-Numeric-value and Timer habits now have real tracking (logged via chat with `logHabitProgress`, target-aware stats — see commit history). Checklist is the one completion type still unbuilt: `Habit.checklist` is a single static list with no per-occurrence completion state anywhere (no file sets `checked: true`, no per-date structure exists). §16's shared checklist component is now built (`src/components/Checklist.tsx`) — still needed here: per-occurrence checklist completion (which items were checked off *today* vs. yesterday), plus `habitStats.ts` interpreting partial-vs-full checklist completion — mirroring the target-aware pattern already built for Numeric/Timer (`isHabitEntryComplete` in `src/lib/habitStats.ts`).
-
 ### §17 — Chart-based stats dashboard
 Streak, best streak, completion %, and this-week/month/year/all-time counts are already computed (`src/lib/habitStats.ts`) and shown inline in `HabitsView`/`CategoriesView` — this item is the visualization/UX layer on top, not the underlying computation (already done). Needs: a dedicated dashboard page/view, and actual chart/graph visuals (no charting library is in `package.json` yet — pick one as part of this work). Smaller in scope than it might sound, since the hard part (stats computation) is already built.
 

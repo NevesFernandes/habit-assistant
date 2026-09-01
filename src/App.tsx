@@ -442,9 +442,9 @@ export default function App() {
     void persist(toggleRecurringTaskCompletion(data, taskId, selectedDate));
   }
 
-  function handleHabitChecklistToggle(habitId: string, itemId: string) {
+  function handleHabitChecklistToggle(habitId: string, itemId: string, dateISO: string) {
     if (!data) return;
-    void persist(toggleHabitChecklistItem(data, habitId, itemId));
+    void persist(toggleHabitChecklistItem(data, habitId, itemId, dateISO));
   }
 
   function handleRecurringTaskChecklistToggle(taskId: string, itemId: string) {
@@ -541,7 +541,7 @@ export default function App() {
   }
 
   async function handleCheckHabitChecklistItem(
-    input: { name: string; item: string; checked?: boolean },
+    input: { name: string; item: string; checked?: boolean; date?: string },
     toolCall: ToolCallRef,
   ) {
     if (!data) return;
@@ -571,7 +571,8 @@ export default function App() {
       return;
     }
     const checked = input.checked ?? true;
-    const saved = await persist(setHabitChecklistItemChecked(data, habit.id, itemMatches[0].id, checked));
+    const dateISO = input.date ?? todayISO();
+    const saved = await persist(setHabitChecklistItemChecked(data, habit.id, itemMatches[0].id, checked, dateISO));
     if (saved) {
       pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${habit.name}".`, toolCall);
     }
@@ -724,6 +725,7 @@ export default function App() {
               onToggleHabit={handleHabitToggle}
               onToggleTask={handleTaskToggle}
               onToggleRecurringTask={handleRecurringTaskToggle}
+              onToggleHabitChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, selectedDate)}
             />
           </div>
         )}
@@ -746,7 +748,7 @@ export default function App() {
             habits={data.habits}
             categories={data.categories}
             completionLog={data.completionLog}
-            onToggleChecklistItem={handleHabitChecklistToggle}
+            onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
           />
         )}
 

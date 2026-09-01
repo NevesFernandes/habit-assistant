@@ -68,6 +68,7 @@ export interface CompletionLogEntry {
   itemId: string;
   date: string; // ISO date of the occurrence this entry covers
   value?: number; // used when the habit's completionType is "value" or "timer"
+  checklist?: ChecklistItem[]; // per-date snapshot of items+checked state; used when the habit's completionType is "checklist"
 }
 
 export interface AppData {
