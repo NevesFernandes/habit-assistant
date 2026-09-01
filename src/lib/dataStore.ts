@@ -90,6 +90,8 @@ export interface CreateHabitInput {
   recurrenceOffDays?: number;
   completionType?: Habit["completionType"];
   checklistItems?: string[];
+  target?: number; // meaningful when completionType is "value" or "timer"; timer's target is always minutes
+  unit?: string; // meaningful when completionType is "value"
 }
 
 function today(): string {
@@ -190,6 +192,8 @@ export function addHabit(data: AppData, input: CreateHabitInput): AppData {
             checked: false,
           }))
         : undefined,
+    target: completionType === "value" || completionType === "timer" ? input.target : undefined,
+    unit: completionType === "value" ? input.unit : undefined,
   };
   return { ...data, habits: [...data.habits, habit] };
 }
@@ -208,6 +212,24 @@ export function toggleHabitCompletion(data: AppData, habitId: string, dateISO: s
     id: crypto.randomUUID(),
     itemId: habitId,
     date: dateISO,
+  };
+  return { ...data, completionLog: [...data.completionLog, entry] };
+}
+
+/** Upserts a numeric/timer habit's logged value for a date — used by logHabitProgress, not the yesno toggle above. */
+export function setHabitValue(data: AppData, habitId: string, dateISO: string, value: number): AppData {
+  const existing = data.completionLog.find((entry) => entry.itemId === habitId && entry.date === dateISO);
+  if (existing) {
+    return {
+      ...data,
+      completionLog: data.completionLog.map((entry) => (entry.id === existing.id ? { ...entry, value } : entry)),
+    };
+  }
+  const entry: CompletionLogEntry = {
+    id: crypto.randomUUID(),
+    itemId: habitId,
+    date: dateISO,
+    value,
   };
   return { ...data, completionLog: [...data.completionLog, entry] };
 }
@@ -397,6 +419,8 @@ export interface UpdatePatch {
   newRecurrenceOffDays?: number;
   newCompletionType?: CompletionType; // Habit only
   newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
+  newTarget?: number; // Habit only — meaningful when completionType is "value" or "timer"
+  newUnit?: string; // Habit only — meaningful when completionType is "value"
 }
 
 function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T {
@@ -461,12 +485,19 @@ export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppD
           : patch.newChecklistItems !== undefined
             ? patch.newChecklistItems.map((text) => ({ id: crypto.randomUUID(), text, checked: false }))
             : (habit.checklist ?? []);
+      const target =
+        completionType === "value" || completionType === "timer"
+          ? (patch.newTarget !== undefined ? patch.newTarget : habit.target)
+          : undefined;
+      const unit = completionType === "value" ? (patch.newUnit !== undefined ? patch.newUnit : habit.unit) : undefined;
       return {
         ...base,
         categoryId,
         recurrence: resolveRecurrence(habit.recurrence, patch),
         completionType,
         checklist,
+        target,
+        unit,
       };
     }),
   };

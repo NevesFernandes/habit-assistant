@@ -132,6 +132,15 @@ function HabitDetail({
           <span>{COMPLETION_TYPE_LABELS[habit.completionType]}</span>
         </DetailRow>
 
+        {(habit.completionType === "value" || habit.completionType === "timer") && habit.target !== undefined && (
+          <DetailRow label="Target">
+            <span>
+              {habit.target}
+              {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+            </span>
+          </DetailRow>
+        )}
+
         {habit.completionType === "checklist" && habit.checklist && habit.checklist.length > 0 && (
           <DetailRow label="Checklist items">
             <ul className="list-disc pl-5">

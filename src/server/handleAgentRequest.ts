@@ -57,6 +57,7 @@ You can take these actions:
 9. updateRecurringTask — change one or more fields on an existing recurring task.
 10. archiveHabit — archive an existing habit.
 11. archiveRecurringTask — archive an existing recurring task.
+12. logHabitProgress — log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below).
 
 Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
@@ -73,9 +74,11 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 - neverCompleted (deleteHabits and deleteRecurringTasks): true = only items with zero completions ever recorded (e.g. "delete habits I've never actually done").
 - inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.
 
-For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. None of this ever touches a habit's already-logged completion history.
+For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.
+
+For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).
 
 For createSingleTask specifically:
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
@@ -94,7 +97,7 @@ For createHabit specifically:
   - a date that recurs every year (e.g. a birthday, an anniversary) → recurrenceType "specificDatesOfYear" with recurrenceDates as an array of "MM-DD" strings (no year). recurrenceDates always replaces the full list — you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing habit, ask them for the complete list of dates rather than guessing what's already there (same as checklistItems below).
   - "N days on, M days off" (e.g. "5 days on, 2 days off") → recurrenceType "onOffCycle" with recurrenceOnDays = N and recurrenceOffDays = M
   - If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing.
-- completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names).
+- completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). If the user states a specific amount for a "value" or "timer" habit (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they don't give a specific amount, leave target/unit unset — don't ask proactively, tracking works fine without a target.
 
 For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
@@ -262,6 +265,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
             type: "array",
             description: "Used when completionType is checklist: the sub-item names.",
             items: { type: "string" },
+          },
+          target: {
+            type: "number",
+            description:
+              "Used when completionType is value or timer: the numeric goal (value) or goal duration in minutes (timer). Leave unset if the user didn't give a specific amount.",
+          },
+          unit: {
+            type: "string",
+            description: "Used when completionType is value: a short label for the number, e.g. \"glasses\", \"pages\", \"reps\".",
           },
         },
         required: ["name", "categoryId", "recurrenceType"],
@@ -562,6 +574,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
             description: "Fully replaces the checklist sub-items (used with completionType checklist).",
             items: { type: "string" },
           },
+          newTarget: {
+            type: "number",
+            description:
+              "Used when newCompletionType (or the habit's existing completionType) is value or timer: the numeric goal (value) or goal duration in minutes (timer).",
+          },
+          newUnit: {
+            type: "string",
+            description: "Used when completionType is value: a short label for the number, e.g. \"glasses\", \"pages\", \"reps\".",
+          },
         },
         required: ["name"],
       },
@@ -662,6 +683,29 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's current name, to find which recurring task to archive." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "logHabitProgress",
+      description:
+        "Log or adjust a Numeric-value or Timer habit's progress for a specific date (defaults to today). Use for phrases like 'add 10 minutes to my reading today', 'I drank 6 glasses of water', 'log 30 minutes of meditation for yesterday'. Not for Yes/No or Checklist habits, and not for changing a habit's target — use updateHabit for that.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's name." },
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
+          value: {
+            type: "number",
+            description:
+              "Absolute value to set for that date, replacing anything already logged. Use for a stated total (e.g. 'I read for 30 minutes today', 'log 6 glasses of water').",
+          },
+          delta: {
+            type: "number",
+            description:
+              "Amount to add to (or, if negative, subtract from) whatever's already logged for that date. Use for 'add N', 'increase by N', 'do N more'.",
+          },
         },
         required: ["name"],
       },
