@@ -248,6 +248,24 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
   return { ...data, recurringTasks: [...data.recurringTasks, task] };
 }
 
+export function toggleRecurringTaskCompletion(data: AppData, taskId: string, dateISO: string): AppData {
+  const existing = data.completionLog.find(
+    (entry) => entry.itemId === taskId && entry.date === dateISO,
+  );
+  if (existing) {
+    return {
+      ...data,
+      completionLog: data.completionLog.filter((entry) => entry.id !== existing.id),
+    };
+  }
+  const entry: CompletionLogEntry = {
+    id: crypto.randomUUID(),
+    itemId: taskId,
+    date: dateISO,
+  };
+  return { ...data, completionLog: [...data.completionLog, entry] };
+}
+
 // All fields are optional and ANDed together (categoryIds ORs within
 // itself). `all: true` bypasses every other field. Kept flat (no nested
 // objects) to match the provider-adapter tool-schema contract — see

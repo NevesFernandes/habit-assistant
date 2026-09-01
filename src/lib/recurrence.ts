@@ -1,8 +1,13 @@
-// Recurrence evaluation for Habits (and, later, Recurring Tasks — same
-// RecurrenceRule shape). Pure date-string arithmetic, no date library: the
-// project has none, and ISO ("YYYY-MM-DD") strings compare/sort lexically
-// so most of this doesn't need a Date object at all.
-import type { CompletionLogEntry, Habit, RecurrenceRule } from "../types/models";
+// Recurrence evaluation for Habits and Recurring Tasks — same RecurrenceRule
+// shape. Pure date-string arithmetic, no date library: the project has none,
+// and ISO ("YYYY-MM-DD") strings compare/sort lexically so most of this
+// doesn't need a Date object at all.
+import type { BaseItem, CompletionLogEntry, Habit, RecurrenceRule, RecurringTask } from "../types/models";
+
+// occursOn only ever reads startDate/endDate/recurrence — fields Habit and
+// RecurringTask both carry — so it's typed structurally rather than to Habit
+// specifically, letting both item kinds satisfy it without a cast.
+type RecurringItem = Pick<BaseItem, "startDate" | "endDate"> & { recurrence: RecurrenceRule };
 
 function parseISODate(dateISO: string): Date {
   const [year, month, day] = dateISO.split("-").map(Number);
@@ -108,17 +113,17 @@ function addMonthsISO(dateISO: string, months: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-export function occursOn(habit: Habit, dateISO: string): boolean {
-  if (dateISO < habit.startDate) return false;
-  if (habit.endDate && dateISO > habit.endDate) return false;
+export function occursOn(item: RecurringItem, dateISO: string): boolean {
+  if (dateISO < item.startDate) return false;
+  if (item.endDate && dateISO > item.endDate) return false;
 
-  switch (habit.recurrence.type) {
+  switch (item.recurrence.type) {
     case "daily":
       return true;
     case "daysOfWeek":
-      return habit.recurrence.days.includes(dayOfWeek(dateISO));
+      return item.recurrence.days.includes(dayOfWeek(dateISO));
     case "intervalDays":
-      return daysBetween(habit.startDate, dateISO) % habit.recurrence.interval === 0;
+      return daysBetween(item.startDate, dateISO) % item.recurrence.interval === 0;
     case "timesPerPeriod":
       // Flexible/unpinned to specific days — eligible every day in bounds;
       // progress toward the period's target is tracked via completionsInPeriod.
@@ -126,14 +131,14 @@ export function occursOn(habit: Habit, dateISO: string): boolean {
     case "nthWeekdayOfMonth":
       // If the nth occurrence doesn't exist in a given month (e.g. a 5th
       // Monday), it simply doesn't occur that month — no fallback to the 4th.
-      return nthWeekdayOfMonthDate(dateISO, habit.recurrence.nth, habit.recurrence.weekday) === dateISO;
+      return nthWeekdayOfMonthDate(dateISO, item.recurrence.nth, item.recurrence.weekday) === dateISO;
     case "specificDatesOfYear":
-      return habit.recurrence.dates.includes(dateISO.slice(5));
+      return item.recurrence.dates.includes(dateISO.slice(5));
     case "onOffCycle": {
-      const total = habit.recurrence.onDays + habit.recurrence.offDays;
+      const total = item.recurrence.onDays + item.recurrence.offDays;
       if (total <= 0) return true;
-      const pos = ((daysBetween(habit.startDate, dateISO) % total) + total) % total;
-      return pos < habit.recurrence.onDays;
+      const pos = ((daysBetween(item.startDate, dateISO) % total) + total) % total;
+      return pos < item.recurrence.onDays;
     }
   }
 }
@@ -141,6 +146,13 @@ export function occursOn(habit: Habit, dateISO: string): boolean {
 export function getHabitsForDate(habits: Habit[], dateISO: string): Habit[] {
   return habits
     .filter((habit) => occursOn(habit, dateISO))
+    .slice()
+    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+}
+
+export function getRecurringTasksForDate(tasks: RecurringTask[], dateISO: string): RecurringTask[] {
+  return tasks
+    .filter((task) => occursOn(task, dateISO))
     .slice()
     .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
 }

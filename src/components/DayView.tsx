@@ -1,26 +1,40 @@
-import type { Category, CompletionLogEntry, Habit, SingleTask } from "../types/models";
-import { completionsInPeriod, getHabitsForDate } from "../lib/recurrence";
+import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
+import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
 import CategoryIcon from "./CategoryIcon";
 
-type DayItem = { kind: "habit"; item: Habit } | { kind: "singleTask"; item: SingleTask };
+type DayItem =
+  | { kind: "habit"; item: Habit }
+  | { kind: "singleTask"; item: SingleTask }
+  | { kind: "recurringTask"; item: RecurringTask };
 
 interface DayViewProps {
   selectedDate: string;
   habits: Habit[];
   singleTasks: SingleTask[];
+  recurringTasks: RecurringTask[];
   completionLog: CompletionLogEntry[];
   categories: Category[];
   onToggleHabit: (habitId: string) => void;
   onToggleTask: (taskId: string) => void;
+  onToggleRecurringTask: (taskId: string) => void;
 }
 
-function getItemsForDate(habits: Habit[], singleTasks: SingleTask[], dateISO: string): DayItem[] {
+function getItemsForDate(
+  habits: Habit[],
+  singleTasks: SingleTask[],
+  recurringTasks: RecurringTask[],
+  dateISO: string,
+): DayItem[] {
   const habitItems: DayItem[] = getHabitsForDate(habits, dateISO).map((item) => ({ kind: "habit", item }));
   const taskItems: DayItem[] = singleTasks
     .filter((task) => isSingleTaskActiveOn(task, dateISO))
     .map((item) => ({ kind: "singleTask", item }));
-  return [...habitItems, ...taskItems].sort(
+  const recurringTaskItems: DayItem[] = getRecurringTasksForDate(recurringTasks, dateISO).map((item) => ({
+    kind: "recurringTask",
+    item,
+  }));
+  return [...habitItems, ...taskItems, ...recurringTaskItems].sort(
     (a, b) => b.item.priority - a.item.priority || a.item.name.localeCompare(b.item.name),
   );
 }
@@ -29,12 +43,14 @@ export default function DayView({
   selectedDate,
   habits,
   singleTasks,
+  recurringTasks,
   completionLog,
   categories,
   onToggleHabit,
   onToggleTask,
+  onToggleRecurringTask,
 }: DayViewProps) {
-  const items = getItemsForDate(habits, singleTasks, selectedDate);
+  const items = getItemsForDate(habits, singleTasks, recurringTasks, selectedDate);
 
   if (items.length === 0) {
     return (
@@ -46,20 +62,33 @@ export default function DayView({
 
   return (
     <ul className="flex flex-col gap-2">
-      {items.map((entry) =>
-        entry.kind === "habit" ? (
-          <HabitRow
-            key={entry.item.id}
-            habit={entry.item}
-            selectedDate={selectedDate}
-            completionLog={completionLog}
-            categories={categories}
-            onToggle={onToggleHabit}
-          />
-        ) : (
-          <TaskRow key={entry.item.id} task={entry.item} categories={categories} onToggle={onToggleTask} />
-        ),
-      )}
+      {items.map((entry) => {
+        if (entry.kind === "habit") {
+          return (
+            <HabitRow
+              key={entry.item.id}
+              habit={entry.item}
+              selectedDate={selectedDate}
+              completionLog={completionLog}
+              categories={categories}
+              onToggle={onToggleHabit}
+            />
+          );
+        }
+        if (entry.kind === "recurringTask") {
+          return (
+            <RecurringTaskRow
+              key={entry.item.id}
+              task={entry.item}
+              selectedDate={selectedDate}
+              completionLog={completionLog}
+              categories={categories}
+              onToggle={onToggleRecurringTask}
+            />
+          );
+        }
+        return <TaskRow key={entry.item.id} task={entry.item} categories={categories} onToggle={onToggleTask} />;
+      })}
     </ul>
   );
 }
@@ -104,6 +133,39 @@ function HabitRow({
           {isDone ? "Done" : "Mark done"}
         </button>
       )}
+    </li>
+  );
+}
+
+function RecurringTaskRow({
+  task,
+  selectedDate,
+  completionLog,
+  categories,
+  onToggle,
+}: {
+  task: RecurringTask;
+  selectedDate: string;
+  completionLog: CompletionLogEntry[];
+  categories: Category[];
+  onToggle: (taskId: string) => void;
+}) {
+  const category = categories.find((c) => c.id === task.categoryId);
+  const isDone = completionLog.some((entry) => entry.itemId === task.id && entry.date === selectedDate);
+  return (
+    <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
+      <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
+      <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
+        <div>{task.name}</div>
+        {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
+        {task.recurrence.type === "timesPerPeriod" && (
+          <div className="text-xs text-violet-300">
+            {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period)}/
+            {task.recurrence.count} this {task.recurrence.period}
+          </div>
+        )}
+      </div>
+      <input type="checkbox" checked={isDone} onChange={() => onToggle(task.id)} className="h-4 w-4" />
     </li>
   );
 }

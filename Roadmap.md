@@ -16,8 +16,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §14 — Render Recurring Task occurrences in the daily view
-`DayView.tsx` currently shows Habits and Single Tasks for the selected day but not Recurring Tasks — they're only visible/actionable via the standalone `RecurringTasksView`, breaking the chat-first "show me what's on today" workflow CLAUDE.md centers the app around. Needs: a day-membership filter for Recurring Tasks (mirroring `getHabitsForDate`, using the same `recurrence.ts` occurrence logic already built for Habits), rendering them alongside Habits/Single Tasks in `DayView.tsx`, and wiring per-occurrence done/not-done toggling from that view.
+_Nothing queued right now — see Next below for what's up next._
 
 ## Next
 
