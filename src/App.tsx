@@ -36,6 +36,7 @@ import {
   resolveSingleTasks,
   rolloverPersistentTasks,
   toggleHabitCompletion,
+  toggleRecurringTaskCompletion,
   toggleSingleTaskDone,
   updateCategory,
   updateHabit,
@@ -407,6 +408,11 @@ export default function App() {
     void persist(toggleHabitCompletion(data, habitId, selectedDate));
   }
 
+  function handleRecurringTaskToggle(taskId: string) {
+    if (!data) return;
+    void persist(toggleRecurringTaskCompletion(data, taskId, selectedDate));
+  }
+
   function handleAddCategory(input: CreateCategoryInput) {
     if (!data) return;
     void persist(addCategory(data, input));
@@ -474,10 +480,12 @@ export default function App() {
               selectedDate={selectedDate}
               habits={data.habits}
               singleTasks={data.singleTasks}
+              recurringTasks={data.recurringTasks}
               completionLog={data.completionLog}
               categories={data.categories}
               onToggleHabit={handleHabitToggle}
               onToggleTask={handleTaskToggle}
+              onToggleRecurringTask={handleRecurringTaskToggle}
             />
           </div>
         )}
