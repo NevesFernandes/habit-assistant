@@ -87,7 +87,7 @@ For logHabitProgress: name is the same kind of text fragment used elsewhere to s
 
 For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
 
-For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). Note for checkHabitChecklistItem specifically: a habit's checklist is currently one shared list, not reset per day, so checking an item off doesn't yet have day-by-day meaning — treat it the same as any other edit to the habit.
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
 
 For createSingleTask specifically:
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
@@ -748,7 +748,7 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
     {
       name: "checkHabitChecklistItem",
       description:
-        "Check or uncheck one item on a checklist-type habit's checklist. Use for phrases like 'check off stretching on my morning routine' or 'uncheck meditate'.",
+        "Check or uncheck one item on a checklist-type habit's checklist, for a specific date (defaults to today) — a habit's checklist resets per occurrence. Use for phrases like 'check off stretching on my morning routine' or 'uncheck meditate'.",
       parameters: {
         type: "object",
         properties: {
@@ -758,6 +758,7 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
             type: "boolean",
             description: "true (default) to check it off; false to uncheck it.",
           },
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
         },
         required: ["name", "item"],
       },

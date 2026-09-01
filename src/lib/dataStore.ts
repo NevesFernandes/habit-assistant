@@ -535,15 +535,48 @@ function appendChecklistItemState(checklist: ChecklistItem[] | undefined, text: 
   return [...(checklist ?? []), { id: crypto.randomUUID(), text, checked: false }];
 }
 
+// A Habit's checklist (unlike a Task's) resets per occurrence: `Habit.checklist` is
+// just the template (item set/order), and live checked state lives per-date on
+// `CompletionLogEntry.checklist`, seeded from the template the first time a date is
+// touched. This mirrors setHabitValue's upsert-by-(habitId,date) shape for
+// numeric/timer habits, just carrying a checklist snapshot instead of a number.
+function withHabitChecklistEntry(
+  data: AppData,
+  habit: Habit,
+  dateISO: string,
+  update: (checklist: ChecklistItem[]) => ChecklistItem[],
+): AppData {
+  const existing = data.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO);
+  const baseChecklist = existing?.checklist ?? (habit.checklist ?? []).map((item) => ({ ...item, checked: false }));
+  const updatedChecklist = update(baseChecklist);
+  if (existing) {
+    return {
+      ...data,
+      completionLog: data.completionLog.map((entry) =>
+        entry.id === existing.id ? { ...entry, checklist: updatedChecklist } : entry,
+      ),
+    };
+  }
+  const entry: CompletionLogEntry = {
+    id: crypto.randomUUID(),
+    itemId: habit.id,
+    date: dateISO,
+    checklist: updatedChecklist,
+  };
+  return { ...data, completionLog: [...data.completionLog, entry] };
+}
+
 // UI path (component already renders the item's current state, so a blind flip is
 // safe) vs. chat path (setChecked — the agent can't see current state and must act
 // on stated intent, "check off X" vs "uncheck X", not blindly flip it). Mirrors
-// toggleHabitCompletion (UI) vs. setHabitValue (chat) for numeric/timer habits.
-export function toggleHabitChecklistItem(data: AppData, habitId: string, itemId: string): AppData {
-  return {
-    ...data,
-    habits: data.habits.map((h) => (h.id === habitId ? { ...h, checklist: toggleChecklistItemState(h.checklist, itemId) } : h)),
-  };
+// toggleHabitCompletion (UI) vs. setHabitValue (chat) for numeric/timer habits. Unlike
+// toggleHabitCompletion, never deletes the entry on uncheck — completion here is judged
+// by "all items checked" (see isHabitEntryComplete), not by entry presence, so a
+// partially/fully-unchecked entry is still meaningful state worth keeping.
+export function toggleHabitChecklistItem(data: AppData, habitId: string, itemId: string, dateISO: string): AppData {
+  const habit = data.habits.find((h) => h.id === habitId);
+  if (!habit) return data;
+  return withHabitChecklistEntry(data, habit, dateISO, (checklist) => toggleChecklistItemState(checklist, itemId));
 }
 
 export function toggleRecurringTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
@@ -564,13 +597,18 @@ export function toggleSingleTaskChecklistItem(data: AppData, taskId: string, ite
   };
 }
 
-export function setHabitChecklistItemChecked(data: AppData, habitId: string, itemId: string, checked: boolean): AppData {
-  return {
-    ...data,
-    habits: data.habits.map((h) =>
-      h.id === habitId ? { ...h, checklist: setChecklistItemCheckedState(h.checklist, itemId, checked) } : h,
-    ),
-  };
+export function setHabitChecklistItemChecked(
+  data: AppData,
+  habitId: string,
+  itemId: string,
+  checked: boolean,
+  dateISO: string,
+): AppData {
+  const habit = data.habits.find((h) => h.id === habitId);
+  if (!habit) return data;
+  return withHabitChecklistEntry(data, habit, dateISO, (checklist) =>
+    setChecklistItemCheckedState(checklist, itemId, checked),
+  );
 }
 
 export function setRecurringTaskChecklistItemChecked(

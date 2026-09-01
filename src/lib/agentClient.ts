@@ -87,7 +87,7 @@ export interface AddSingleTaskChecklistItemToolCall {
 
 export interface CheckHabitChecklistItemToolCall {
   name: "checkHabitChecklistItem";
-  input: { name: string; item: string; checked?: boolean };
+  input: { name: string; item: string; checked?: boolean; date?: string };
 }
 
 export interface CheckRecurringTaskChecklistItemToolCall {

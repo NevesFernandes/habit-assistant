@@ -1,4 +1,4 @@
-import type { CompletionLogEntry, Habit } from "../types/models";
+import type { ChecklistItem, CompletionLogEntry, Habit } from "../types/models";
 import { addDays, completionsInPeriod, occursOn, startOfMonth, startOfWeek, startOfYear } from "./recurrence";
 
 export interface HabitStats {
@@ -11,16 +11,38 @@ export interface HabitStats {
   completionsAllTime: number;
 }
 
-// A logged entry alone means "complete" for yesno/checklist habits, or for value/timer
-// habits with no target set (backward-compatible: every habit created before target
-// existed has it undefined). Once a value/timer habit has a target, an entry only counts
-// once its value meets it — a partial log (e.g. 6 of 8 glasses) is progress, not completion.
+// A logged entry alone means "complete" for yesno habits, or for value/timer habits with
+// no target set (backward-compatible: every habit created before target existed has it
+// undefined). Once a value/timer habit has a target, an entry only counts once its value
+// meets it — a partial log (e.g. 6 of 8 glasses) is progress, not completion. Checklist
+// habits follow the same target-style logic: complete only once every item in that date's
+// snapshot is checked — a partial checklist is progress (see checklistProgress), not
+// completion, same as an under-target numeric log.
 export function isHabitEntryComplete(habit: Habit, entry: CompletionLogEntry | undefined): boolean {
   if (!entry) return false;
   if ((habit.completionType === "value" || habit.completionType === "timer") && habit.target !== undefined) {
     return (entry.value ?? 0) >= habit.target;
   }
+  if (habit.completionType === "checklist") {
+    const items = entry.checklist ?? [];
+    return items.length > 0 && items.every((item) => item.checked);
+  }
   return true;
+}
+
+// "N of M items checked" for a checklist habit's given date. Falls back to the habit's
+// template item set (all unchecked) when that date has no logged entry yet, so a
+// never-touched occurrence reads as "0/<item count>" rather than "0/0".
+export function checklistProgress(habit: Habit, entry: CompletionLogEntry | undefined): { checked: number; total: number } {
+  const items = entry?.checklist ?? habit.checklist ?? [];
+  return { checked: items.filter((item) => item.checked).length, total: items.length };
+}
+
+// The full per-item state to render for a checklist habit on a given date: the logged
+// entry's snapshot if one exists, else the template mapped to all-unchecked (matching
+// what a freshly created entry for that date would contain).
+export function checklistItemsForEntry(habit: Habit, entry: CompletionLogEntry | undefined): ChecklistItem[] {
+  return entry?.checklist ?? (habit.checklist ?? []).map((item) => ({ ...item, checked: false }));
 }
 
 function isCompletedOn(habit: Habit, completionLog: CompletionLogEntry[], dateISO: string): boolean {
