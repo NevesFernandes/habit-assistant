@@ -27,14 +27,16 @@ export interface BaseItem {
   endDate?: string; // ISO date
 }
 
-// v1 recurrence types. Extend this union with nthWeekdayOfMonth,
-// specificDatesOfYear, and onOffCycle in the fast-follow-up pass —
-// see the "Periodicity" section of CLAUDE.md for the full target list.
+// See the "Periodicity" section of CLAUDE.md for the product rationale
+// behind each variant.
 export type RecurrenceRule =
   | { type: "daily" }
   | { type: "daysOfWeek"; days: number[] } // 0 = Sunday .. 6 = Saturday
   | { type: "intervalDays"; interval: number }
-  | { type: "timesPerPeriod"; period: "week" | "month"; count: number };
+  | { type: "timesPerPeriod"; period: "week" | "month"; count: number }
+  | { type: "nthWeekdayOfMonth"; nth: "first" | "second" | "third" | "fourth" | "fifth" | "last"; weekday: number }
+  | { type: "specificDatesOfYear"; dates: string[] } // "MM-DD", no year
+  | { type: "onOffCycle"; onDays: number; offDays: number };
 
 export type CompletionType = "yesno" | "value" | "timer" | "checklist";
 

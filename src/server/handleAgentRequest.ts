@@ -90,6 +90,9 @@ For createHabit specifically:
   - specific weekdays (e.g. "Mon/Wed/Fri", "on weekends") → recurrenceType "daysOfWeek" with recurrenceDays as an array of 0=Sunday..6=Saturday
   - "every N days" (e.g. "every 3 days") → recurrenceType "intervalDays" with recurrenceInterval = N
   - "N times a week/month" (not pinned to specific days) → recurrenceType "timesPerPeriod" with recurrencePeriod ("week" or "month") and recurrenceCount = N
+  - "the Nth <weekday> of the month" (e.g. "every third Monday", "the last Friday of the month") → recurrenceType "nthWeekdayOfMonth" with recurrenceNth ("first"|"second"|"third"|"fourth"|"fifth"|"last") and recurrenceWeekday (0=Sunday..6=Saturday)
+  - a date that recurs every year (e.g. a birthday, an anniversary) → recurrenceType "specificDatesOfYear" with recurrenceDates as an array of "MM-DD" strings (no year). recurrenceDates always replaces the full list — you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing habit, ask them for the complete list of dates rather than guessing what's already there (same as checklistItems below).
+  - "N days on, M days off" (e.g. "5 days on, 2 days off") → recurrenceType "onOffCycle" with recurrenceOnDays = N and recurrenceOffDays = M
   - If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing.
 - completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names).
 
@@ -199,7 +202,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           recurrenceType: {
             type: "string",
             description: "How this habit repeats.",
-            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+            enum: [
+              "daily",
+              "daysOfWeek",
+              "intervalDays",
+              "timesPerPeriod",
+              "nthWeekdayOfMonth",
+              "specificDatesOfYear",
+              "onOffCycle",
+            ],
           },
           recurrenceDays: {
             type: "array",
@@ -218,6 +229,29 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           recurrenceCount: {
             type: "number",
             description: "Used when recurrenceType is timesPerPeriod: how many times per period.",
+          },
+          recurrenceNth: {
+            type: "string",
+            description: "Used when recurrenceType is nthWeekdayOfMonth: which occurrence of recurrenceWeekday in the month.",
+            enum: ["first", "second", "third", "fourth", "fifth", "last"],
+          },
+          recurrenceWeekday: {
+            type: "number",
+            description: "Used when recurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
+          },
+          recurrenceDates: {
+            type: "array",
+            description:
+              "Used when recurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year), e.g. \"03-15\".",
+            items: { type: "string" },
+          },
+          recurrenceOnDays: {
+            type: "number",
+            description: "Used when recurrenceType is onOffCycle: consecutive days on, starting at startDate.",
+          },
+          recurrenceOffDays: {
+            type: "number",
+            description: "Used when recurrenceType is onOffCycle: consecutive days off, following the on days.",
           },
           completionType: {
             type: "string",
@@ -274,7 +308,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           recurrenceType: {
             type: "string",
             description: "How this task repeats.",
-            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+            enum: [
+              "daily",
+              "daysOfWeek",
+              "intervalDays",
+              "timesPerPeriod",
+              "nthWeekdayOfMonth",
+              "specificDatesOfYear",
+              "onOffCycle",
+            ],
           },
           recurrenceDays: {
             type: "array",
@@ -293,6 +335,29 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           recurrenceCount: {
             type: "number",
             description: "Used when recurrenceType is timesPerPeriod: how many times per period.",
+          },
+          recurrenceNth: {
+            type: "string",
+            description: "Used when recurrenceType is nthWeekdayOfMonth: which occurrence of recurrenceWeekday in the month.",
+            enum: ["first", "second", "third", "fourth", "fifth", "last"],
+          },
+          recurrenceWeekday: {
+            type: "number",
+            description: "Used when recurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
+          },
+          recurrenceDates: {
+            type: "array",
+            description:
+              "Used when recurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year), e.g. \"03-15\".",
+            items: { type: "string" },
+          },
+          recurrenceOnDays: {
+            type: "number",
+            description: "Used when recurrenceType is onOffCycle: consecutive days on, starting at startDate.",
+          },
+          recurrenceOffDays: {
+            type: "number",
+            description: "Used when recurrenceType is onOffCycle: consecutive days off, following the on days.",
           },
         },
         required: ["name", "recurrenceType"],
@@ -435,7 +500,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newRecurrenceType: {
             type: "string",
             description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
-            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+            enum: [
+              "daily",
+              "daysOfWeek",
+              "intervalDays",
+              "timesPerPeriod",
+              "nthWeekdayOfMonth",
+              "specificDatesOfYear",
+              "onOffCycle",
+            ],
           },
           newRecurrenceDays: {
             type: "array",
@@ -454,6 +527,29 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newRecurrenceCount: {
             type: "number",
             description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
+          },
+          newRecurrenceNth: {
+            type: "string",
+            description: "Used when newRecurrenceType is nthWeekdayOfMonth: which occurrence of newRecurrenceWeekday in the month.",
+            enum: ["first", "second", "third", "fourth", "fifth", "last"],
+          },
+          newRecurrenceWeekday: {
+            type: "number",
+            description: "Used when newRecurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
+          },
+          newRecurrenceDates: {
+            type: "array",
+            description:
+              "Used when newRecurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year). Fully replaces the existing list.",
+            items: { type: "string" },
+          },
+          newRecurrenceOnDays: {
+            type: "number",
+            description: "Used when newRecurrenceType is onOffCycle: consecutive days on, starting at startDate.",
+          },
+          newRecurrenceOffDays: {
+            type: "number",
+            description: "Used when newRecurrenceType is onOffCycle: consecutive days off, following the on days.",
           },
           newCompletionType: {
             type: "string",
@@ -491,7 +587,15 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newRecurrenceType: {
             type: "string",
             description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
-            enum: ["daily", "daysOfWeek", "intervalDays", "timesPerPeriod"],
+            enum: [
+              "daily",
+              "daysOfWeek",
+              "intervalDays",
+              "timesPerPeriod",
+              "nthWeekdayOfMonth",
+              "specificDatesOfYear",
+              "onOffCycle",
+            ],
           },
           newRecurrenceDays: {
             type: "array",
@@ -510,6 +614,29 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newRecurrenceCount: {
             type: "number",
             description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
+          },
+          newRecurrenceNth: {
+            type: "string",
+            description: "Used when newRecurrenceType is nthWeekdayOfMonth: which occurrence of newRecurrenceWeekday in the month.",
+            enum: ["first", "second", "third", "fourth", "fifth", "last"],
+          },
+          newRecurrenceWeekday: {
+            type: "number",
+            description: "Used when newRecurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
+          },
+          newRecurrenceDates: {
+            type: "array",
+            description:
+              "Used when newRecurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year). Fully replaces the existing list.",
+            items: { type: "string" },
+          },
+          newRecurrenceOnDays: {
+            type: "number",
+            description: "Used when newRecurrenceType is onOffCycle: consecutive days on, starting at startDate.",
+          },
+          newRecurrenceOffDays: {
+            type: "number",
+            description: "Used when newRecurrenceType is onOffCycle: consecutive days off, following the on days.",
           },
         },
         required: ["name"],

@@ -4,7 +4,7 @@ An agent-driven habit tracker and task manager. Instead of navigating menus, for
 
 This friction — fighting an app's UI just to log something simple — is the entire reason this project exists. Every design decision below should be judged against whether it reduces that friction.
 
-**Status: core loop built, depth still filling in.** Sign-in with Google, Drive-backed data storage, a chat UI backed by a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. The agent can create, update, delete, and archive Single Tasks, Habits, and Recurring Tasks, and manage Categories; the v1 recurrence engine (daily, specific weekdays, every-N-days, N-times-per-week) works, and per-habit/per-category stats (streaks, completion %, period counts) are already computed and shown. Still missing: real tracking for Habit completion types other than Yes/No (Numeric/Timer/Checklist exist only as labels so far), a genuinely shared/interactive checklist component, the fast-follow recurrence types (nth-weekday-of-month, yearly dates, on/off cycles), and any chart-based dashboard visuals — see `README.md` for how to run what exists, and `Roadmap.md` for the prioritized backlog of what's planned next.
+**Status: core loop built, depth still filling in.** Sign-in with Google, Drive-backed data storage, a chat UI backed by a provider-agnostic agent layer (shared free trial + BYOK settings), and voice input (Groq Whisper, press-and-hold) are implemented end-to-end. The agent can create, update, delete, and archive Single Tasks, Habits, and Recurring Tasks, and manage Categories; the full recurrence engine (daily, specific weekdays, every-N-days, N-times-per-week, nth-weekday-of-month, specific yearly dates, on/off cycles) works, and per-habit/per-category stats (streaks, completion %, period counts) are already computed and shown. Still missing: real tracking for Habit completion types other than Yes/No (Numeric/Timer/Checklist exist only as labels so far), a genuinely shared/interactive checklist component, and any chart-based dashboard visuals — see `README.md` for how to run what exists, and `Roadmap.md` for the prioritized backlog of what's planned next.
 
 ## Interaction model
 
@@ -67,7 +67,7 @@ Applies to Habits and Recurring Tasks. The full target model:
 - Interval repeats ("every X days")
 - On/off cycles ("5 days on, 2 days off")
 
-**This is phased.** The data model should be designed up front to represent all of the above, but v1's actual implementation only needs to cover the common cases: every day, specific days of week, every X days, N times per week. The remaining types (nth-weekday-of-month, specific yearly dates, on/off cycles) are a fast follow-up once the core create → track → complete loop works end-to-end. Don't skip designing the data model for them now just because they're not built yet — retrofitting recurrence rules later is painful.
+**All of the above is built.** v1 shipped the common cases first (every day, specific days of week, every X days, N times per week); nth-weekday-of-month, specific yearly dates, and on/off cycles followed as the planned fast-follow (`src/types/models.ts`'s `RecurrenceRule`, resolved in `src/lib/recurrence.ts`, settable via the agent's tool schemas in `src/server/handleAgentRequest.ts`). No UI form exists for any recurrence type — creation and editing are chat-only, by design.
 
 ## Architecture
 

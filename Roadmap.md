@@ -16,14 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §13 — Fast-follow recurrence types
-`RecurrenceRule` (`src/types/models.ts`) currently only has the 4 v1 variants: `daily`, `daysOfWeek`, `intervalDays`, `timesPerPeriod`. Add the three types CLAUDE.md's Periodicity section documents as fast-follow but not yet built:
-- Specific days of the month, including "nth weekday of month" (e.g. "third Monday") via two linked selectors: first/second/third/fourth/fifth/last + day-of-week.
-- Specific dates of the year (recurring annually, e.g. birthdays), added one at a time to a list.
-- On/off cycles ("5 days on, 2 days off").
-
-Needs: new `RecurrenceRule` union variants, resolution logic in `src/lib/recurrence.ts` (alongside the existing `occursOn`), and LLM tool schema updates in `src/server/handleAgentRequest.ts` (createHabit/createRecurringTask/updateHabit/updateRecurringTask) so the agent can actually set these. No UI form exists for any recurrence type today (creation is chat-only) — keep that pattern, no new form UI needed.
-
 ### §14 — Render Recurring Task occurrences in the daily view
 `DayView.tsx` currently shows Habits and Single Tasks for the selected day but not Recurring Tasks — they're only visible/actionable via the standalone `RecurringTasksView`, breaking the chat-first "show me what's on today" workflow CLAUDE.md centers the app around. Needs: a day-membership filter for Recurring Tasks (mirroring `getHabitsForDate`, using the same `recurrence.ts` occurrence logic already built for Habits), rendering them alongside Habits/Single Tasks in `DayView.tsx`, and wiring per-occurrence done/not-done toggling from that view.
 

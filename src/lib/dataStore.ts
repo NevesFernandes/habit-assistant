@@ -83,6 +83,11 @@ export interface CreateHabitInput {
   recurrenceInterval?: number;
   recurrencePeriod?: "week" | "month";
   recurrenceCount?: number;
+  recurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
+  recurrenceWeekday?: number;
+  recurrenceDates?: string[]; // "MM-DD", no year
+  recurrenceOnDays?: number;
+  recurrenceOffDays?: number;
   completionType?: Habit["completionType"];
   checklistItems?: string[];
 }
@@ -115,7 +120,16 @@ function resolveStartDate(input: StartDateInput): string {
 
 type RecurrenceInput = Pick<
   CreateHabitInput,
-  "recurrenceType" | "recurrenceDays" | "recurrenceInterval" | "recurrencePeriod" | "recurrenceCount"
+  | "recurrenceType"
+  | "recurrenceDays"
+  | "recurrenceInterval"
+  | "recurrencePeriod"
+  | "recurrenceCount"
+  | "recurrenceNth"
+  | "recurrenceWeekday"
+  | "recurrenceDates"
+  | "recurrenceOnDays"
+  | "recurrenceOffDays"
 >;
 
 function buildRecurrence(input: RecurrenceInput): RecurrenceRule {
@@ -129,6 +143,20 @@ function buildRecurrence(input: RecurrenceInput): RecurrenceRule {
         type: "timesPerPeriod",
         period: input.recurrencePeriod ?? "week",
         count: input.recurrenceCount ?? 1,
+      };
+    case "nthWeekdayOfMonth":
+      return {
+        type: "nthWeekdayOfMonth",
+        nth: input.recurrenceNth ?? "first",
+        weekday: input.recurrenceWeekday ?? 0,
+      };
+    case "specificDatesOfYear":
+      return { type: "specificDatesOfYear", dates: input.recurrenceDates ?? [] };
+    case "onOffCycle":
+      return {
+        type: "onOffCycle",
+        onDays: input.recurrenceOnDays ?? 1,
+        offDays: input.recurrenceOffDays ?? 0,
       };
     case "daily":
     default:
@@ -198,6 +226,11 @@ export interface CreateRecurringTaskInput {
   recurrenceInterval?: number;
   recurrencePeriod?: "week" | "month";
   recurrenceCount?: number;
+  recurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
+  recurrenceWeekday?: number;
+  recurrenceDates?: string[]; // "MM-DD", no year
+  recurrenceOnDays?: number;
+  recurrenceOffDays?: number;
 }
 
 export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
@@ -339,6 +372,11 @@ export interface UpdatePatch {
   newRecurrenceInterval?: number;
   newRecurrencePeriod?: "week" | "month";
   newRecurrenceCount?: number;
+  newRecurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
+  newRecurrenceWeekday?: number;
+  newRecurrenceDates?: string[]; // "MM-DD", no year — fully replaces the list, same as newChecklistItems
+  newRecurrenceOnDays?: number;
+  newRecurrenceOffDays?: number;
   newCompletionType?: CompletionType; // Habit only
   newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
 }
@@ -362,6 +400,11 @@ function resolveRecurrence(current: RecurrenceRule, patch: UpdatePatch): Recurre
     recurrenceInterval: patch.newRecurrenceInterval,
     recurrencePeriod: patch.newRecurrencePeriod,
     recurrenceCount: patch.newRecurrenceCount,
+    recurrenceNth: patch.newRecurrenceNth,
+    recurrenceWeekday: patch.newRecurrenceWeekday,
+    recurrenceDates: patch.newRecurrenceDates,
+    recurrenceOnDays: patch.newRecurrenceOnDays,
+    recurrenceOffDays: patch.newRecurrenceOffDays,
   });
 }
 
