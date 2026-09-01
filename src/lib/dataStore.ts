@@ -5,6 +5,7 @@ import type {
   AppData,
   BaseItem,
   Category,
+  ChecklistItem,
   CompletionLogEntry,
   CompletionType,
   Habit,
@@ -515,6 +516,110 @@ export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatc
         recurrence: resolveRecurrence(task.recurrence, patch),
       };
     }),
+  };
+}
+
+function toggleChecklistItemState(checklist: ChecklistItem[] | undefined, itemId: string): ChecklistItem[] {
+  return (checklist ?? []).map((item) => (item.id === itemId ? { ...item, checked: !item.checked } : item));
+}
+
+function setChecklistItemCheckedState(
+  checklist: ChecklistItem[] | undefined,
+  itemId: string,
+  checked: boolean,
+): ChecklistItem[] {
+  return (checklist ?? []).map((item) => (item.id === itemId ? { ...item, checked } : item));
+}
+
+function appendChecklistItemState(checklist: ChecklistItem[] | undefined, text: string): ChecklistItem[] {
+  return [...(checklist ?? []), { id: crypto.randomUUID(), text, checked: false }];
+}
+
+// UI path (component already renders the item's current state, so a blind flip is
+// safe) vs. chat path (setChecked — the agent can't see current state and must act
+// on stated intent, "check off X" vs "uncheck X", not blindly flip it). Mirrors
+// toggleHabitCompletion (UI) vs. setHabitValue (chat) for numeric/timer habits.
+export function toggleHabitChecklistItem(data: AppData, habitId: string, itemId: string): AppData {
+  return {
+    ...data,
+    habits: data.habits.map((h) => (h.id === habitId ? { ...h, checklist: toggleChecklistItemState(h.checklist, itemId) } : h)),
+  };
+}
+
+export function toggleRecurringTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
+  return {
+    ...data,
+    recurringTasks: data.recurringTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: toggleChecklistItemState(t.checklist, itemId) } : t,
+    ),
+  };
+}
+
+export function toggleSingleTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: toggleChecklistItemState(t.checklist, itemId) } : t,
+    ),
+  };
+}
+
+export function setHabitChecklistItemChecked(data: AppData, habitId: string, itemId: string, checked: boolean): AppData {
+  return {
+    ...data,
+    habits: data.habits.map((h) =>
+      h.id === habitId ? { ...h, checklist: setChecklistItemCheckedState(h.checklist, itemId, checked) } : h,
+    ),
+  };
+}
+
+export function setRecurringTaskChecklistItemChecked(
+  data: AppData,
+  taskId: string,
+  itemId: string,
+  checked: boolean,
+): AppData {
+  return {
+    ...data,
+    recurringTasks: data.recurringTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: setChecklistItemCheckedState(t.checklist, itemId, checked) } : t,
+    ),
+  };
+}
+
+export function setSingleTaskChecklistItemChecked(
+  data: AppData,
+  taskId: string,
+  itemId: string,
+  checked: boolean,
+): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: setChecklistItemCheckedState(t.checklist, itemId, checked) } : t,
+    ),
+  };
+}
+
+// Dual-use: called both from the UI's "+" button (already has the task id) and from
+// the chat path (resolves the task by name first, then calls this same function). No
+// Habit equivalent — a Habit's checklist is a fixed routine set at creation/update
+// time (createHabit/updateHabit's checklistItems/newChecklistItems), not a growing list.
+export function addRecurringTaskChecklistItem(data: AppData, taskId: string, text: string): AppData {
+  return {
+    ...data,
+    recurringTasks: data.recurringTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: appendChecklistItemState(t.checklist, text) } : t,
+    ),
+  };
+}
+
+export function addSingleTaskChecklistItem(data: AppData, taskId: string, text: string): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((t) =>
+      t.id === taskId ? { ...t, checklist: appendChecklistItemState(t.checklist, text) } : t,
+    ),
   };
 }
 

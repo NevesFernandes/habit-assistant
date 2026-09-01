@@ -25,7 +25,9 @@ import {
   addCategory,
   addHabit,
   addRecurringTask,
+  addRecurringTaskChecklistItem,
   addSingleTask,
+  addSingleTaskChecklistItem,
   deleteCategory,
   deleteHabits,
   deleteRecurringTasks,
@@ -35,9 +37,15 @@ import {
   resolveRecurringTasks,
   resolveSingleTasks,
   rolloverPersistentTasks,
+  setHabitChecklistItemChecked,
   setHabitValue,
+  setRecurringTaskChecklistItemChecked,
+  setSingleTaskChecklistItemChecked,
+  toggleHabitChecklistItem,
   toggleHabitCompletion,
+  toggleRecurringTaskChecklistItem,
   toggleRecurringTaskCompletion,
+  toggleSingleTaskChecklistItem,
   toggleSingleTaskDone,
   updateCategory,
   updateHabit,
@@ -50,7 +58,7 @@ import {
 } from "./lib/dataStore";
 import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from "./lib/settingsStore";
 import { speak } from "./lib/textToSpeech";
-import { emptyAppData, type AppData } from "./types/models";
+import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks";
 
@@ -80,6 +88,14 @@ interface ToolCallRef {
 
 function formatQuotedList(names: string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
+}
+
+// Case-insensitive substring match against item text — same style as
+// matchesBaseCriteria's name filter in dataStore.ts — used to resolve which
+// checklist item a chat request ("check off milk") refers to.
+function resolveChecklistItemMatches(checklist: ChecklistItem[] | undefined, fragment: string): ChecklistItem[] {
+  const needle = fragment.trim().toLowerCase();
+  return (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
 }
 
 const ITEM_NOUNS: Record<DeletableItemKind, string> = {
@@ -386,6 +402,16 @@ export default function App() {
         );
       } else if (response.toolCall?.name === "logHabitProgress") {
         await handleLogHabitProgress(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall?.name === "addRecurringTaskChecklistItem") {
+        await handleAddRecurringTaskChecklistItemChat(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall?.name === "addSingleTaskChecklistItem") {
+        await handleAddSingleTaskChecklistItemChat(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall?.name === "checkHabitChecklistItem") {
+        await handleCheckHabitChecklistItem(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall?.name === "checkRecurringTaskChecklistItem") {
+        await handleCheckRecurringTaskChecklistItem(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall?.name === "checkSingleTaskChecklistItem") {
+        await handleCheckSingleTaskChecklistItem(response.toolCall.input, response.toolCall);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
@@ -414,6 +440,31 @@ export default function App() {
   function handleRecurringTaskToggle(taskId: string) {
     if (!data) return;
     void persist(toggleRecurringTaskCompletion(data, taskId, selectedDate));
+  }
+
+  function handleHabitChecklistToggle(habitId: string, itemId: string) {
+    if (!data) return;
+    void persist(toggleHabitChecklistItem(data, habitId, itemId));
+  }
+
+  function handleRecurringTaskChecklistToggle(taskId: string, itemId: string) {
+    if (!data) return;
+    void persist(toggleRecurringTaskChecklistItem(data, taskId, itemId));
+  }
+
+  function handleSingleTaskChecklistToggle(taskId: string, itemId: string) {
+    if (!data) return;
+    void persist(toggleSingleTaskChecklistItem(data, taskId, itemId));
+  }
+
+  function handleRecurringTaskChecklistAdd(taskId: string, text: string) {
+    if (!data) return;
+    void persist(addRecurringTaskChecklistItem(data, taskId, text));
+  }
+
+  function handleSingleTaskChecklistAdd(taskId: string, text: string) {
+    if (!data) return;
+    void persist(addSingleTaskChecklistItem(data, taskId, text));
   }
 
   async function handleLogHabitProgress(
@@ -445,6 +496,158 @@ export default function App() {
     if (saved) {
       const unitSuffix = habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : "";
       pushAssistantMessage(`Logged ${newValue}${unitSuffix} for "${habit.name}".`, toolCall);
+    }
+  }
+
+  async function handleAddRecurringTaskChecklistItemChat(
+    input: { name: string; text: string },
+    toolCall: ToolCallRef,
+  ) {
+    if (!data) return;
+    const matches = resolveRecurringTasks(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any recurring task matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one recurring task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const task = matches[0];
+    const saved = await persist(addRecurringTaskChecklistItem(data, task.id, input.text));
+    if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
+  }
+
+  async function handleAddSingleTaskChecklistItemChat(input: { name: string; text: string }, toolCall: ToolCallRef) {
+    if (!data) return;
+    const matches = resolveSingleTasks(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any task matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const task = matches[0];
+    const saved = await persist(addSingleTaskChecklistItem(data, task.id, input.text));
+    if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
+  }
+
+  async function handleCheckHabitChecklistItem(
+    input: { name: string; item: string; checked?: boolean },
+    toolCall: ToolCallRef,
+  ) {
+    if (!data) return;
+    const matches = resolveHabits(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any habit matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one habit matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const habit = matches[0];
+    const itemMatches = resolveChecklistItemMatches(habit.checklist, input.item);
+    if (itemMatches.length === 0) {
+      pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${habit.name}".`, toolCall);
+      return;
+    }
+    if (itemMatches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one checklist item matching "${input.item}" on "${habit.name}": ${formatQuotedList(itemMatches.map((item) => item.text))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const checked = input.checked ?? true;
+    const saved = await persist(setHabitChecklistItemChecked(data, habit.id, itemMatches[0].id, checked));
+    if (saved) {
+      pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${habit.name}".`, toolCall);
+    }
+  }
+
+  async function handleCheckRecurringTaskChecklistItem(
+    input: { name: string; item: string; checked?: boolean },
+    toolCall: ToolCallRef,
+  ) {
+    if (!data) return;
+    const matches = resolveRecurringTasks(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any recurring task matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one recurring task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const task = matches[0];
+    const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
+    if (itemMatches.length === 0) {
+      pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${task.name}".`, toolCall);
+      return;
+    }
+    if (itemMatches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one checklist item matching "${input.item}" on "${task.name}": ${formatQuotedList(itemMatches.map((item) => item.text))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const checked = input.checked ?? true;
+    const saved = await persist(setRecurringTaskChecklistItemChecked(data, task.id, itemMatches[0].id, checked));
+    if (saved) {
+      pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
+    }
+  }
+
+  async function handleCheckSingleTaskChecklistItem(
+    input: { name: string; item: string; checked?: boolean },
+    toolCall: ToolCallRef,
+  ) {
+    if (!data) return;
+    const matches = resolveSingleTasks(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any task matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const task = matches[0];
+    const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
+    if (itemMatches.length === 0) {
+      pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${task.name}".`, toolCall);
+      return;
+    }
+    if (itemMatches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one checklist item matching "${input.item}" on "${task.name}": ${formatQuotedList(itemMatches.map((item) => item.text))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const checked = input.checked ?? true;
+    const saved = await persist(setSingleTaskChecklistItemChecked(data, task.id, itemMatches[0].id, checked));
+    if (saved) {
+      pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
     }
   }
 
@@ -539,15 +742,30 @@ export default function App() {
         )}
 
         {activeTab === "habits" && (
-          <HabitsView habits={data.habits} categories={data.categories} completionLog={data.completionLog} />
+          <HabitsView
+            habits={data.habits}
+            categories={data.categories}
+            completionLog={data.completionLog}
+            onToggleChecklistItem={handleHabitChecklistToggle}
+          />
         )}
 
         {activeTab === "single tasks" && (
-          <SingleTasksView singleTasks={data.singleTasks} categories={data.categories} />
+          <SingleTasksView
+            singleTasks={data.singleTasks}
+            categories={data.categories}
+            onToggleChecklistItem={handleSingleTaskChecklistToggle}
+            onAddChecklistItem={handleSingleTaskChecklistAdd}
+          />
         )}
 
         {activeTab === "recurring tasks" && (
-          <RecurringTasksView recurringTasks={data.recurringTasks} categories={data.categories} />
+          <RecurringTasksView
+            recurringTasks={data.recurringTasks}
+            categories={data.categories}
+            onToggleChecklistItem={handleRecurringTaskChecklistToggle}
+            onAddChecklistItem={handleRecurringTaskChecklistAdd}
+          />
         )}
       </div>
     </div>
