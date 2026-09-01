@@ -65,6 +65,49 @@ export function resolveWeekdayDate(
   return addDays(todayISO, offset);
 }
 
+const NTH_TO_COUNT: Record<"first" | "second" | "third" | "fourth" | "fifth", number> = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+};
+
+/** nth = "first".."fifth" counts occurrences of `weekday` from day 1 of the
+ * month containing `dateISO`; "last" finds the final matching weekday in
+ * that month instead. Returns the resolved ISO date within that month, which
+ * may or may not equal `dateISO` — occursOn compares the two. */
+function nthWeekdayOfMonthDate(
+  dateISO: string,
+  nth: "first" | "second" | "third" | "fourth" | "fifth" | "last",
+  weekday: number,
+): string {
+  const monthStart = startOfMonth(dateISO);
+  if (nth === "last") {
+    const nextMonthStart = addMonthsISO(monthStart, 1);
+    let cursor = addDays(nextMonthStart, -1);
+    while (dayOfWeek(cursor) !== weekday) cursor = addDays(cursor, -1);
+    return cursor;
+  }
+
+  const targetCount = NTH_TO_COUNT[nth];
+  let cursor = monthStart;
+  let count = 0;
+  while (true) {
+    if (dayOfWeek(cursor) === weekday) {
+      count += 1;
+      if (count === targetCount) return cursor;
+    }
+    cursor = addDays(cursor, 1);
+  }
+}
+
+function addMonthsISO(dateISO: string, months: number): string {
+  const [year, month] = dateISO.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1 + months, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export function occursOn(habit: Habit, dateISO: string): boolean {
   if (dateISO < habit.startDate) return false;
   if (habit.endDate && dateISO > habit.endDate) return false;
@@ -80,6 +123,18 @@ export function occursOn(habit: Habit, dateISO: string): boolean {
       // Flexible/unpinned to specific days — eligible every day in bounds;
       // progress toward the period's target is tracked via completionsInPeriod.
       return true;
+    case "nthWeekdayOfMonth":
+      // If the nth occurrence doesn't exist in a given month (e.g. a 5th
+      // Monday), it simply doesn't occur that month — no fallback to the 4th.
+      return nthWeekdayOfMonthDate(dateISO, habit.recurrence.nth, habit.recurrence.weekday) === dateISO;
+    case "specificDatesOfYear":
+      return habit.recurrence.dates.includes(dateISO.slice(5));
+    case "onOffCycle": {
+      const total = habit.recurrence.onDays + habit.recurrence.offDays;
+      if (total <= 0) return true;
+      const pos = ((daysBetween(habit.startDate, dateISO) % total) + total) % total;
+      return pos < habit.recurrence.onDays;
+    }
   }
 }
 
@@ -99,6 +154,15 @@ export function isArchived(item: { endDate?: string }): boolean {
 }
 
 const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTH_ABBREVIATIONS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+function describeMonthDay(monthDay: string): string {
+  const [month, day] = monthDay.split("-").map(Number);
+  return `${MONTH_ABBREVIATIONS[month - 1]} ${day}`;
+}
 
 export function describeRecurrence(rule: RecurrenceRule): string {
   switch (rule.type) {
@@ -112,6 +176,14 @@ export function describeRecurrence(rule: RecurrenceRule): string {
       return rule.interval === 1 ? "Every day" : `Every ${rule.interval} days`;
     case "timesPerPeriod":
       return `${rule.count}x per ${rule.period}`;
+    case "nthWeekdayOfMonth":
+      return `Every ${rule.nth} ${WEEKDAY_NAMES[rule.weekday]}`;
+    case "specificDatesOfYear":
+      return rule.dates.length === 0
+        ? "No dates selected"
+        : `Every ${[...rule.dates].sort().map(describeMonthDay).join(", ")}`;
+    case "onOffCycle":
+      return `${rule.onDays} day${rule.onDays === 1 ? "" : "s"} on, ${rule.offDays} day${rule.offDays === 1 ? "" : "s"} off`;
   }
 }
 
