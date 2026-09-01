@@ -2,13 +2,21 @@ import { useState, type ReactNode } from "react";
 import type { Category, RecurringTask } from "../types/models";
 import { describeRecurrence, isArchived } from "../lib/recurrence";
 import CategoryIcon from "./CategoryIcon";
+import Checklist from "./Checklist";
 
 interface RecurringTasksViewProps {
   recurringTasks: RecurringTask[];
   categories: Category[];
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
 }
 
-export default function RecurringTasksView({ recurringTasks, categories }: RecurringTasksViewProps) {
+export default function RecurringTasksView({
+  recurringTasks,
+  categories,
+  onToggleChecklistItem,
+  onAddChecklistItem,
+}: RecurringTasksViewProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const selectedTask = selectedTaskId ? recurringTasks.find((task) => task.id === selectedTaskId) : undefined;
@@ -18,6 +26,8 @@ export default function RecurringTasksView({ recurringTasks, categories }: Recur
       <RecurringTaskDetail
         task={selectedTask}
         categories={categories}
+        onToggleChecklistItem={onToggleChecklistItem}
+        onAddChecklistItem={onAddChecklistItem}
         onBack={() => setSelectedTaskId(null)}
       />
     );
@@ -61,10 +71,14 @@ export default function RecurringTasksView({ recurringTasks, categories }: Recur
 function RecurringTaskDetail({
   task,
   categories,
+  onToggleChecklistItem,
+  onAddChecklistItem,
   onBack,
 }: {
   task: RecurringTask;
   categories: Category[];
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
@@ -113,15 +127,13 @@ function RecurringTaskDetail({
           <span>{describeRecurrence(task.recurrence)}</span>
         </DetailRow>
 
-        {task.checklist && task.checklist.length > 0 && (
-          <DetailRow label="Checklist items">
-            <ul className="list-disc pl-5">
-              {task.checklist.map((item) => (
-                <li key={item.id}>{item.text}</li>
-              ))}
-            </ul>
-          </DetailRow>
-        )}
+        <DetailRow label="Checklist items">
+          <Checklist
+            items={task.checklist ?? []}
+            onToggle={(itemId) => onToggleChecklistItem(task.id, itemId)}
+            onAdd={(text) => onAddChecklistItem(task.id, text)}
+          />
+        </DetailRow>
       </div>
     </div>
   );

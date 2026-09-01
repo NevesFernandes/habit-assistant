@@ -1,20 +1,34 @@
 import { useState, type ReactNode } from "react";
 import type { Category, SingleTask } from "../types/models";
 import CategoryIcon from "./CategoryIcon";
+import Checklist from "./Checklist";
 
 interface SingleTasksViewProps {
   singleTasks: SingleTask[];
   categories: Category[];
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
 }
 
-export default function SingleTasksView({ singleTasks, categories }: SingleTasksViewProps) {
+export default function SingleTasksView({
+  singleTasks,
+  categories,
+  onToggleChecklistItem,
+  onAddChecklistItem,
+}: SingleTasksViewProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const selectedTask = selectedTaskId ? singleTasks.find((task) => task.id === selectedTaskId) : undefined;
 
   if (selectedTask) {
     return (
-      <SingleTaskDetail task={selectedTask} categories={categories} onBack={() => setSelectedTaskId(null)} />
+      <SingleTaskDetail
+        task={selectedTask}
+        categories={categories}
+        onToggleChecklistItem={onToggleChecklistItem}
+        onAddChecklistItem={onAddChecklistItem}
+        onBack={() => setSelectedTaskId(null)}
+      />
     );
   }
 
@@ -59,10 +73,14 @@ export default function SingleTasksView({ singleTasks, categories }: SingleTasks
 function SingleTaskDetail({
   task,
   categories,
+  onToggleChecklistItem,
+  onAddChecklistItem,
   onBack,
 }: {
   task: SingleTask;
   categories: Category[];
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
@@ -114,15 +132,13 @@ function SingleTaskDetail({
           <span>{task.persistency ? "Carries forward until done" : "One-time only"}</span>
         </DetailRow>
 
-        {task.checklist && task.checklist.length > 0 && (
-          <DetailRow label="Checklist items">
-            <ul className="list-disc pl-5">
-              {task.checklist.map((item) => (
-                <li key={item.id}>{item.text}</li>
-              ))}
-            </ul>
-          </DetailRow>
-        )}
+        <DetailRow label="Checklist items">
+          <Checklist
+            items={task.checklist ?? []}
+            onToggle={(itemId) => onToggleChecklistItem(task.id, itemId)}
+            onAdd={(text) => onAddChecklistItem(task.id, text)}
+          />
+        </DetailRow>
       </div>
     </div>
   );

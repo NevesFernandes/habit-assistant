@@ -75,6 +75,31 @@ export interface LogHabitProgressToolCall {
   input: { name: string; date?: string; value?: number; delta?: number };
 }
 
+export interface AddRecurringTaskChecklistItemToolCall {
+  name: "addRecurringTaskChecklistItem";
+  input: { name: string; text: string };
+}
+
+export interface AddSingleTaskChecklistItemToolCall {
+  name: "addSingleTaskChecklistItem";
+  input: { name: string; text: string };
+}
+
+export interface CheckHabitChecklistItemToolCall {
+  name: "checkHabitChecklistItem";
+  input: { name: string; item: string; checked?: boolean };
+}
+
+export interface CheckRecurringTaskChecklistItemToolCall {
+  name: "checkRecurringTaskChecklistItem";
+  input: { name: string; item: string; checked?: boolean };
+}
+
+export interface CheckSingleTaskChecklistItemToolCall {
+  name: "checkSingleTaskChecklistItem";
+  input: { name: string; item: string; checked?: boolean };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -88,7 +113,12 @@ export type AgentToolCall =
   | ArchiveHabitToolCall
   | ArchiveRecurringTaskToolCall
   | ConfirmPendingDeletionToolCall
-  | LogHabitProgressToolCall;
+  | LogHabitProgressToolCall
+  | AddRecurringTaskChecklistItemToolCall
+  | AddSingleTaskChecklistItemToolCall
+  | CheckHabitChecklistItemToolCall
+  | CheckRecurringTaskChecklistItemToolCall
+  | CheckSingleTaskChecklistItemToolCall;
 
 export interface AgentResponse {
   reply?: string;

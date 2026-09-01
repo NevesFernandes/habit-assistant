@@ -58,6 +58,11 @@ You can take these actions:
 10. archiveHabit — archive an existing habit.
 11. archiveRecurringTask — archive an existing recurring task.
 12. logHabitProgress — log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below).
+13. addRecurringTaskChecklistItem — add one item to an existing recurring task's checklist.
+14. addSingleTaskChecklistItem — add one item to an existing one-off task's checklist.
+15. checkHabitChecklistItem — check or uncheck one item on a checklist-type habit's checklist.
+16. checkRecurringTaskChecklistItem — check or uncheck one item on a recurring task's checklist.
+17. checkSingleTaskChecklistItem — check or uncheck one item on a one-off task's checklist.
 
 Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
@@ -79,6 +84,10 @@ For updateSingleTask, updateHabit, and updateRecurringTask: name is always requi
 For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.
 
 For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).
+
+For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
+
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). Note for checkHabitChecklistItem specifically: a habit's checklist is currently one shared list, not reset per day, so checking an item off doesn't yet have day-by-day meaning — treat it the same as any other edit to the habit.
 
 For createSingleTask specifically:
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
@@ -708,6 +717,83 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           },
         },
         required: ["name"],
+      },
+    },
+    {
+      name: "addRecurringTaskChecklistItem",
+      description:
+        "Add one item to an existing recurring task's checklist. Use for phrases like 'add milk to my shopping list'. Always adds — never replaces or clears the existing items.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the recurring task's name." },
+          text: { type: "string", description: "The item to add." },
+        },
+        required: ["name", "text"],
+      },
+    },
+    {
+      name: "addSingleTaskChecklistItem",
+      description:
+        "Add one item to an existing one-off task's checklist. Use for phrases like 'add milk to my shopping list'. Always adds — never replaces or clears the existing items.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's name." },
+          text: { type: "string", description: "The item to add." },
+        },
+        required: ["name", "text"],
+      },
+    },
+    {
+      name: "checkHabitChecklistItem",
+      description:
+        "Check or uncheck one item on a checklist-type habit's checklist. Use for phrases like 'check off stretching on my morning routine' or 'uncheck meditate'.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's name." },
+          item: { type: "string", description: "Fragment to match against the checklist item's text." },
+          checked: {
+            type: "boolean",
+            description: "true (default) to check it off; false to uncheck it.",
+          },
+        },
+        required: ["name", "item"],
+      },
+    },
+    {
+      name: "checkRecurringTaskChecklistItem",
+      description:
+        "Check or uncheck one item on a recurring task's checklist. Use for phrases like 'check off milk on my shopping list' or 'I still need to buy milk, uncheck it'.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the recurring task's name." },
+          item: { type: "string", description: "Fragment to match against the checklist item's text." },
+          checked: {
+            type: "boolean",
+            description: "true (default) to check it off; false to uncheck it.",
+          },
+        },
+        required: ["name", "item"],
+      },
+    },
+    {
+      name: "checkSingleTaskChecklistItem",
+      description:
+        "Check or uncheck one item on a one-off task's checklist. Use for phrases like 'check off milk on my shopping list' or 'I still need to buy milk, uncheck it'.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's name." },
+          item: { type: "string", description: "Fragment to match against the checklist item's text." },
+          checked: {
+            type: "boolean",
+            description: "true (default) to check it off; false to uncheck it.",
+          },
+        },
+        required: ["name", "item"],
       },
     },
   ];

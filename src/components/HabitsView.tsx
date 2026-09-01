@@ -3,11 +3,13 @@ import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
 import { computeHabitStats } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
+import Checklist from "./Checklist";
 
 interface HabitsViewProps {
   habits: Habit[];
   categories: Category[];
   completionLog: CompletionLogEntry[];
+  onToggleChecklistItem: (habitId: string, itemId: string) => void;
 }
 
 const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
@@ -17,7 +19,7 @@ const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
   checklist: "Checklist",
 };
 
-export default function HabitsView({ habits, categories, completionLog }: HabitsViewProps) {
+export default function HabitsView({ habits, categories, completionLog, onToggleChecklistItem }: HabitsViewProps) {
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
@@ -28,6 +30,7 @@ export default function HabitsView({ habits, categories, completionLog }: Habits
         habit={selectedHabit}
         categories={categories}
         completionLog={completionLog}
+        onToggleChecklistItem={onToggleChecklistItem}
         onBack={() => setSelectedHabitId(null)}
       />
     );
@@ -72,11 +75,13 @@ function HabitDetail({
   habit,
   categories,
   completionLog,
+  onToggleChecklistItem,
   onBack,
 }: {
   habit: Habit;
   categories: Category[];
   completionLog: CompletionLogEntry[];
+  onToggleChecklistItem: (habitId: string, itemId: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
@@ -141,13 +146,12 @@ function HabitDetail({
           </DetailRow>
         )}
 
-        {habit.completionType === "checklist" && habit.checklist && habit.checklist.length > 0 && (
+        {habit.completionType === "checklist" && (
           <DetailRow label="Checklist items">
-            <ul className="list-disc pl-5">
-              {habit.checklist.map((item) => (
-                <li key={item.id}>{item.text}</li>
-              ))}
-            </ul>
+            <Checklist
+              items={habit.checklist ?? []}
+              onToggle={(itemId) => onToggleChecklistItem(habit.id, itemId)}
+            />
           </DetailRow>
         )}
 
