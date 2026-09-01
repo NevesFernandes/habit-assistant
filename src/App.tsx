@@ -35,6 +35,7 @@ import {
   resolveRecurringTasks,
   resolveSingleTasks,
   rolloverPersistentTasks,
+  setHabitValue,
   toggleHabitCompletion,
   toggleRecurringTaskCompletion,
   toggleSingleTaskDone,
@@ -383,6 +384,8 @@ export default function App() {
           response.toolCall,
           "Archived",
         );
+      } else if (response.toolCall?.name === "logHabitProgress") {
+        await handleLogHabitProgress(response.toolCall.input, response.toolCall);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
@@ -411,6 +414,38 @@ export default function App() {
   function handleRecurringTaskToggle(taskId: string) {
     if (!data) return;
     void persist(toggleRecurringTaskCompletion(data, taskId, selectedDate));
+  }
+
+  async function handleLogHabitProgress(
+    input: { name: string; date?: string; value?: number; delta?: number },
+    toolCall: ToolCallRef,
+  ) {
+    if (!data) return;
+    const matches = resolveHabits(data, { name: input.name });
+    if (matches.length === 0) {
+      pushAssistantMessage(`I couldn't find any habit matching "${input.name}".`, toolCall);
+      return;
+    }
+    if (matches.length > 1) {
+      pushAssistantMessage(
+        `I found more than one habit matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
+        toolCall,
+      );
+      return;
+    }
+    const habit = matches[0];
+    if (habit.completionType !== "value" && habit.completionType !== "timer") {
+      pushAssistantMessage(`"${habit.name}" isn't tracked with a number or timer, so there's nothing to log.`, toolCall);
+      return;
+    }
+    const dateISO = input.date ?? todayISO();
+    const current = data.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO)?.value ?? 0;
+    const newValue = input.value !== undefined ? input.value : current + (input.delta ?? 0);
+    const saved = await persist(setHabitValue(data, habit.id, dateISO, newValue));
+    if (saved) {
+      const unitSuffix = habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : "";
+      pushAssistantMessage(`Logged ${newValue}${unitSuffix} for "${habit.name}".`, toolCall);
+    }
   }
 
   function handleAddCategory(input: CreateCategoryInput) {

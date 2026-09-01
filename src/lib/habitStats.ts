@@ -11,8 +11,21 @@ export interface HabitStats {
   completionsAllTime: number;
 }
 
-function isCompletedOn(completionLog: CompletionLogEntry[], habitId: string, dateISO: string): boolean {
-  return completionLog.some((entry) => entry.itemId === habitId && entry.date === dateISO);
+// A logged entry alone means "complete" for yesno/checklist habits, or for value/timer
+// habits with no target set (backward-compatible: every habit created before target
+// existed has it undefined). Once a value/timer habit has a target, an entry only counts
+// once its value meets it — a partial log (e.g. 6 of 8 glasses) is progress, not completion.
+export function isHabitEntryComplete(habit: Habit, entry: CompletionLogEntry | undefined): boolean {
+  if (!entry) return false;
+  if ((habit.completionType === "value" || habit.completionType === "timer") && habit.target !== undefined) {
+    return (entry.value ?? 0) >= habit.target;
+  }
+  return true;
+}
+
+function isCompletedOn(habit: Habit, completionLog: CompletionLogEntry[], dateISO: string): boolean {
+  const entry = completionLog.find((e) => e.itemId === habit.id && e.date === dateISO);
+  return isHabitEntryComplete(habit, entry);
 }
 
 // daily / daysOfWeek / intervalDays: only the habit's own scheduled days can break or
@@ -25,7 +38,7 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
   let gaveGrace = false;
   while (cursor >= habit.startDate) {
     if (occursOn(habit, cursor)) {
-      if (isCompletedOn(completionLog, habit.id, cursor)) {
+      if (isCompletedOn(habit, completionLog, cursor)) {
         currentStreak += 1;
       } else if (cursor === todayISO && !gaveGrace) {
         gaveGrace = true;
@@ -41,7 +54,7 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
   let d = habit.startDate;
   while (d <= todayISO) {
     if (occursOn(habit, d)) {
-      if (isCompletedOn(completionLog, habit.id, d)) {
+      if (isCompletedOn(habit, completionLog, d)) {
         run += 1;
         bestStreak = Math.max(bestStreak, run);
       } else {
@@ -74,7 +87,7 @@ function dayOccurrenceCounts(
   while (d <= todayISO) {
     if (occursOn(habit, d)) {
       launched += 1;
-      if (isCompletedOn(completionLog, habit.id, d)) completed += 1;
+      if (isCompletedOn(habit, completionLog, d)) completed += 1;
     }
     d = addDays(d, 1);
   }
@@ -88,14 +101,15 @@ function addMonths(dateISO: string, months: number): string {
 }
 
 function completionsInFullPeriod(
+  habit: Habit,
   completionLog: CompletionLogEntry[],
-  habitId: string,
   periodStartISO: string,
   period: "week" | "month",
 ): number {
   const periodEnd = period === "week" ? addDays(periodStartISO, 7) : addMonths(periodStartISO, 1);
-  return completionLog.filter((e) => e.itemId === habitId && e.date >= periodStartISO && e.date < periodEnd)
-    .length;
+  return completionLog.filter(
+    (e) => e.itemId === habit.id && e.date >= periodStartISO && e.date < periodEnd && isHabitEntryComplete(habit, e),
+  ).length;
 }
 
 // timesPerPeriod: no single day is "the due day", so the streak only breaks when a full
@@ -117,7 +131,7 @@ function periodBasedStats(
   let cursor = currentPeriod;
   let gaveGrace = false;
   while (cursor >= startPeriod) {
-    const hits = completionsInFullPeriod(completionLog, habit.id, cursor, period);
+    const hits = completionsInFullPeriod(habit, completionLog, cursor, period);
     if (hits >= target) {
       currentStreak += hits;
     } else if (cursor === currentPeriod && !gaveGrace) {
@@ -134,7 +148,7 @@ function periodBasedStats(
   let hitPeriods = 0;
   let p = startPeriod;
   while (p <= currentPeriod) {
-    const hits = completionsInFullPeriod(completionLog, habit.id, p, period);
+    const hits = completionsInFullPeriod(habit, completionLog, p, period);
     totalPeriods += 1;
     if (hits >= target) {
       run += hits;
@@ -192,7 +206,7 @@ function periodOccurrenceCounts(
   for (let p = startPeriod; p <= currentPeriod; p = step(p)) periodsElapsed += 1;
 
   const completed = completionLog.filter(
-    (e) => e.itemId === habit.id && e.date >= startPeriod && e.date <= todayISO,
+    (e) => e.itemId === habit.id && e.date >= startPeriod && e.date <= todayISO && isHabitEntryComplete(habit, e),
   ).length;
 
   return { launched: periodsElapsed * target, completed };

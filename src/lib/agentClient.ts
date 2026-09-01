@@ -70,6 +70,11 @@ export interface ConfirmPendingDeletionToolCall {
   input: { confirmed: boolean };
 }
 
+export interface LogHabitProgressToolCall {
+  name: "logHabitProgress";
+  input: { name: string; date?: string; value?: number; delta?: number };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -82,7 +87,8 @@ export type AgentToolCall =
   | UpdateRecurringTaskToolCall
   | ArchiveHabitToolCall
   | ArchiveRecurringTaskToolCall
-  | ConfirmPendingDeletionToolCall;
+  | ConfirmPendingDeletionToolCall
+  | LogHabitProgressToolCall;
 
 export interface AgentResponse {
   reply?: string;

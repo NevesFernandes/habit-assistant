@@ -46,6 +46,8 @@ export interface Habit extends BaseItem {
   recurrence: RecurrenceRule;
   completionType: CompletionType;
   checklist?: ChecklistItem[]; // only meaningful when completionType === "checklist"
+  target?: number; // meaningful when completionType is "value" or "timer"; timer's target is always minutes
+  unit?: string; // meaningful when completionType is "value", e.g. "glasses", "pages" — free text
 }
 
 export interface RecurringTask extends BaseItem {

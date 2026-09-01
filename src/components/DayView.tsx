@@ -1,6 +1,7 @@
 import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
+import { isHabitEntryComplete } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
 
 type DayItem =
@@ -107,7 +108,8 @@ function HabitRow({
   onToggle: (habitId: string) => void;
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
-  const isDone = completionLog.some((entry) => entry.itemId === habit.id && entry.date === selectedDate);
+  const entry = completionLog.find((e) => e.itemId === habit.id && e.date === selectedDate);
+  const isDone = isHabitEntryComplete(habit, entry);
   return (
     <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
       <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
@@ -123,6 +125,12 @@ function HabitRow({
       </div>
       {habit.completionType === "yesno" ? (
         <input type="checkbox" checked={isDone} onChange={() => onToggle(habit.id)} className="h-4 w-4" />
+      ) : habit.completionType === "value" || habit.completionType === "timer" ? (
+        <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
+          {entry?.value ?? "—"}
+          {habit.target !== undefined ? ` / ${habit.target}` : ""}
+          {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+        </span>
       ) : (
         <button
           onClick={() => onToggle(habit.id)}
