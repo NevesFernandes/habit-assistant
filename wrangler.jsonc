@@ -1,0 +1,15 @@
+{
+  // Cloudflare's dashboard now provisions new projects as a Worker (via
+  // "Create app" + a GitHub connection, deploying with `wrangler deploy`),
+  // not the older, separately-branded "Pages" product — see the git history
+  // around 2026-09-02 for why this file exists instead of Pages' zero-config
+  // functions/ directory. `assets.directory` serves the Vite build output;
+  // any request that doesn't match a static file (i.e. /api/*) falls
+  // through to the Worker script at `main`.
+  "name": "habit-assistant",
+  "main": "src/server/worker.ts",
+  "compatibility_date": "2026-08-17",
+  "assets": {
+    "directory": "./dist"
+  }
+}

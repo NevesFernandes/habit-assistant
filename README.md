@@ -50,9 +50,9 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` and `/api/transcribe` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real Cloudflare Functions). It reads the trial keys straight from `.dev.vars`. Microphone access requires HTTPS or `localhost` — both `http://localhost:5173` here and the real Cloudflare Pages deployment already satisfy that, nothing extra to configure.
+Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` and `/api/transcribe` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real deployment's Worker entry point, `src/server/worker.ts`). It reads the trial keys straight from `.dev.vars`. Microphone access requires HTTPS or `localhost` — both `http://localhost:5173` here and the real Cloudflare Workers deployment already satisfy that, nothing extra to configure.
 
-There's also `npm run pages:dev`, which uses Cloudflare's own `wrangler pages dev` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
+There's also `npm run workers:dev`, which builds the site and then uses Cloudflare's own `wrangler dev` against `wrangler.jsonc` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
 
 ## Testing on your Android phone
 
@@ -81,11 +81,14 @@ Prefer no cable? Android 11+ supports wireless `adb` (`adb pair`/`adb connect`, 
 
 ## Deploying (when you're ready)
 
+As of 2026-09, Cloudflare's dashboard provisions new projects through a unified "Create app" flow (Workers Builds, deploying via `wrangler deploy`) rather than the older, separately-branded "Pages" product this README originally assumed — see the git history around 2026-09-02 for the `wrangler.jsonc` + `src/server/worker.ts` this required. Steps:
+
 1. Create a free [Cloudflare](https://dash.cloudflare.com/) account.
-2. **Workers & Pages → Create → Pages → Connect to Git**, pick this GitHub repo.
-3. Build command: `npm run build`. Build output directory: `dist`.
-4. In the Pages project's **Settings → Environment variables**, add `TRIAL_PROVIDER`, `TRIAL_API_KEY`, `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`) as secrets — same idea as `.dev.vars`, but for production.
-5. **Also add `VITE_GOOGLE_CLIENT_ID`** (the same value as in `.env.local`, step 1's Client ID — not secret) as a plain environment variable, applied to both Production and Preview. This one is different from the others: it's read at *build* time by Vite and baked into the frontend bundle (`src/App.tsx`'s `CLIENT_ID`, no fallback) — without it, the deployed site's Google Sign-In silently breaks.
-6. Add the deployed `*.pages.dev` URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
+2. **Create app → Connect to Git**, pick this GitHub repo, branch `main`.
+3. On the "set up your application" screen: build command is pre-filled `npm run build` (correct, leave it) and deploy command is pre-filled `npx wrangler deploy` (correct — reads `wrangler.jsonc` at the repo root, which already specifies the `dist` assets directory and the Worker entry point). Leave "Path" at its default (the app lives at the repo root). Leave the auto-created API token and the non-production-branch-builds checkbox as-is.
+4. **Check the project name Cloudflare assigns matches `wrangler.jsonc`'s `"name"` field (`habit-assistant`)** — if the dashboard let you pick a different name, either rename it to match or update `wrangler.jsonc` accordingly before deploying, so the CI-driven `wrangler deploy` doesn't fight the dashboard-created project.
+5. In the project's **Settings → Variables and Secrets** (exact label may vary), add `TRIAL_PROVIDER`, `TRIAL_API_KEY`, `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`) as secrets — same idea as `.dev.vars`, but for production.
+6. **Also add `VITE_GOOGLE_CLIENT_ID`** (the same value as in `.env.local`, step 1's Client ID — not secret) as a plain environment variable. This one is different from the others: it's read at *build* time by Vite and baked into the frontend bundle (`src/App.tsx`'s `CLIENT_ID`, no fallback) — without it, the deployed site's Google Sign-In silently breaks.
+7. Add the deployed `*.workers.dev` (or custom domain, if set up) URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
 
 I'll walk through each of these with you when we get there.

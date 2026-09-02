@@ -1,5 +1,5 @@
 // Shared transcription logic, mirroring handleAgentRequest.ts's pattern —
-// used by both functions/api/transcribe.ts (real deployment) and the local
+// used by both the real Worker entry point (worker.ts) and the local
 // Vite dev middleware (vite.config.ts). Groq is the only viable free
 // speech-to-text option today, so unlike the chat agent this doesn't need a
 // multi-provider abstraction — just a direct call to Groq's Whisper
