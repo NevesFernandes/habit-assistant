@@ -14,11 +14,12 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Serves /api/agent directly inside `vite dev`, running the same logic as
- * functions/api/agent.ts. This exists because the Cloudflare Workers
- * emulator (workerd, via `wrangler pages dev`) can't run in this sandboxed
- * environment (it needs large aligned mmap regions the sandbox blocks) — see
- * README.md's "Local dev note". `wrangler pages dev` remains the more
- * faithful emulation and should work on a normal machine.
+ * src/server/worker.ts (the real deployment's entry point). This exists
+ * because the Cloudflare Workers emulator (workerd, via `wrangler dev`)
+ * can't run in this sandboxed environment (it needs large aligned mmap
+ * regions the sandbox blocks) — see README.md's "Local dev note".
+ * `wrangler dev` remains the more faithful emulation and should work on a
+ * normal machine.
  */
 function localAgentApiPlugin(): Plugin {
   return {

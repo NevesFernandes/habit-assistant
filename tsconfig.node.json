@@ -12,5 +12,6 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "src/server/**/*.ts"]
+  "include": ["vite.config.ts", "src/server/**/*.ts"],
+  "exclude": ["src/server/worker.ts"]
 }

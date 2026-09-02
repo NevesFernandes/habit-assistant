@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
-    "pages:dev": "wrangler pages dev --proxy 5173 -- npm run dev"
+    "workers:dev": "npm run build && wrangler dev"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",

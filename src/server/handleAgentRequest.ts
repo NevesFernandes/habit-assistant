@@ -1,7 +1,7 @@
-// Shared agent logic used by both the Cloudflare Pages Function
-// (functions/api/agent.ts, real deployment) and the local Vite dev
-// middleware (vite.config.ts, used because the Workers emulator can't run
-// in this sandboxed environment — see README.md's "Local dev note").
+// Shared agent logic used by both the real Worker entry point
+// (worker.ts, real deployment) and the local Vite dev middleware
+// (vite.config.ts, used because the Workers emulator can't run in this
+// sandboxed environment — see README.md's "Local dev note").
 // Runtime-agnostic: takes plain data in, returns a plain {status, body} out.
 //
 // Provider-agnostic by design (see CLAUDE.md's "Cost model / provider
