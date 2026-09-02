@@ -85,6 +85,7 @@ Prefer no cable? Android 11+ supports wireless `adb` (`adb pair`/`adb connect`, 
 2. **Workers & Pages → Create → Pages → Connect to Git**, pick this GitHub repo.
 3. Build command: `npm run build`. Build output directory: `dist`.
 4. In the Pages project's **Settings → Environment variables**, add `TRIAL_PROVIDER`, `TRIAL_API_KEY`, `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`) as secrets — same idea as `.dev.vars`, but for production.
-5. Add the deployed `*.pages.dev` URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
+5. **Also add `VITE_GOOGLE_CLIENT_ID`** (the same value as in `.env.local`, step 1's Client ID — not secret) as a plain environment variable, applied to both Production and Preview. This one is different from the others: it's read at *build* time by Vite and baked into the frontend bundle (`src/App.tsx`'s `CLIENT_ID`, no fallback) — without it, the deployed site's Google Sign-In silently breaks.
+6. Add the deployed `*.pages.dev` URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
 
 I'll walk through each of these with you when we get there.
