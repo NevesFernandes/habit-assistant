@@ -61,6 +61,10 @@ export interface SingleTask extends BaseItem {
   done: boolean;
   persistency: boolean; // true: rolls forward to today on next app open if still incomplete; false: dies uncompleted at end of startDate
   checklist?: ChecklistItem[];
+  // The task's first-ever startDate, untouched by rolloverPersistentTasks bumping
+  // startDate forward — lets the UI show a rolled-over task's true original due date.
+  // Optional: tasks created before this field existed won't have it.
+  originalStartDate?: string;
 }
 
 export interface CompletionLogEntry {

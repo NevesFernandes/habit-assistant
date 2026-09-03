@@ -118,6 +118,12 @@ function SingleTaskDetail({
           <span>{task.startDate}</span>
         </DetailRow>
 
+        {task.persistency && task.originalStartDate && task.originalStartDate !== task.startDate && (
+          <DetailRow label="Originally due">
+            <span>{task.originalStartDate}</span>
+          </DetailRow>
+        )}
+
         {task.endDate && (
           <DetailRow label="End date">
             <span>{task.endDate}</span>

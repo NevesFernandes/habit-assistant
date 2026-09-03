@@ -25,6 +25,7 @@ export interface CreateSingleTaskInput {
 }
 
 export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppData {
+  const startDate = normalizeStartDate(input.startDate);
   const task: SingleTask = {
     kind: "singleTask",
     id: crypto.randomUUID(),
@@ -32,7 +33,8 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
     description: input.description,
     categoryId: input.categoryId,
     priority: input.priority ?? 0,
-    startDate: normalizeStartDate(input.startDate),
+    startDate,
+    originalStartDate: startDate,
     done: false,
     persistency: input.persistency ?? true,
   };
