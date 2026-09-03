@@ -12,6 +12,16 @@
   "assets": {
     "directory": "./dist"
   },
+  // Non-secret runtime vars belong here, not only in the dashboard: a
+  // dashboard-only "Text" variable does NOT carry forward into a new
+  // version built by a Git-triggered `wrangler deploy` (learned 2026-09-03
+  // the hard way — TRIAL_PROVIDER silently reverted to the code's "groq"
+  // fallback on the very next push, sending a Gemini key to Groq's API).
+  // Secrets (TRIAL_API_KEY, STT_TRIAL_API_KEY) stay dashboard/CI-managed
+  // only — never put real key values in this file.
+  "vars": {
+    "TRIAL_PROVIDER": "gemini"
+  },
   // Enabled 2026-09-03 while debugging the Gemini tool-schema rejection —
   // without this, provider error bodies (logged via console.error in
   // handleAgentRequest.ts) go nowhere. Keeping it on: it's what let us find
