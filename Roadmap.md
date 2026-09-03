@@ -34,7 +34,8 @@ Today the shared trial key (`TRIAL_API_KEY`, called from `src/server/worker.ts`)
 
 ## Next
 
-_Nothing queued right now — see Later below for what's up after that._
+### §24 — Decouple tool-schema payload size from total tool count
+Companion to §23, but a separate, bigger investment: right now `buildTools` (`handleAgentRequest.ts`) sends every tool definition on every single request, so payload scales linearly with total feature count forever — any fixed-TPM-ceiling provider is a moving target that today's fix (picking a bigger model, ordering Gemini-first) only buys time against, not a permanent answer, since more tools (checklists, future features) keep pushing the payload up. The structural fix: only send the subset of tools relevant to what the current message is likely asking for, rather than the full list every time — generalizing the pattern `buildTools` already uses for `hasPendingConfirmation` (which narrows to just `confirmPendingDeletion` alone), e.g. a cheap first-pass classification (rule-based, or a much smaller/cheaper call) bucketing the message into something like create/update/delete/log/checklist before the main model ever sees a tool list. Keeps payload roughly flat as features are added instead of growing forever. Real engineering effort — a genuine architecture change, and needs care that the routing step itself doesn't become a new source of misclassification — not something to start without a fuller spec first.
 
 ## Later
 
@@ -46,7 +47,4 @@ Streak, best streak, completion %, and this-week/month/year/all-time counts are 
 
 ### §19 — Live start/stop timer UI for Timer habits
 Timer-habit progress is currently logged after the fact via chat (`logHabitProgress`) — a duration in minutes, the same simple mechanism as Numeric-value habits. The user has looked at HabitNow's Timer habits and wants that fuller experience eventually: an actual running stopwatch (start/pause/stop, elapsed time tracked live), not just after-the-fact entry. Deliberately deferred — real added scope beyond this pass (running-timer state, handling the app being backgrounded/closed mid-timer, persisting an in-progress session). The user will write a fuller spec before this is picked up.
-
-### §24 — Decouple tool-schema payload size from total tool count
-Companion to §23, but a separate, bigger investment: right now `buildTools` (`handleAgentRequest.ts`) sends every tool definition on every single request, so payload scales linearly with total feature count forever — any fixed-TPM-ceiling provider is a moving target that today's fix (picking a bigger model, ordering Gemini-first) only buys time against, not a permanent answer, since more tools (checklists, future features) keep pushing the payload up. The structural fix: only send the subset of tools relevant to what the current message is likely asking for, rather than the full list every time — generalizing the pattern `buildTools` already uses for `hasPendingConfirmation` (which narrows to just `confirmPendingDeletion` alone), e.g. a cheap first-pass classification (rule-based, or a much smaller/cheaper call) bucketing the message into something like create/update/delete/log/checklist before the main model ever sees a tool list. Keeps payload roughly flat as features are added instead of growing forever. Real engineering effort — a genuine architecture change, and needs care that the routing step itself doesn't become a new source of misclassification — not something to start without a fuller spec first.
 
