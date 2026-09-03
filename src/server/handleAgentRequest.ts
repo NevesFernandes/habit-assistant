@@ -485,7 +485,6 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newCategoryId: {
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
-            enum: [...categories.map((category) => category.id), ""],
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
           newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
@@ -609,7 +608,6 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
           newCategoryId: {
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
-            enum: [...categories.map((category) => category.id), ""],
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
           newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },

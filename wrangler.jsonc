@@ -11,5 +11,14 @@
   "compatibility_date": "2026-08-17",
   "assets": {
     "directory": "./dist"
+  },
+  // Enabled 2026-09-03 while debugging the Gemini tool-schema rejection —
+  // without this, provider error bodies (logged via console.error in
+  // handleAgentRequest.ts) go nowhere. Keeping it on: it's what let us find
+  // the newCategoryId enum bug, and free tier covers 200K events/day.
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
   }
 }
