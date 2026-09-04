@@ -8,6 +8,7 @@ import CategoriesView from "./components/CategoriesView";
 import HabitsView from "./components/HabitsView";
 import SingleTasksView from "./components/SingleTasksView";
 import RecurringTasksView from "./components/RecurringTasksView";
+import Dashboard from "./components/Dashboard";
 import {
   signIn,
   findOrCreateFolder,
@@ -63,7 +64,7 @@ import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from ".
 import { speak } from "./lib/textToSpeech";
 import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
-type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks";
+type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks" | "stats";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -778,7 +779,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "categories", "habits", "single tasks", "recurring tasks"] as const).map((tab) => (
+        {(["chat", "today", "categories", "habits", "single tasks", "recurring tasks", "stats"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -851,6 +852,15 @@ export default function App() {
             categories={data.categories}
             onToggleChecklistItem={handleRecurringTaskChecklistToggle}
             onAddChecklistItem={handleRecurringTaskChecklistAdd}
+          />
+        )}
+
+        {activeTab === "stats" && (
+          <Dashboard
+            habits={data.habits}
+            categories={data.categories}
+            completionLog={data.completionLog}
+            onViewCategories={() => setActiveTab("categories")}
           />
         )}
       </div>

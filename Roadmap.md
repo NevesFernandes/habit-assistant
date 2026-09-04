@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Later
 
-### §17 — Chart-based stats dashboard
-Streak, best streak, completion %, and this-week/month/year/all-time counts are already computed (`src/lib/habitStats.ts`) and shown inline in `HabitsView`/`CategoriesView` — this item is the visualization/UX layer on top, not the underlying computation (already done). Needs: a dedicated dashboard page/view, and actual chart/graph visuals. **Library decision made (2026-09-02): skip a charting library — hand-roll stat tiles/KPI row/meter in plain HTML+Tailwind plus a small SVG calendar-heatmap component, rather than adding a dependency like Recharts/Chart.js/visx.** Full research and fallback options saved in Claude's memory (ask Claude to recall the "§17 chart library decision" notes) rather than duplicated here.
-
 ### §19 — Live start/stop timer UI for Timer habits
 Timer-habit progress is currently logged after the fact via chat (`logHabitProgress`) — a duration in minutes, the same simple mechanism as Numeric-value habits. The user has looked at HabitNow's Timer habits and wants that fuller experience eventually: an actual running stopwatch (start/pause/stop, elapsed time tracked live), not just after-the-fact entry. Deliberately deferred — real added scope beyond this pass (running-timer state, handling the app being backgrounded/closed mid-timer, persisting an in-progress session). The user will write a fuller spec before this is picked up.
 
