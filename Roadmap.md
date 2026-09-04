@@ -14,11 +14,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-## Next
-
-### §26 — Add Cloudflare Workers AI as a third-tier, last-resort fallback
-Split out from §23 (now closed) rather than built alongside it: the Gemini→Groq failover chain shipped 2026-09-04, but Groq wasn't actually usable as that secondary — every free-tier Groq model with tool-calling support was below this app's real payload size. §24 (also closed, 2026-09-04) narrowed the per-request payload to just the relevant tool bucket for confidently-classified messages (roughly 17-40% of the old full-payload size, measured directly), which should put most common single-intent messages back under Groq's tightest free-tier caps — but the classifier's fallback path (an unclassified message still gets the full, un-narrowed payload) does not, so this needs re-verification against Groq's real tokenizer/TPM caps, not just re-enabled on the assumption §24 fixed it outright, before flipping `TRIAL_FALLBACK_PROVIDER` back to `groq` in production. **§22 (request timeout + retry for the chat/LLM path) has now shipped, so this item's gate is clear.** Cloudflare Workers AI (`@cf/zai-org/glm-4.7-flash`) was live-tested 2026-09-03 against the real 17-tool schema across 5 scenarios (create task, create habit, ambiguous log-progress, delete, deliberately vague message) — tool-selection quality was solid, including correctly asking clarifying questions on the ambiguous/vague cases — but latency was highly variable (3.1s-16.6s across 5 calls) and real headroom is ~145 requests/day (GLM's own tokenizer counts ~10,475 tokens for this payload, and its visible chain-of-thought reasoning inflates output-token cost). GLM-5.3 was ruled out (requires a paid billing method even within the free allowance). See Claude's saved notes ("§23 multi-provider failover — Groq TPM finding") for the full test output.
-
 ## Later
 
 ### §17 — Chart-based stats dashboard
