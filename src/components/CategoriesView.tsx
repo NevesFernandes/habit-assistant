@@ -5,6 +5,7 @@ import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
 import CategoryIcon from "./CategoryIcon";
 import IconPicker from "./IconPicker";
+import StatTile from "./StatTile";
 import { DEFAULT_ICON_NAME } from "../lib/icons";
 
 interface CategoriesViewProps {
@@ -218,15 +219,6 @@ function CategoryStatsView({
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatTile({ value, label }: { value: number; label: string }) {
-  return (
-    <div>
-      <div className="text-base font-medium">{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
     </div>
   );
 }

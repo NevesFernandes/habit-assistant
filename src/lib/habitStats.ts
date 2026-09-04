@@ -38,6 +38,24 @@ export function checklistProgress(habit: Habit, entry: CompletionLogEntry | unde
   return { checked: items.filter((item) => item.checked).length, total: items.length };
 }
 
+// A single 0-1 "how much of this day's occurrence was done" number — the same three
+// branches isHabitEntryComplete/checklistProgress already use, just expressed as a ratio
+// instead of a boolean, for shading a calendar-heatmap cell's intensity (§17 in
+// Roadmap.md) rather than only answering "complete or not." No entry at all is 0, same as
+// isHabitEntryComplete treating a missing entry as incomplete.
+export function habitCompletionRatio(habit: Habit, entry: CompletionLogEntry | undefined): number {
+  if (!entry) return 0;
+  if (habit.completionType === "value" || habit.completionType === "timer") {
+    if (habit.target === undefined || habit.target <= 0) return 0;
+    return Math.min(1, Math.max(0, (entry.value ?? 0) / habit.target));
+  }
+  if (habit.completionType === "checklist") {
+    const { checked, total } = checklistProgress(habit, entry);
+    return total === 0 ? 0 : checked / total;
+  }
+  return isHabitEntryComplete(habit, entry) ? 1 : 0;
+}
+
 // The full per-item state to render for a checklist habit on a given date: the logged
 // entry's snapshot if one exists, else the template mapped to all-unchecked (matching
 // what a freshly created entry for that date would contain).
@@ -290,4 +308,34 @@ export function aggregateCategoryStats(
     completionsAllTime: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsAllTime, 0),
     habitCount: habits.length,
   };
+}
+
+export interface HabitCalendarDay {
+  date: string; // ISO date
+  scheduled: boolean; // whether this habit was due at all on this date (occursOn)
+  ratio: number; // 0-1, only meaningful when scheduled is true — see habitCompletionRatio
+}
+
+// Day-by-day data for a calendar-heatmap chart (§17 in Roadmap.md): one entry per date
+// from fromISO to toISO inclusive, distinguishing "not due that day" (scheduled: false, so
+// a UI can render it neutrally) from "due but not done" (scheduled: true, ratio 0) and
+// "due and done" (scheduled: true, ratio > 0, possibly partial). Mirrors how
+// dayBasedStats/dayOccurrenceCounts above already walk a habit's dates one day at a time.
+export function habitCalendar(
+  habit: Habit,
+  completionLog: CompletionLogEntry[],
+  fromISO: string,
+  toISO: string,
+): HabitCalendarDay[] {
+  const days: HabitCalendarDay[] = [];
+  for (let d = fromISO; d <= toISO; d = addDays(d, 1)) {
+    const scheduled = occursOn(habit, d);
+    if (!scheduled) {
+      days.push({ date: d, scheduled: false, ratio: 0 });
+      continue;
+    }
+    const entry = completionLog.find((e) => e.itemId === habit.id && e.date === d);
+    days.push({ date: d, scheduled: true, ratio: habitCompletionRatio(habit, entry) });
+  }
+  return days;
 }

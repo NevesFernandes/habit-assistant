@@ -4,6 +4,7 @@ import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
 import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
+import StatTile from "./StatTile";
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -183,15 +184,6 @@ function HabitDetail({
           </div>
         </DetailRow>
       </div>
-    </div>
-  );
-}
-
-function StatTile({ value, label }: { value: number; label: string }) {
-  return (
-    <div>
-      <div className="text-base font-medium">{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
     </div>
   );
 }
