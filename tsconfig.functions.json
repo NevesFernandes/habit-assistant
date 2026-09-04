@@ -12,5 +12,6 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["src/server/**/*.ts"]
+  "include": ["src/server/**/*.ts"],
+  "exclude": ["src/server/**/*.test.ts"]
 }
