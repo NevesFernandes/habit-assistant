@@ -16,6 +16,12 @@ export interface AgentEnv {
   TRIAL_PROVIDER?: string;
   TRIAL_API_KEY?: string;
   TRIAL_MODEL?: string;
+  // Second tier of the shared trial's failover chain (see §23 in
+  // Roadmap.md): tried only if the primary trial provider above fails with
+  // a transient error, and only for shared-trial callers, never BYOK.
+  TRIAL_FALLBACK_PROVIDER?: string;
+  TRIAL_FALLBACK_API_KEY?: string;
+  TRIAL_FALLBACK_MODEL?: string;
 }
 
 export interface Byok {
@@ -798,6 +804,51 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
   ];
 }
 
+interface ProviderAttempt {
+  providerId: string;
+  apiKey: string;
+  model?: string;
+  label: string;
+}
+
+// Statuses worth retrying with the next provider in the chain: rate/size
+// limits and server-side outages. A different provider has entirely
+// different limits, so even a 413 (verified 2026-09-04: Groq returns this,
+// not 429, for its "rate_limit_exceeded"/request-too-large case — the
+// exact failure that originally motivated this failover chain) is worth
+// trying elsewhere, even though retrying the *same* provider wouldn't help.
+// 529 is Anthropic's "overloaded_error" code. Any other 4xx (bad request,
+// auth, unknown model, ...) is a config problem switching providers won't fix.
+const TRANSIENT_STATUSES = new Set([413, 429, 500, 502, 503, 504, 529]);
+
+// BYOK is a single deliberate provider/key choice — never fail over onto
+// the shared trial's budget on a BYOK caller's behalf. Only the shared
+// trial gets a failover chain, per §23 in Roadmap.md: Gemini (durable
+// primary) first, Groq (opportunistic secondary) behind it. A third,
+// last-resort Workers AI tier is deliberately not wired up yet — it's
+// gated on §22's timeout work landing first, given its measured 3.1-16.6s
+// latency variance.
+function buildProviderChain(env: AgentEnv, byok?: Byok): ProviderAttempt[] {
+  if (byok) {
+    return [{ providerId: byok.provider, apiKey: byok.apiKey, model: byok.model, label: "byok" }];
+  }
+
+  const chain: ProviderAttempt[] = [];
+  const primaryId = env.TRIAL_PROVIDER ?? "gemini";
+  if (env.TRIAL_API_KEY || primaryId === "mock") {
+    chain.push({ providerId: primaryId, apiKey: env.TRIAL_API_KEY ?? "", model: env.TRIAL_MODEL, label: "trial-primary" });
+  }
+  if (env.TRIAL_FALLBACK_PROVIDER && env.TRIAL_FALLBACK_API_KEY) {
+    chain.push({
+      providerId: env.TRIAL_FALLBACK_PROVIDER,
+      apiKey: env.TRIAL_FALLBACK_API_KEY,
+      model: env.TRIAL_FALLBACK_MODEL,
+      label: "trial-fallback",
+    });
+  }
+  return chain;
+}
+
 export async function handleAgentRequest(
   messages: AgentHistoryMessage[],
   env: AgentEnv,
@@ -810,51 +861,66 @@ export async function handleAgentRequest(
   }
 
   const availableCategories = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
+  const chain = buildProviderChain(env, byok);
 
-  const providerId = byok?.provider ?? env.TRIAL_PROVIDER ?? "groq";
-  const apiKey = byok?.apiKey ?? env.TRIAL_API_KEY;
-  const model = byok?.model ?? (byok ? undefined : env.TRIAL_MODEL);
-
-  if (!apiKey && providerId !== "mock") {
+  if (chain.length === 0) {
+    const providerId = byok?.provider ?? env.TRIAL_PROVIDER ?? "gemini";
     return {
       status: 500,
       body: { error: `No API key available for provider "${providerId}".` },
     };
   }
 
-  let provider;
-  try {
-    provider = resolveProvider(providerId);
-  } catch (err) {
-    return { status: 400, body: { error: err instanceof Error ? err.message : "Unknown provider." } };
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const tools = buildTools(availableCategories, hasPendingConfirmation);
+  const systemPrompt = hasPendingConfirmation
+    ? buildConfirmationSystemPrompt(todayISO)
+    : buildSystemPrompt(availableCategories, todayISO);
+
+  for (let i = 0; i < chain.length; i++) {
+    const attempt = chain[i];
+    const isLastAttempt = i === chain.length - 1;
+
+    let provider;
+    try {
+      provider = resolveProvider(attempt.providerId);
+    } catch (err) {
+      return { status: 400, body: { error: err instanceof Error ? err.message : "Unknown provider." } };
+    }
+
+    try {
+      const result = await provider.send({ messages, tools, systemPrompt, apiKey: attempt.apiKey, model: attempt.model });
+      const toolCall = result.toolCall
+        ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
+        : undefined;
+      return { status: 200, body: { reply: result.reply, toolCall } };
+    } catch (err) {
+      const status = err instanceof ProviderRequestError ? err.status : undefined;
+      // A non-ProviderRequestError (network failure, etc.) has no status of
+      // its own to judge — treat it as transient too, same as a 5xx, rather
+      // than giving up on the whole chain over one bad connection.
+      const transient = status === undefined || TRANSIENT_STATUSES.has(status);
+
+      if (!isLastAttempt && transient) {
+        console.error(`Provider "${attempt.providerId}" (${attempt.label}) failed, trying next in chain:`, err);
+        continue;
+      }
+
+      if (err instanceof ProviderRequestError) {
+        // Provider error bodies are raw, provider-specific JSON/text not
+        // meant for end users (e.g. Groq's rate-limit response) — log it
+        // for debugging but never forward it verbatim into the chat UI.
+        console.error(`Provider request failed (${err.status}):`, err.message);
+        return {
+          status: err.status,
+          body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
+        };
+      }
+      return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
+    }
   }
 
-  try {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const result = await provider.send({
-      messages,
-      tools: buildTools(availableCategories, hasPendingConfirmation),
-      systemPrompt: hasPendingConfirmation
-        ? buildConfirmationSystemPrompt(todayISO)
-        : buildSystemPrompt(availableCategories, todayISO),
-      apiKey: apiKey ?? "",
-      model,
-    });
-    const toolCall = result.toolCall
-      ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
-      : undefined;
-    return { status: 200, body: { reply: result.reply, toolCall } };
-  } catch (err) {
-    if (err instanceof ProviderRequestError) {
-      // Provider error bodies are raw, provider-specific JSON/text not meant
-      // for end users (e.g. Groq's rate-limit response) — log it for
-      // debugging but never forward it verbatim into the chat UI.
-      console.error(`Provider request failed (${err.status}):`, err.message);
-      return {
-        status: err.status,
-        body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
-      };
-    }
-    return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
-  }
+  // Unreachable: the loop above always returns or continues, and the last
+  // iteration never continues.
+  return { status: 500, body: { error: "No provider in the failover chain produced a result." } };
 }

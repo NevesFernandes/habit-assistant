@@ -76,7 +76,7 @@ const anthropicAdapter: ProviderAdapter = {
       }),
     });
 
-    if (!res.ok) throw new ProviderRequestError(502, await res.text());
+    if (!res.ok) throw new ProviderRequestError(res.status, await res.text());
 
     const result = (await res.json()) as { content: AnthropicContentBlock[] };
     const toolUse = result.content.find(

@@ -42,8 +42,10 @@ function toGroqMessages(history: AgentHistoryMessage[]): GroqOutgoingMessage[] {
   });
 }
 
-// Free, no-credit-card tier with tool-calling support — the default for the
-// shared trial. OpenAI-compatible Chat Completions API.
+// Free, no-credit-card tier with tool-calling support — used as an
+// opportunistic secondary in the shared trial's failover chain (see
+// handleAgentRequest.ts), behind Gemini as the durable primary. OpenAI-
+// compatible Chat Completions API.
 //
 // If a second OpenAI-compatible provider (OpenAI itself, Together,
 // Fireworks, Mistral, DeepSeek, ...) is ever added, toGroqMessages() below
@@ -52,8 +54,25 @@ function toGroqMessages(history: AgentHistoryMessage[]): GroqOutgoingMessage[] {
 //
 // Model IDs on Groq's free tier shift over time (verify against
 // https://api.groq.com/openai/v1/models with a real key if this ever 404s
-// as "model_not_found") — openai/gpt-oss-20b is the current pick: fast,
-// supports tool calling, and this app's task doesn't need a bigger model.
+// as "model_not_found" — llama-3.3-70b-versatile, this app's first pick to
+// fix the TPM problem below, disappeared from the catalog entirely between
+// 2026-09-03 and 2026-09-04). openai/gpt-oss-120b is the current pick over
+// the smaller -20b: same free-tier TPM ceiling as -20b (see below, so no
+// worse for the problem this app actually has), but a meaningfully more
+// capable model for BYOK callers or anyone on a paid Groq tier where TPM
+// isn't the constraint.
+//
+// IMPORTANT — verified 2026-09-04 against the real API: on this account's
+// free tier, *every* current Groq model with tool-calling support hard-
+// rejects this app's full ~17-tool request. gpt-oss-20b/120b cap at 8,000
+// TPM; qwen3.6-27b/qwen3.8-27b cap at 7,000 ITPM. The payload itself is
+// ~8,670-10,550 tokens depending on the model's own tokenizer — bigger than
+// every one of those ceilings. This is not fixable by picking a different
+// Groq model today; the actual fix is §24 in Roadmap.md (shrink the
+// payload, not the model). Until then, Groq is not viable as the shared
+// trial's *main* fallback tier (see handleAgentRequest.ts's failover
+// chain) — it only actually helps the much smaller confirmPendingDeletion
+// request (a single tool), not the general case.
 //
 // That smaller/free model is measurably unreliable on ambiguous or
 // corrective turns: reproduced directly against the real API, its own
@@ -66,13 +85,6 @@ function toGroqMessages(history: AgentHistoryMessage[]): GroqOutgoingMessage[] {
 // it surface as a raw provider error.
 const TOOL_USE_FAILED_MESSAGE = "Sorry, I didn't quite catch that — could you rephrase what you'd like me to do?";
 
-// The free trial's shared key is shared across every user, so its rate limit
-// (TPM-based) can be hit by cumulative usage that has nothing to do with the
-// current request. Groq returns this as a normal error response body rather
-// than anything a generic fetch failure would catch, so it needs the same
-// detect-and-substitute treatment as tool_use_failed above.
-const RATE_LIMIT_MESSAGE = "The free trial is getting a lot of use right now — please try again in a few seconds.";
-
 function isToolUseFailedError(errorText: string): boolean {
   try {
     const parsed = JSON.parse(errorText) as { error?: { code?: string } };
@@ -82,17 +94,8 @@ function isToolUseFailedError(errorText: string): boolean {
   }
 }
 
-function isRateLimitError(errorText: string): boolean {
-  try {
-    const parsed = JSON.parse(errorText) as { error?: { code?: string } };
-    return parsed.error?.code === "rate_limit_exceeded";
-  } catch {
-    return false;
-  }
-}
-
 const groqAdapter: ProviderAdapter = {
-  defaultModel: "openai/gpt-oss-20b",
+  defaultModel: "openai/gpt-oss-120b",
 
   async send({ messages, tools, systemPrompt, apiKey, model }: ProviderCallArgs): Promise<ProviderResult> {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -116,10 +119,7 @@ const groqAdapter: ProviderAdapter = {
       if (isToolUseFailedError(errorText)) {
         return { reply: TOOL_USE_FAILED_MESSAGE };
       }
-      if (isRateLimitError(errorText)) {
-        return { reply: RATE_LIMIT_MESSAGE };
-      }
-      throw new ProviderRequestError(502, errorText);
+      throw new ProviderRequestError(res.status, errorText);
     }
 
     const result = (await res.json()) as GroqResponse;

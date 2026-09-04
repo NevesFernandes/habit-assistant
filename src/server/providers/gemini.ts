@@ -78,7 +78,7 @@ const geminiAdapter: ProviderAdapter = {
       },
     );
 
-    if (!res.ok) throw new ProviderRequestError(502, await res.text());
+    if (!res.ok) throw new ProviderRequestError(res.status, await res.text());
 
     const result = (await res.json()) as GeminiResponse;
     const parts = result.candidates[0]?.content?.parts ?? [];
