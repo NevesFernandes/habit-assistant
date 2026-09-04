@@ -26,10 +26,18 @@
   // 2026-09-04: every current Groq model with tool-calling support (its
   // only realistic candidate) hard-rejects this app's full tool-schema
   // payload on its free tier (7,000-8,000 TPM/ITPM vs. an ~8,670-10,550
-  // token request) — see groq.ts's defaultModel comment. Enabling Groq as
-  // the fallback today would add a network round-trip that fails the same
-  // way every time on a real Gemini outage, not add real resilience. Wire
-  // this up once §24 shrinks the payload (or a better secondary appears).
+  // token request) — see groq.ts's defaultModel comment. §24 (closed
+  // 2026-09-04) narrowed the payload for confidently-classified messages,
+  // which should help, but this needs re-verification against Groq's real
+  // tokenizer before enabling — not just assumed fixed.
+  //
+  // WORKERS_AI_ACCOUNT_ID/WORKERS_AI_API_TOKEN/WORKERS_AI_MODEL: §26's
+  // third, last-resort tier (Cloudflare Workers AI) — also deliberately NOT
+  // enabled here yet. The adapter (providers/workersAI.ts) was verified
+  // against the real API during implementation, but turning this on in
+  // production means putting a real account id + scoped API token here or
+  // in dashboard secrets, a deliberate step to take once ready, not a
+  // default. See .env.example for what each var does.
   "vars": {
     "TRIAL_PROVIDER": "gemini"
   },

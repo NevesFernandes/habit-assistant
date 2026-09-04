@@ -33,6 +33,10 @@ export interface ProviderCallArgs {
   systemPrompt: string;
   apiKey: string;
   model?: string;
+  // Only meaningful to workersAI.ts (§26 in Roadmap.md) — Cloudflare's REST endpoint needs
+  // an account id in the URL alongside the API token in apiKey, unlike every other provider
+  // here which only needs one secret. Every other adapter ignores this field.
+  accountId?: string;
   // Set by handleAgentRequest.ts's per-attempt timeout (§22 in Roadmap.md) — pass straight
   // into the adapter's own fetch() so a timed-out call is actually aborted, not just raced
   // against and abandoned (which would leave the request running and still costing quota).
@@ -61,4 +65,4 @@ export class ProviderRequestError extends Error {
   }
 }
 
-export type ProviderId = "anthropic" | "groq" | "gemini" | "mock";
+export type ProviderId = "anthropic" | "groq" | "gemini" | "workersAI" | "mock";

@@ -23,6 +23,14 @@ export interface AgentEnv {
   TRIAL_FALLBACK_PROVIDER?: string;
   TRIAL_FALLBACK_API_KEY?: string;
   TRIAL_FALLBACK_MODEL?: string;
+  // Third, last-resort tier of the shared trial's failover chain (§26 in
+  // Roadmap.md): Cloudflare Workers AI specifically, not a generic provider
+  // slot — needs both an API token and an account id (see
+  // providers/workersAI.ts). Only for shared-trial callers, never BYOK,
+  // same as the fallback tier above.
+  WORKERS_AI_ACCOUNT_ID?: string;
+  WORKERS_AI_API_TOKEN?: string;
+  WORKERS_AI_MODEL?: string;
 }
 
 export interface Byok {
@@ -880,6 +888,11 @@ interface ProviderAttempt {
   apiKey: string;
   model?: string;
   label: string;
+  // Only set for the Workers AI tier (§26) — every other provider ignores it.
+  accountId?: string;
+  // Per-attempt override for the default PROVIDER_TIMEOUT_MS (below) — unset
+  // means "use the default."
+  timeoutMs?: number;
 }
 
 // Statuses worth retrying with the next provider in the chain: rate/size
@@ -910,6 +923,11 @@ const RETRY_SAME_PROVIDER_STATUSES = new Set([500, 502, 503, 504, 529]);
 // provider error, with no special-casing needed below.
 const PROVIDER_TIMEOUT_MS = 15_000;
 
+// Workers AI-specific override (§26 in Roadmap.md) — see buildProviderChain's use of this
+// below. 25s comfortably clears the 16.6s worst case observed in live testing, without being
+// unbounded.
+const WORKERS_AI_TIMEOUT_MS = 25_000;
+
 // Before retrying the *same* provider, wait a beat — mirrors driveClient.ts's RETRY_DELAY_MS.
 const RETRY_DELAY_MS = 500;
 
@@ -936,10 +954,8 @@ async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: numb
 // BYOK is a single deliberate provider/key choice — never fail over onto
 // the shared trial's budget on a BYOK caller's behalf. Only the shared
 // trial gets a failover chain, per §23 in Roadmap.md: Gemini (durable
-// primary) first, Groq (opportunistic secondary) behind it. A third,
-// last-resort Workers AI tier is deliberately not wired up yet — §22's
-// timeout work (above) has now landed, so that gate is clear; wiring in
-// Workers AI itself is tracked separately as §26.
+// primary) first, Groq (opportunistic secondary) behind it, Cloudflare
+// Workers AI (last-resort tertiary, §26) behind that.
 function buildProviderChain(env: AgentEnv, byok?: Byok): ProviderAttempt[] {
   if (byok) {
     return [{ providerId: byok.provider, apiKey: byok.apiKey, model: byok.model, label: "byok" }];
@@ -956,6 +972,19 @@ function buildProviderChain(env: AgentEnv, byok?: Byok): ProviderAttempt[] {
       apiKey: env.TRIAL_FALLBACK_API_KEY,
       model: env.TRIAL_FALLBACK_MODEL,
       label: "trial-fallback",
+    });
+  }
+  if (env.WORKERS_AI_ACCOUNT_ID && env.WORKERS_AI_API_TOKEN) {
+    chain.push({
+      providerId: "workersAI",
+      apiKey: env.WORKERS_AI_API_TOKEN,
+      accountId: env.WORKERS_AI_ACCOUNT_ID,
+      model: env.WORKERS_AI_MODEL,
+      label: "trial-last-resort",
+      // Variable, sometimes-slow latency (3.1s-16.6s observed live) — the
+      // default PROVIDER_TIMEOUT_MS (15s) would cut off the tail of that
+      // range on the one tier meant to be the last chance at an answer.
+      timeoutMs: WORKERS_AI_TIMEOUT_MS,
     });
   }
   return chain;
@@ -1021,8 +1050,17 @@ export async function handleAgentRequest(
     for (let retry = 1; retry <= 2; retry++) {
       try {
         const result = await withTimeout(
-          (signal) => provider.send({ messages, tools, systemPrompt, apiKey: attempt.apiKey, model: attempt.model, signal }),
-          PROVIDER_TIMEOUT_MS,
+          (signal) =>
+            provider.send({
+              messages,
+              tools,
+              systemPrompt,
+              apiKey: attempt.apiKey,
+              model: attempt.model,
+              accountId: attempt.accountId,
+              signal,
+            }),
+          attempt.timeoutMs ?? PROVIDER_TIMEOUT_MS,
         );
         const toolCall = result.toolCall
           ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
