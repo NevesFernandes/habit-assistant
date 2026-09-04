@@ -11,17 +11,17 @@ export interface HabitStats {
   completionsAllTime: number;
 }
 
-// A logged entry alone means "complete" for yesno habits, or for value/timer habits with
-// no target set (backward-compatible: every habit created before target existed has it
-// undefined). Once a value/timer habit has a target, an entry only counts once its value
-// meets it — a partial log (e.g. 6 of 8 glasses) is progress, not completion. Checklist
-// habits follow the same target-style logic: complete only once every item in that date's
-// snapshot is checked — a partial checklist is progress (see checklistProgress), not
-// completion, same as an under-target numeric log.
+// A logged entry alone means "complete" for yesno habits. A value/timer habit only counts
+// once its logged value meets its target — a partial log (e.g. 6 of 8 glasses) is progress,
+// not completion, and a habit with no target set (see §25 in Roadmap.md — target is mandatory
+// for value/timer habits going forward) can never read as complete. Checklist habits follow
+// the same target-style logic: complete only once every item in that date's snapshot is
+// checked — a partial checklist is progress (see checklistProgress), not completion, same as
+// an under-target numeric log.
 export function isHabitEntryComplete(habit: Habit, entry: CompletionLogEntry | undefined): boolean {
   if (!entry) return false;
-  if ((habit.completionType === "value" || habit.completionType === "timer") && habit.target !== undefined) {
-    return (entry.value ?? 0) >= habit.target;
+  if (habit.completionType === "value" || habit.completionType === "timer") {
+    return habit.target !== undefined && (entry.value ?? 0) >= habit.target;
   }
   if (habit.completionType === "checklist") {
     const items = entry.checklist ?? [];
