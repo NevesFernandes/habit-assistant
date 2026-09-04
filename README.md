@@ -17,17 +17,23 @@ See `CLAUDE.md` for the product vision and architecture decisions. This README i
 
 ### 2. A key for the shared "free trial" provider (for the chat assistant)
 
-The app defaults to **Groq**, which has a genuinely free, no-credit-card API tier — this funds the experience anyone gets before they add their own key in the app's Settings panel. See CLAUDE.md's "Cost model / provider strategy" for why.
+The app defaults to **Gemini**, which has a genuinely free, no-credit-card API tier — this funds the experience anyone gets before they add their own key in the app's Settings panel. See CLAUDE.md's "Cost model / provider strategy" for why.
 
-1. Create a free key at [console.groq.com](https://console.groq.com/keys).
+1. Create a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 2. Create a file named `.dev.vars` in the project root (gitignored) with:
    ```
-   TRIAL_PROVIDER=groq
-   TRIAL_API_KEY=gsk_...
+   TRIAL_PROVIDER=gemini
+   TRIAL_API_KEY=...
    ```
 
+The shared trial also supports an automatic failover to a second provider if the primary one has a transient failure (rate limit, 5xx) — see §23 in `Roadmap.md`. It's optional; skip it and the app runs fine on a single trial provider. **Groq is not currently a working choice for this** (verified 2026-09-04: every Groq model with tool-calling support is below this app's real tool-schema payload size on the free tier — see the comment above `groqAdapter.defaultModel` in `src/server/providers/groq.ts`) — use Anthropic as the fallback tier instead if you want to test the chain for real:
+```
+TRIAL_FALLBACK_PROVIDER=anthropic
+TRIAL_FALLBACK_API_KEY=sk-ant-...
+```
+
 Prefer a different default, or want to test without spending anything at all?
-- Swap `TRIAL_PROVIDER` to `gemini` (free tier at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)) or `anthropic` ([console.anthropic.com](https://console.anthropic.com/) — separate billing from a Claude.ai subscription).
+- Swap `TRIAL_PROVIDER` to `groq` or `anthropic` ([console.anthropic.com](https://console.anthropic.com/) — separate billing from a Claude.ai subscription).
 - Set `TRIAL_PROVIDER=mock` and skip `TRIAL_API_KEY` entirely — a zero-cost, keyword-matching stand-in for iterating on anything that isn't agent reasoning itself.
 
 Anthropic, Groq, and Gemini are also the three choices in the app's own Settings panel, for anyone who wants to bring their own key instead of using the shared trial.
@@ -87,7 +93,7 @@ As of 2026-09, Cloudflare's dashboard provisions new projects through a unified 
 2. **Create app → Connect to Git**, pick this GitHub repo, branch `main`.
 3. On the "set up your application" screen: build command is pre-filled `npm run build` (correct, leave it) and deploy command is pre-filled `npx wrangler deploy` (correct — reads `wrangler.jsonc` at the repo root, which already specifies the `dist` assets directory and the Worker entry point). Leave "Path" at its default (the app lives at the repo root). Leave the auto-created API token and the non-production-branch-builds checkbox as-is.
 4. **Check the project name Cloudflare assigns matches `wrangler.jsonc`'s `"name"` field (`habit-assistant`)** — if the dashboard let you pick a different name, either rename it to match or update `wrangler.jsonc` accordingly before deploying, so the CI-driven `wrangler deploy` doesn't fight the dashboard-created project.
-5. **`TRIAL_PROVIDER` is already set via `wrangler.jsonc`'s `vars` — don't also add it as a dashboard variable.** A plain-text dashboard-only variable does *not* survive the next Git-triggered `wrangler deploy` (confirmed the hard way 2026-09-03 — it silently reverted to the code's `"groq"` fallback, sending whatever key was configured to the wrong provider's API). To change the trial provider, edit `wrangler.jsonc` and push, not the dashboard. In the project's **Settings → Variables and Secrets** (under the Bindings-adjacent runtime section, exact label may vary), add only the real secrets — `TRIAL_API_KEY`, `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL` as a plain var if you need a non-default model) — these persist fine as Secrets.
+5. **`TRIAL_PROVIDER` (and, if used, `TRIAL_FALLBACK_PROVIDER`) is already set via `wrangler.jsonc`'s `vars` — don't also add either as a dashboard variable.** A plain-text dashboard-only variable does *not* survive the next Git-triggered `wrangler deploy` (confirmed the hard way 2026-09-03 — it silently reverted to the code's `"gemini"` fallback, sending whatever key was configured to the wrong provider's API). To change the trial provider(s), edit `wrangler.jsonc` and push, not the dashboard. In the project's **Settings → Variables and Secrets** (under the Bindings-adjacent runtime section, exact label may vary), add only the real secrets — `TRIAL_API_KEY`, `TRIAL_FALLBACK_API_KEY` (if using the §23 failover chain), `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`/`TRIAL_FALLBACK_MODEL` as plain vars if you need non-default models) — these persist fine as Secrets.
 6. **Also add `VITE_GOOGLE_CLIENT_ID`** (the same value as in `.env.local`, step 1's Client ID — not secret) as a plain environment variable. This one is different from the others: it's read at *build* time by Vite and baked into the frontend bundle (`src/App.tsx`'s `CLIENT_ID`, no fallback) — without it, the deployed site's Google Sign-In silently breaks.
 7. Add the deployed `*.workers.dev` (or custom domain, if set up) URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
 

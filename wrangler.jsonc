@@ -15,10 +15,21 @@
   // Non-secret runtime vars belong here, not only in the dashboard: a
   // dashboard-only "Text" variable does NOT carry forward into a new
   // version built by a Git-triggered `wrangler deploy` (learned 2026-09-03
-  // the hard way — TRIAL_PROVIDER silently reverted to the code's "groq"
+  // the hard way — TRIAL_PROVIDER silently reverted to the code's "gemini"
   // fallback on the very next push, sending a Gemini key to Groq's API).
-  // Secrets (TRIAL_API_KEY, STT_TRIAL_API_KEY) stay dashboard/CI-managed
-  // only — never put real key values in this file.
+  // Secrets (TRIAL_API_KEY, TRIAL_FALLBACK_API_KEY, STT_TRIAL_API_KEY) stay
+  // dashboard/CI-managed only — never put real key values in this file.
+  //
+  // TRIAL_FALLBACK_PROVIDER/TRIAL_FALLBACK_API_KEY: §23's automatic
+  // cross-provider failover (handleAgentRequest.ts) supports a second
+  // trial provider, but deliberately NOT enabled here yet. Verified
+  // 2026-09-04: every current Groq model with tool-calling support (its
+  // only realistic candidate) hard-rejects this app's full tool-schema
+  // payload on its free tier (7,000-8,000 TPM/ITPM vs. an ~8,670-10,550
+  // token request) — see groq.ts's defaultModel comment. Enabling Groq as
+  // the fallback today would add a network round-trip that fails the same
+  // way every time on a real Gemini outage, not add real resilience. Wire
+  // this up once §24 shrinks the payload (or a better secondary appears).
   "vars": {
     "TRIAL_PROVIDER": "gemini"
   },
