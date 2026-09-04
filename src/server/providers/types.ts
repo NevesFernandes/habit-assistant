@@ -33,6 +33,10 @@ export interface ProviderCallArgs {
   systemPrompt: string;
   apiKey: string;
   model?: string;
+  // Set by handleAgentRequest.ts's per-attempt timeout (§22 in Roadmap.md) — pass straight
+  // into the adapter's own fetch() so a timed-out call is actually aborted, not just raced
+  // against and abandoned (which would leave the request running and still costing quota).
+  signal?: AbortSignal;
 }
 
 export interface ProviderResult {

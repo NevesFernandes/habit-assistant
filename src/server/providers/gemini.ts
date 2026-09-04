@@ -55,12 +55,13 @@ function toGeminiMessages(history: AgentHistoryMessage[]): GeminiOutgoingContent
 const geminiAdapter: ProviderAdapter = {
   defaultModel: "gemini-flash-latest",
 
-  async send({ messages, tools, systemPrompt, apiKey, model }: ProviderCallArgs): Promise<ProviderResult> {
+  async send({ messages, tools, systemPrompt, apiKey, model, signal }: ProviderCallArgs): Promise<ProviderResult> {
     const chosenModel = model ?? geminiAdapter.defaultModel;
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${apiKey}`,
       {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },

@@ -55,9 +55,10 @@ function toAnthropicMessages(history: AgentHistoryMessage[]): AnthropicOutgoingM
 const anthropicAdapter: ProviderAdapter = {
   defaultModel: "claude-sonnet-5",
 
-  async send({ messages, tools, systemPrompt, apiKey, model }: ProviderCallArgs): Promise<ProviderResult> {
+  async send({ messages, tools, systemPrompt, apiKey, model, signal }: ProviderCallArgs): Promise<ProviderResult> {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
