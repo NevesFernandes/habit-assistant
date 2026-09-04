@@ -81,6 +81,8 @@ export interface AppData {
   recurringTasks: RecurringTask[];
   singleTasks: SingleTask[];
   completionLog: CompletionLogEntry[];
+  // Shared-trial messages used so far, client-trusted honor-system counter — see §20 in Roadmap.md.
+  sharedKeyMessageCount?: number;
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [

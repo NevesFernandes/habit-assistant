@@ -14,6 +14,7 @@ import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
+  sharedKeyExhausted: boolean;
   onChange: () => void;
   onClose: () => void;
 }
@@ -24,7 +25,7 @@ const PROVIDERS: { id: ByokProvider; label: string }[] = [
   { id: "gemini", label: "Google Gemini" },
 ];
 
-export default function Settings({ activeProvider, onChange, onClose }: SettingsProps) {
+export default function Settings({ activeProvider, sharedKeyExhausted, onChange, onClose }: SettingsProps) {
   const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
@@ -92,14 +93,26 @@ export default function Settings({ activeProvider, onChange, onClose }: Settings
 
       <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">
         <span>Free trial (shared)</span>
-        <button
-          onClick={handleUseTrial}
-          disabled={activeProvider === null}
-          className="rounded-md bg-violet-500 px-2 py-1 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40"
-        >
-          {activeProvider === null ? "Active" : "Use this"}
-        </button>
+        {sharedKeyExhausted && activeProvider !== null ? (
+          <span className="text-xs text-slate-500">Trial used up</span>
+        ) : (
+          <button
+            onClick={handleUseTrial}
+            disabled={activeProvider === null}
+            className="rounded-md bg-violet-500 px-2 py-1 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40"
+          >
+            {activeProvider === null ? "Active" : "Use this"}
+          </button>
+        )}
       </div>
+      {sharedKeyExhausted && (
+        <p className="mb-3 text-xs text-slate-500">
+          You've used your free trial messages.{" "}
+          <a href="/groq-setup.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
+            Get a free Groq key →
+          </a>
+        </p>
+      )}
 
       <label className="mb-1 block text-slate-300">Provider</label>
       <select

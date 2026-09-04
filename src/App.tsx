@@ -28,6 +28,7 @@ import {
   addRecurringTaskChecklistItem,
   addSingleTask,
   addSingleTaskChecklistItem,
+  bumpSharedKeyMessageCount,
   deleteCategory,
   deleteHabits,
   deleteRecurringTasks,
@@ -39,6 +40,7 @@ import {
   rolloverPersistentTasks,
   setHabitChecklistItemChecked,
   setHabitValue,
+  SHARED_KEY_MESSAGE_CAP,
   setRecurringTaskChecklistItemChecked,
   setSingleTaskChecklistItemChecked,
   toggleHabitChecklistItem,
@@ -158,6 +160,13 @@ export default function App() {
 
   const prevMessageCountRef = useRef(0);
 
+  // §20 shared-key nudge: pendingSharedKeyBumpRef marks that this turn used the shared
+  // trial key and still needs its message counted; attemptedWriteRef marks that some
+  // persist() call was already attempted this turn (success or failure) so the
+  // fallback flush at the end of handleSend doesn't issue a redundant second write.
+  const pendingSharedKeyBumpRef = useRef(false);
+  const attemptedWriteRef = useRef(false);
+
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
@@ -211,11 +220,14 @@ export default function App() {
 
   /** Returns whether the save actually succeeded, so callers don't confirm an action that didn't happen. */
   async function persist(nextData: AppData): Promise<boolean> {
+    attemptedWriteRef.current = true;
     if (!session || !fileRef) return false;
+    const toWrite = pendingSharedKeyBumpRef.current ? bumpSharedKeyMessageCount(nextData) : nextData;
     try {
-      const newRef = await writeDataFile(session, fileRef, nextData);
+      const newRef = await writeDataFile(session, fileRef, toWrite);
       setFileRef(newRef);
-      setData(nextData);
+      setData(toWrite);
+      pendingSharedKeyBumpRef.current = false;
       return true;
     } catch (err) {
       if (err instanceof DriveConflictError) {
@@ -344,9 +356,24 @@ export default function App() {
 
   async function handleSend(userText: string) {
     if (!data) return;
+
+    const usingSharedKey = !byok;
+    // Skip the gate while a delete confirmation is outstanding — it only has a chat-based
+    // confirm/decline path, so blocking it here would leave it stuck with no way to resolve.
+    if (usingSharedKey && !pendingDeletion && (data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP) {
+      setMessages((prev) => [...prev, { role: "user", content: userText }]);
+      pushAssistantMessage(
+        `You've used all ${SHARED_KEY_MESSAGE_CAP} free trial messages. Open Settings (⚙) and add your own free Groq key — ` +
+          "it takes about a minute. Step-by-step guide: /groq-setup.html",
+      );
+      return;
+    }
+
     const nextMessages: AgentHistoryMessage[] = [...messages, { role: "user", content: userText }];
     setMessages(nextMessages);
     setSending(true);
+    pendingSharedKeyBumpRef.current = usingSharedKey;
+    attemptedWriteRef.current = false;
     try {
       const response = await sendMessage(nextMessages, byok, data.categories, pendingDeletion !== null);
 
@@ -417,12 +444,22 @@ export default function App() {
       } else {
         pushAssistantMessage("I didn't get a usable response — try rephrasing?");
       }
+
+      // No branch above persisted this turn (e.g. a plain reply, or a "couldn't find a
+      // match" message) — flush the pending shared-key count on its own so it isn't lost.
+      if (pendingSharedKeyBumpRef.current && !attemptedWriteRef.current) {
+        await persist(data);
+      }
     } catch (err) {
       pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
       // pendingDeletion is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network
       // failure while awaiting confirmation doesn't silently drop it.
     } finally {
+      // Never let a bump flag survive past this turn — if persist() failed above and
+      // never cleared it, leaving it set would incorrectly attach the shared-key count
+      // to some later, unrelated persist() call (e.g. a direct habit-checkbox toggle).
+      pendingSharedKeyBumpRef.current = false;
       setSending(false);
     }
   }
@@ -688,6 +725,7 @@ export default function App() {
       {settingsOpen && (
         <SettingsPanel
           activeProvider={byok?.provider ?? null}
+          sharedKeyExhausted={(data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP}
           onChange={refreshSettings}
           onClose={() => setSettingsOpen(false)}
         />
