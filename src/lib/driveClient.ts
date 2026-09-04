@@ -20,9 +20,17 @@ export interface DriveFileRef {
 }
 
 export class DriveConflictError extends Error {
-  constructor() {
+  constructor(public readonly currentModifiedTime: string) {
     super("The data file changed on another device since it was last loaded.");
     this.name = "DriveConflictError";
+  }
+}
+
+/** A request failed outright (offline, DNS, etc.) even after one retry — see fetchWithRetry. */
+export class DriveOfflineError extends Error {
+  constructor() {
+    super("You're offline.");
+    this.name = "DriveOfflineError";
   }
 }
 
@@ -67,16 +75,31 @@ export async function signIn(clientId: string): Promise<DriveSession> {
 const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
 const RETRY_DELAY_MS = 500;
 
+async function attemptFetch(url: string, init: RequestInit): Promise<Response | null> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    // Network failure (offline, DNS, etc.) rather than an HTTP error response.
+    return null;
+  }
+}
+
 /**
  * Drive's own guidance treats 5xx responses as generally transient — retry
- * once after a short delay before giving up. Request bodies here are always
- * plain strings (JSON or a multipart string), so replaying them is safe.
+ * once after a short delay before giving up. Also retries once on an actual
+ * network failure (the initial fetch() call throwing, not just a bad status);
+ * if that retry also fails outright, raises DriveOfflineError instead of a
+ * raw TypeError, so callers can show a specific "you're offline" message.
+ * Request bodies here are always plain strings (JSON or a multipart string),
+ * so replaying them is safe.
  */
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
-  const res = await fetch(url, init);
-  if (!RETRYABLE_STATUS.has(res.status)) return res;
+  const first = await attemptFetch(url, init);
+  if (first && !RETRYABLE_STATUS.has(first.status)) return first;
   await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-  return fetch(url, init);
+  const second = await attemptFetch(url, init);
+  if (!second) throw new DriveOfflineError();
+  return second;
 }
 
 async function driveFetch(session: DriveSession, path: string, init: RequestInit = {}): Promise<Response> {
@@ -147,8 +170,10 @@ export async function readDataFile(session: DriveSession, fileId: string): Promi
 
 /**
  * Overwrites the data file, first checking the remote modifiedTime against
- * what we last saw. v1 has no merge logic — a conflict just means "reload
- * and try again" (see the open question logged in CLAUDE.md).
+ * what we last saw. Throws DriveConflictError (carrying the actual current
+ * modifiedTime) on a mismatch rather than attempting any merge here — the
+ * caller (App.tsx's persist()) is what has the mutation available to replay
+ * against fresh data — see §21 in Roadmap.md.
  */
 export async function writeDataFile(
   session: DriveSession,
@@ -158,7 +183,7 @@ export async function writeDataFile(
   const currentRes = await driveFetch(session, `/files/${ref.fileId}?fields=modifiedTime`);
   const current = (await currentRes.json()) as { modifiedTime: string };
   if (current.modifiedTime !== ref.modifiedTime) {
-    throw new DriveConflictError();
+    throw new DriveConflictError(current.modifiedTime);
   }
 
   const res = await fetchWithRetry(`${DRIVE_UPLOAD_API}/files/${ref.fileId}?uploadType=media&fields=id,modifiedTime`, {
