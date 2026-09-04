@@ -16,6 +16,7 @@ import {
   readDataFile,
   writeDataFile,
   DriveConflictError,
+  DriveOfflineError,
   type DriveSession,
   type DriveFileRef,
 } from "./lib/driveClient";
@@ -218,31 +219,65 @@ export default function App() {
     }
   }
 
-  /** Returns whether the save actually succeeded, so callers don't confirm an action that didn't happen. */
-  async function persist(nextData: AppData): Promise<boolean> {
+  /**
+   * Takes the mutation itself (not a precomputed AppData) so that on a write conflict it can
+   * be replayed against freshly reloaded remote data — see §21 in Roadmap.md. Two attempts
+   * total: attempt 1 against this render's `data`; on a conflict, reload remote data and
+   * replay `mutate` against it for attempt 2. Returns whether the save actually succeeded, so
+   * callers don't confirm an action that didn't happen.
+   */
+  async function persist(mutate: (data: AppData) => AppData): Promise<boolean> {
     attemptedWriteRef.current = true;
-    if (!session || !fileRef) return false;
-    const toWrite = pendingSharedKeyBumpRef.current ? bumpSharedKeyMessageCount(nextData) : nextData;
-    try {
-      const newRef = await writeDataFile(session, fileRef, toWrite);
-      setFileRef(newRef);
-      setData(toWrite);
-      pendingSharedKeyBumpRef.current = false;
-      return true;
-    } catch (err) {
-      if (err instanceof DriveConflictError) {
-        const latest = await readDataFile(session, fileRef.fileId);
-        setData(latest);
+    if (!session || !fileRef || !data) return false;
+
+    let baseData = data;
+    let ref = fileRef;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const toWrite = pendingSharedKeyBumpRef.current ? bumpSharedKeyMessageCount(mutate(baseData)) : mutate(baseData);
+      try {
+        const newRef = await writeDataFile(session, ref, toWrite);
+        setFileRef(newRef);
+        setData(toWrite);
+        pendingSharedKeyBumpRef.current = false;
+        return true;
+      } catch (err) {
+        if (err instanceof DriveConflictError && attempt === 1) {
+          try {
+            baseData = await readDataFile(session, ref.fileId);
+            ref = { fileId: ref.fileId, modifiedTime: err.currentModifiedTime };
+          } catch (reloadErr) {
+            pushAssistantMessage(
+              reloadErr instanceof DriveOfflineError
+                ? "You're offline — this didn't save. Try again once you're back online."
+                : `Sorry, I couldn't save that: ${reloadErr instanceof Error ? reloadErr.message : "unknown error"}.`,
+            );
+            return false;
+          }
+          continue; // retry, replaying `mutate` against the freshly reloaded baseData
+        }
+        if (err instanceof DriveConflictError) {
+          // Retries exhausted — still conflicting, most likely genuinely concurrent edits from
+          // two devices in a tight window. Resync UI state to baseData/ref (the one reload we
+          // did after attempt 1) so the user at least sees the freshest data we actually saw,
+          // even though the write itself failed — mirrors the pre-§21 behavior of always
+          // reflecting the latest known remote state on a conflict.
+          setData(baseData);
+          setFileRef(ref);
+          pushAssistantMessage("Your data keeps changing on another device — please try that again in a moment.");
+          return false;
+        }
+        if (err instanceof DriveOfflineError) {
+          pushAssistantMessage("You're offline — this didn't save. Try again once you're back online.");
+          return false;
+        }
         pushAssistantMessage(
-          "Your data changed on another device, so I reloaded the latest version — please try that again.",
+          `Sorry, I couldn't save that: ${err instanceof Error ? err.message : "unknown error"}.`,
         );
         return false;
       }
-      pushAssistantMessage(
-        `Sorry, I couldn't save that: ${err instanceof Error ? err.message : "unknown error"}.`,
-      );
-      return false;
     }
+    return false;
   }
 
   function pushAssistantMessage(content: string, toolCall?: ToolCallRef) {
@@ -278,7 +313,7 @@ export default function App() {
     const names = matches.map((match) => match.name);
 
     if (kind === "singleTask" && isNameOnlyCriteria(criteria) && matches.length === 1) {
-      const saved = await persist(deleteSingleTasks(data, ids));
+      const saved = await persist((current) => deleteSingleTasks(current, ids));
       if (saved) pushAssistantMessage(`Deleted "${names[0]}".`, toolCall);
       return;
     }
@@ -297,13 +332,13 @@ export default function App() {
       return;
     }
 
-    const nextData =
+    const saved = await persist((current) =>
       pending.itemKind === "habit"
-        ? deleteHabits(data, pending.ids)
+        ? deleteHabits(current, pending.ids)
         : pending.itemKind === "recurringTask"
-          ? deleteRecurringTasks(data, pending.ids)
-          : deleteSingleTasks(data, pending.ids);
-    const saved = await persist(nextData);
+          ? deleteRecurringTasks(current, pending.ids)
+          : deleteSingleTasks(current, pending.ids),
+    );
     if (saved) pushAssistantMessage(`Deleted ${formatQuotedList(pending.names)}.`, toolCall);
   }
 
@@ -343,14 +378,13 @@ export default function App() {
     }
 
     const target = matches[0];
-    const nextData =
+    const saved = await persist((current) =>
       kind === "habit"
-        ? updateHabit(data, target.id, patch)
+        ? updateHabit(current, target.id, patch)
         : kind === "recurringTask"
-          ? updateRecurringTask(data, target.id, patch)
-          : updateSingleTask(data, target.id, patch);
-
-    const saved = await persist(nextData);
+          ? updateRecurringTask(current, target.id, patch)
+          : updateSingleTask(current, target.id, patch),
+    );
     if (saved) pushAssistantMessage(`${actionVerb} "${target.name}".`, toolCall);
   }
 
@@ -384,22 +418,22 @@ export default function App() {
         const confirmed = confirmTc?.input.confirmed === true;
         await resolvePendingDeletion(confirmed, confirmTc);
       } else if (response.toolCall?.name === "createSingleTask") {
-        const nextData = addSingleTask(data, response.toolCall.input);
-        const saved = await persist(nextData);
+        const toolCall = response.toolCall;
+        const saved = await persist((current) => addSingleTask(current, toolCall.input));
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" to your tasks.`, response.toolCall);
+          pushAssistantMessage(`Added "${toolCall.input.name}" to your tasks.`, toolCall);
         }
       } else if (response.toolCall?.name === "createHabit") {
-        const nextData = addHabit(data, response.toolCall.input);
-        const saved = await persist(nextData);
+        const toolCall = response.toolCall;
+        const saved = await persist((current) => addHabit(current, toolCall.input));
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a habit.`, response.toolCall);
+          pushAssistantMessage(`Added "${toolCall.input.name}" as a habit.`, toolCall);
         }
       } else if (response.toolCall?.name === "createRecurringTask") {
-        const nextData = addRecurringTask(data, response.toolCall.input);
-        const saved = await persist(nextData);
+        const toolCall = response.toolCall;
+        const saved = await persist((current) => addRecurringTask(current, toolCall.input));
         if (saved) {
-          pushAssistantMessage(`Added "${response.toolCall.input.name}" as a recurring task.`, response.toolCall);
+          pushAssistantMessage(`Added "${toolCall.input.name}" as a recurring task.`, toolCall);
         }
       } else if (response.toolCall?.name === "deleteSingleTasks") {
         await handleDeleteRequest("singleTask", response.toolCall.input, response.toolCall);
@@ -448,7 +482,7 @@ export default function App() {
       // No branch above persisted this turn (e.g. a plain reply, or a "couldn't find a
       // match" message) — flush the pending shared-key count on its own so it isn't lost.
       if (pendingSharedKeyBumpRef.current && !attemptedWriteRef.current) {
-        await persist(data);
+        await persist((current) => current);
       }
     } catch (err) {
       pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
@@ -466,42 +500,42 @@ export default function App() {
 
   function handleTaskToggle(taskId: string) {
     if (!data) return;
-    void persist(toggleSingleTaskDone(data, taskId));
+    void persist((current) => toggleSingleTaskDone(current, taskId));
   }
 
   function handleHabitToggle(habitId: string) {
     if (!data) return;
-    void persist(toggleHabitCompletion(data, habitId, selectedDate));
+    void persist((current) => toggleHabitCompletion(current, habitId, selectedDate));
   }
 
   function handleRecurringTaskToggle(taskId: string) {
     if (!data) return;
-    void persist(toggleRecurringTaskCompletion(data, taskId, selectedDate));
+    void persist((current) => toggleRecurringTaskCompletion(current, taskId, selectedDate));
   }
 
   function handleHabitChecklistToggle(habitId: string, itemId: string, dateISO: string) {
     if (!data) return;
-    void persist(toggleHabitChecklistItem(data, habitId, itemId, dateISO));
+    void persist((current) => toggleHabitChecklistItem(current, habitId, itemId, dateISO));
   }
 
   function handleRecurringTaskChecklistToggle(taskId: string, itemId: string) {
     if (!data) return;
-    void persist(toggleRecurringTaskChecklistItem(data, taskId, itemId));
+    void persist((current) => toggleRecurringTaskChecklistItem(current, taskId, itemId));
   }
 
   function handleSingleTaskChecklistToggle(taskId: string, itemId: string) {
     if (!data) return;
-    void persist(toggleSingleTaskChecklistItem(data, taskId, itemId));
+    void persist((current) => toggleSingleTaskChecklistItem(current, taskId, itemId));
   }
 
   function handleRecurringTaskChecklistAdd(taskId: string, text: string) {
     if (!data) return;
-    void persist(addRecurringTaskChecklistItem(data, taskId, text));
+    void persist((current) => addRecurringTaskChecklistItem(current, taskId, text));
   }
 
   function handleSingleTaskChecklistAdd(taskId: string, text: string) {
     if (!data) return;
-    void persist(addSingleTaskChecklistItem(data, taskId, text));
+    void persist((current) => addSingleTaskChecklistItem(current, taskId, text));
   }
 
   async function handleLogHabitProgress(
@@ -527,12 +561,18 @@ export default function App() {
       return;
     }
     const dateISO = input.date ?? todayISO();
-    const current = data.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO)?.value ?? 0;
-    const newValue = input.value !== undefined ? input.value : current + (input.delta ?? 0);
-    const saved = await persist(setHabitValue(data, habit.id, dateISO, newValue));
+    // Recompute inside the mutator (not before persist()) so a delta re-derives against
+    // whatever data a conflict-replay actually reloads, rather than replaying a stale
+    // absolute value computed from this render's now-outdated `data` — see §21.
+    let loggedValue = 0;
+    const saved = await persist((latest) => {
+      const currentValue = latest.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO)?.value ?? 0;
+      loggedValue = input.value !== undefined ? input.value : currentValue + (input.delta ?? 0);
+      return setHabitValue(latest, habit.id, dateISO, loggedValue);
+    });
     if (saved) {
       const unitSuffix = habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : "";
-      pushAssistantMessage(`Logged ${newValue}${unitSuffix} for "${habit.name}".`, toolCall);
+      pushAssistantMessage(`Logged ${loggedValue}${unitSuffix} for "${habit.name}".`, toolCall);
     }
   }
 
@@ -554,7 +594,7 @@ export default function App() {
       return;
     }
     const task = matches[0];
-    const saved = await persist(addRecurringTaskChecklistItem(data, task.id, input.text));
+    const saved = await persist((current) => addRecurringTaskChecklistItem(current, task.id, input.text));
     if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
   }
 
@@ -573,7 +613,7 @@ export default function App() {
       return;
     }
     const task = matches[0];
-    const saved = await persist(addSingleTaskChecklistItem(data, task.id, input.text));
+    const saved = await persist((current) => addSingleTaskChecklistItem(current, task.id, input.text));
     if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
   }
 
@@ -609,7 +649,9 @@ export default function App() {
     }
     const checked = input.checked ?? true;
     const dateISO = input.date ?? todayISO();
-    const saved = await persist(setHabitChecklistItemChecked(data, habit.id, itemMatches[0].id, checked, dateISO));
+    const saved = await persist((current) =>
+      setHabitChecklistItemChecked(current, habit.id, itemMatches[0].id, checked, dateISO),
+    );
     if (saved) {
       pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${habit.name}".`, toolCall);
     }
@@ -646,7 +688,9 @@ export default function App() {
       return;
     }
     const checked = input.checked ?? true;
-    const saved = await persist(setRecurringTaskChecklistItemChecked(data, task.id, itemMatches[0].id, checked));
+    const saved = await persist((current) =>
+      setRecurringTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
+    );
     if (saved) {
       pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
     }
@@ -683,7 +727,9 @@ export default function App() {
       return;
     }
     const checked = input.checked ?? true;
-    const saved = await persist(setSingleTaskChecklistItemChecked(data, task.id, itemMatches[0].id, checked));
+    const saved = await persist((current) =>
+      setSingleTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
+    );
     if (saved) {
       pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
     }
@@ -691,18 +737,18 @@ export default function App() {
 
   function handleAddCategory(input: CreateCategoryInput) {
     if (!data) return;
-    void persist(addCategory(data, input));
+    void persist((current) => addCategory(current, input));
   }
 
   function handleUpdateCategory(id: string, patch: UpdateCategoryPatch) {
     if (!data) return;
-    void persist(updateCategory(data, id, patch));
+    void persist((current) => updateCategory(current, id, patch));
   }
 
   function handleDeleteCategory(id: string): boolean {
     if (!data) return false;
     if (isCategoryInUse(data, id)) return false;
-    void persist(deleteCategory(data, id));
+    void persist((current) => deleteCategory(current, id));
     return true;
   }
 
