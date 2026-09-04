@@ -821,13 +821,54 @@ interface ProviderAttempt {
 // auth, unknown model, ...) is a config problem switching providers won't fix.
 const TRANSIENT_STATUSES = new Set([413, 429, 500, 502, 503, 504, 529]);
 
+// Subset of TRANSIENT_STATUSES worth retrying against the *same* provider first (§22): plain
+// server-side/outage statuses, where a second attempt shortly after has a real chance of
+// succeeding. Deliberately excludes 413 (payload-too-large — the payload doesn't change
+// between attempts, so a same-provider retry is guaranteed to fail again) and 429 (rate
+// limited — a still-active limit is very unlikely to clear within RETRY_DELAY_MS). For both of
+// those, skip straight to the next provider in the chain instead of wasting a full round-trip
+// retrying a call that's already known not to help.
+const RETRY_SAME_PROVIDER_STATUSES = new Set([500, 502, 503, 504, 529]);
+
+// See §22 in Roadmap.md: neither the client nor this Worker had a request
+// timeout anywhere in the chat path, so a provider call that hangs instead
+// of erroring left the chat stuck on "Thinking…" forever. A timeout here
+// surfaces as a synthetic ProviderRequestError(504, ...) — 504 is already
+// in TRANSIENT_STATUSES (and RETRY_SAME_PROVIDER_STATUSES), so a hang is
+// automatically retried/failed-over exactly like any other transient
+// provider error, with no special-casing needed below.
+const PROVIDER_TIMEOUT_MS = 15_000;
+
+// Before retrying the *same* provider, wait a beat — mirrors driveClient.ts's RETRY_DELAY_MS.
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Runs `run(signal)` with a hard timeout, actually aborting the underlying call (not just
+ * racing and abandoning it) so a timed-out request stops consuming Worker CPU time and
+ * provider quota/cost in the background — see §22 in Roadmap.md.
+ */
+async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await run(controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new ProviderRequestError(504, "Provider request timed out.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // BYOK is a single deliberate provider/key choice — never fail over onto
 // the shared trial's budget on a BYOK caller's behalf. Only the shared
 // trial gets a failover chain, per §23 in Roadmap.md: Gemini (durable
 // primary) first, Groq (opportunistic secondary) behind it. A third,
-// last-resort Workers AI tier is deliberately not wired up yet — it's
-// gated on §22's timeout work landing first, given its measured 3.1-16.6s
-// latency variance.
+// last-resort Workers AI tier is deliberately not wired up yet — §22's
+// timeout work (above) has now landed, so that gate is clear; wiring in
+// Workers AI itself is tracked separately as §26.
 function buildProviderChain(env: AgentEnv, byok?: Byok): ProviderAttempt[] {
   if (byok) {
     return [{ providerId: byok.provider, apiKey: byok.apiKey, model: byok.model, label: "byok" }];
@@ -877,7 +918,7 @@ export async function handleAgentRequest(
     ? buildConfirmationSystemPrompt(todayISO)
     : buildSystemPrompt(availableCategories, todayISO);
 
-  for (let i = 0; i < chain.length; i++) {
+  providerLoop: for (let i = 0; i < chain.length; i++) {
     const attempt = chain[i];
     const isLastAttempt = i === chain.length - 1;
 
@@ -888,35 +929,50 @@ export async function handleAgentRequest(
       return { status: 400, body: { error: err instanceof Error ? err.message : "Unknown provider." } };
     }
 
-    try {
-      const result = await provider.send({ messages, tools, systemPrompt, apiKey: attempt.apiKey, model: attempt.model });
-      const toolCall = result.toolCall
-        ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
-        : undefined;
-      return { status: 200, body: { reply: result.reply, toolCall } };
-    } catch (err) {
-      const status = err instanceof ProviderRequestError ? err.status : undefined;
-      // A non-ProviderRequestError (network failure, etc.) has no status of
-      // its own to judge — treat it as transient too, same as a 5xx, rather
-      // than giving up on the whole chain over one bad connection.
-      const transient = status === undefined || TRANSIENT_STATUSES.has(status);
+    // §22: up to 2 attempts against this same provider (a transient failure retries once here
+    // before falling through to the next provider in the chain) — mirrors driveClient.ts's
+    // retry-once pattern.
+    for (let retry = 1; retry <= 2; retry++) {
+      try {
+        const result = await withTimeout(
+          (signal) => provider.send({ messages, tools, systemPrompt, apiKey: attempt.apiKey, model: attempt.model, signal }),
+          PROVIDER_TIMEOUT_MS,
+        );
+        const toolCall = result.toolCall
+          ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
+          : undefined;
+        return { status: 200, body: { reply: result.reply, toolCall } };
+      } catch (err) {
+        const status = err instanceof ProviderRequestError ? err.status : undefined;
+        // A non-ProviderRequestError (network failure, etc.) has no status of
+        // its own to judge — treat it as transient too, same as a 5xx, rather
+        // than giving up on the whole chain over one bad connection.
+        const transient = status === undefined || TRANSIENT_STATUSES.has(status);
+        const retrySameProvider = status === undefined || RETRY_SAME_PROVIDER_STATUSES.has(status);
 
-      if (!isLastAttempt && transient) {
-        console.error(`Provider "${attempt.providerId}" (${attempt.label}) failed, trying next in chain:`, err);
-        continue;
-      }
+        if (transient && retrySameProvider && retry === 1) {
+          console.error(`Provider "${attempt.providerId}" (${attempt.label}) failed, retrying once:`, err);
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
+        }
 
-      if (err instanceof ProviderRequestError) {
-        // Provider error bodies are raw, provider-specific JSON/text not
-        // meant for end users (e.g. Groq's rate-limit response) — log it
-        // for debugging but never forward it verbatim into the chat UI.
-        console.error(`Provider request failed (${err.status}):`, err.message);
-        return {
-          status: err.status,
-          body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
-        };
+        if (!isLastAttempt && transient) {
+          console.error(`Provider "${attempt.providerId}" (${attempt.label}) failed after retry, trying next in chain:`, err);
+          continue providerLoop;
+        }
+
+        if (err instanceof ProviderRequestError) {
+          // Provider error bodies are raw, provider-specific JSON/text not
+          // meant for end users (e.g. Groq's rate-limit response) — log it
+          // for debugging but never forward it verbatim into the chat UI.
+          console.error(`Provider request failed (${err.status}):`, err.message);
+          return {
+            status: err.status,
+            body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
+          };
+        }
+        return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
       }
-      return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
     }
   }
 

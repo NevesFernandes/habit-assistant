@@ -97,9 +97,10 @@ function isToolUseFailedError(errorText: string): boolean {
 const groqAdapter: ProviderAdapter = {
   defaultModel: "openai/gpt-oss-120b",
 
-  async send({ messages, tools, systemPrompt, apiKey, model }: ProviderCallArgs): Promise<ProviderResult> {
+  async send({ messages, tools, systemPrompt, apiKey, model, signal }: ProviderCallArgs): Promise<ProviderResult> {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,

@@ -17,7 +17,13 @@ export async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Prom
   let res: Response;
   try {
     res = await fetch(input, init);
-  } catch {
+  } catch (err) {
+    // A caller-supplied `signal` (e.g. agentClient.ts's AbortSignal.timeout — see §22 in
+    // Roadmap.md) aborts with a DOMException named "TimeoutError" or "AbortError", distinct
+    // from a true network failure — worth its own message rather than the generic one below.
+    if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new Error("The assistant took too long to respond — try again.");
+    }
     throw new Error(
       navigator.onLine
         ? "Couldn't reach the server — check your connection and try again."
