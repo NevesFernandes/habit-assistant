@@ -9,6 +9,8 @@ import HabitsView from "./components/HabitsView";
 import SingleTasksView from "./components/SingleTasksView";
 import RecurringTasksView from "./components/RecurringTasksView";
 import Dashboard from "./components/Dashboard";
+import TimerView from "./components/TimerView";
+import { useTimerSession } from "./lib/useTimerSession";
 import {
   signIn,
   findOrCreateFolder,
@@ -64,7 +66,7 @@ import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from ".
 import { speak } from "./lib/textToSpeech";
 import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
-type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks" | "stats";
+type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks" | "stats" | "timer";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -147,6 +149,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+
+  // Called here, at the root, not inside TimerView — every tab's component fully unmounts
+  // on tab switch (see the render block below), so a running/paused timer needs to live
+  // above that switch to survive navigating away and back. See §19 in Roadmap.md.
+  const timer = useTimerSession();
 
   useEffect(() => {
     setByok(getActiveByok());
@@ -577,6 +584,18 @@ export default function App() {
     }
   }
 
+  // §19 in Roadmap.md: saving a stopped timer session adds to (not overwrites) whatever's
+  // already logged for that habit today — same delta-inside-the-mutator pattern as
+  // handleLogHabitProgress above, so a conflict-retry replay re-derives against fresh data.
+  async function handleSaveTimer(habitId: string, elapsedMs: number): Promise<boolean> {
+    const elapsedMinutes = elapsedMs / 60_000;
+    const dateISO = todayISO();
+    return persist((latest) => {
+      const currentValue = latest.completionLog.find((entry) => entry.itemId === habitId && entry.date === dateISO)?.value ?? 0;
+      return setHabitValue(latest, habitId, dateISO, currentValue + elapsedMinutes);
+    });
+  }
+
   async function handleAddRecurringTaskChecklistItemChat(
     input: { name: string; text: string },
     toolCall: ToolCallRef,
@@ -779,7 +798,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "categories", "habits", "single tasks", "recurring tasks", "stats"] as const).map((tab) => (
+        {(["chat", "today", "categories", "habits", "single tasks", "recurring tasks", "stats", "timer"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -863,6 +882,8 @@ export default function App() {
             onViewCategories={() => setActiveTab("categories")}
           />
         )}
+
+        {activeTab === "timer" && <TimerView habits={data.habits} timer={timer} onSave={handleSaveTimer} />}
       </div>
     </div>
   );

@@ -14,8 +14,5 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-## Later
-
-### §19 — Live start/stop timer UI for Timer habits
-Timer-habit progress is currently logged after the fact via chat (`logHabitProgress`) — a duration in minutes, the same simple mechanism as Numeric-value habits. The user has looked at HabitNow's Timer habits and wants that fuller experience eventually: an actual running stopwatch (start/pause/stop, elapsed time tracked live), not just after-the-fact entry. Deliberately deferred — real added scope beyond this pass (running-timer state, handling the app being backgrounded/closed mid-timer, persisting an in-progress session). The user will write a fuller spec before this is picked up.
+Nothing queued right now — add new items above as they come up.
 
