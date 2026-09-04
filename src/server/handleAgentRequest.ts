@@ -11,6 +11,7 @@ import { resolveProvider } from "./providers/index.ts";
 import { ProviderRequestError, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category } from "../types/models.ts";
+import { classifyIntent, type IntentBucket } from "./classifyIntent.ts";
 
 export interface AgentEnv {
   TRIAL_PROVIDER?: string;
@@ -41,40 +42,68 @@ export interface AgentResult {
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function buildSystemPrompt(categories: Category[], todayISO: string): string {
-  const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
-  const todayWeekday = WEEKDAY_NAMES[new Date(`${todayISO}T00:00:00Z`).getUTCDay()];
+// Single source of truth for which bucket(s) each tool belongs to (see §24 in
+// Roadmap.md) and its one-line entry in the prompt's numbered action list.
+// archiveHabit/archiveRecurringTask deliberately belong to both "delete" and
+// "modify": their own prose is cross-referenced from both directions (delete
+// contrasts itself against archiving; modify offers newEndDate as the
+// alternative), and a soft-delete phrasing ("remove my old gym habit")
+// must not lose access to the non-destructive tool just because "delete"
+// fired alone.
+interface ToolManifestEntry {
+  name: string;
+  buckets: IntentBucket[];
+  listBlurb: string;
+}
 
+const TOOL_MANIFEST: ToolManifestEntry[] = [
+  { name: "createSingleTask", buckets: ["create"], listBlurb: "a one-off task, done/not-done, no recurrence." },
+  { name: "createHabit", buckets: ["create"], listBlurb: "a recurring habit tracked over time, with a completion type (yes/no, numeric, timer, or checklist)." },
+  { name: "createRecurringTask", buckets: ["create"], listBlurb: `a recurring task with the same recurrence options as a habit, but simple done/not-done tracking only (no completion type). Use this instead of createHabit when the user clearly wants a "recurring task" or a plain repeating to-do rather than something with detailed tracking.` },
+  { name: "deleteSingleTasks", buckets: ["delete"], listBlurb: "delete one-off tasks matching filters you specify." },
+  { name: "deleteHabits", buckets: ["delete"], listBlurb: "delete habits matching filters you specify." },
+  { name: "deleteRecurringTasks", buckets: ["delete"], listBlurb: "delete recurring tasks matching filters you specify." },
+  { name: "updateSingleTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing one-off task." },
+  { name: "updateHabit", buckets: ["modify"], listBlurb: "change one or more fields on an existing habit." },
+  { name: "updateRecurringTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing recurring task." },
+  { name: "archiveHabit", buckets: ["delete", "modify"], listBlurb: "archive an existing habit." },
+  { name: "archiveRecurringTask", buckets: ["delete", "modify"], listBlurb: "archive an existing recurring task." },
+  { name: "logHabitProgress", buckets: ["modify"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
+  { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing recurring task's checklist." },
+  { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing one-off task's checklist." },
+  { name: "checkHabitChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a checklist-type habit's checklist." },
+  { name: "checkRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a recurring task's checklist." },
+  { name: "checkSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a one-off task's checklist." },
+];
+
+function activeManifestEntries(activeBuckets: IntentBucket[] | "all"): ToolManifestEntry[] {
+  if (activeBuckets === "all") return TOOL_MANIFEST;
+  return TOOL_MANIFEST.filter((entry) => entry.buckets.some((bucket) => activeBuckets.includes(bucket)));
+}
+
+function isBucketActive(activeBuckets: IntentBucket[] | "all", bucket: IntentBucket): boolean {
+  return activeBuckets === "all" || activeBuckets.includes(bucket);
+}
+
+function buildIdentityPreamble(todayISO: string, todayWeekday: string): string {
   return `You are the in-app assistant for Habit Assistant, a personal habit and task tracker the user controls entirely through conversation.
 
 Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any relative date the user gives you — "today", "tomorrow", "in 3 days", etc. — and resolve it to an exact ISO date (YYYY-MM-DD) yourself before calling a tool.
 
-Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically.
+Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically.`;
+}
 
-You can take these actions:
-1. createSingleTask — a one-off task, done/not-done, no recurrence.
-2. createHabit — a recurring habit tracked over time, with a completion type (yes/no, numeric, timer, or checklist).
-3. createRecurringTask — a recurring task with the same recurrence options as a habit, but simple done/not-done tracking only (no completion type). Use this instead of createHabit when the user clearly wants a "recurring task" or a plain repeating to-do rather than something with detailed tracking.
-4. deleteSingleTasks — delete one-off tasks matching filters you specify.
-5. deleteHabits — delete habits matching filters you specify.
-6. deleteRecurringTasks — delete recurring tasks matching filters you specify.
-7. updateSingleTask — change one or more fields on an existing one-off task.
-8. updateHabit — change one or more fields on an existing habit.
-9. updateRecurringTask — change one or more fields on an existing recurring task.
-10. archiveHabit — archive an existing habit.
-11. archiveRecurringTask — archive an existing recurring task.
-12. logHabitProgress — log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below).
-13. addRecurringTaskChecklistItem — add one item to an existing recurring task's checklist.
-14. addSingleTaskChecklistItem — add one item to an existing one-off task's checklist.
-15. checkHabitChecklistItem — check or uncheck one item on a checklist-type habit's checklist.
-16. checkRecurringTaskChecklistItem — check or uncheck one item on a recurring task's checklist.
-17. checkSingleTaskChecklistItem — check or uncheck one item on a one-off task's checklist.
+function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
+  const lines = manifestEntries.map((entry, index) => `${index + 1}. ${entry.name} — ${entry.listBlurb}`);
+  return `You can take these actions:\n${lines.join("\n")}`;
+}
 
-Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
-If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
+If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.`;
 
-For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
+function buildDeleteProse(categoryList: string, todayISO: string): string {
+  return `For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
 - all: set true to match every item of that kind, ignoring every other field below.
 - name: a text fragment to match against the item's name (e.g. "delete the gym habit" → name: "gym").
 - categoryIds: one or more category ids from this list: ${categoryList} (e.g. "delete my Health and Finance tasks" → categoryIds: ["health", "finance"]).
@@ -83,19 +112,23 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 - done (deleteSingleTasks only): true = only completed tasks, false = only not-yet-done tasks.
 - completionType (deleteHabits only): "yesno" | "value" | "timer" | "checklist" — only when the user explicitly refers to how a habit is tracked.
 - neverCompleted (deleteHabits and deleteRecurringTasks): true = only items with zero completions ever recorded (e.g. "delete habits I've never actually done").
-- inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.
+- inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.`;
+}
 
-For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.`;
 
-For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.
+function buildModifyProse(categoryList: string): string {
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
-For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).
+For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).`;
+}
 
-For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
+const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
 
-For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.`;
 
-For createSingleTask specifically:
+function buildCreateProse(categoryList: string): string {
+  return `For createSingleTask specifically:
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
 - persistency defaults to true (the task keeps carrying forward until done) — leave it out unless the user's own phrasing signals a same-day/one-shot intent (e.g. "just for today", "don't need this tomorrow") or explicitly asks for it to persist or not. Never ask about this proactively; it has a sensible default.
 
@@ -117,9 +150,32 @@ For createHabit specifically:
 For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
 - priority, startDate/startWeekday/startWeekdayMode, and recurrenceType (with its matching fields) all work exactly as they do for createHabit — see above.
-- There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
+- There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.`;
+}
 
-Keep replies brief and conversational.`;
+// activeBuckets narrows both the tool schemas (buildTools, below) and this
+// prose to only what the classifier is confident the message needs — see
+// §24 in Roadmap.md. "all" (the classifier's fallback sentinel) sends every
+// chunk, i.e. today's exact pre-§24 behavior.
+function buildSystemPrompt(categories: Category[], todayISO: string, activeBuckets: IntentBucket[] | "all"): string {
+  const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
+  const todayWeekday = WEEKDAY_NAMES[new Date(`${todayISO}T00:00:00Z`).getUTCDay()];
+
+  const chunks: string[] = [
+    buildIdentityPreamble(todayISO, todayWeekday),
+    buildActionsList(activeManifestEntries(activeBuckets)),
+    GENERAL_POLICY,
+  ];
+
+  if (isBucketActive(activeBuckets, "delete")) chunks.push(buildDeleteProse(categoryList, todayISO));
+  if (isBucketActive(activeBuckets, "delete") || isBucketActive(activeBuckets, "modify")) chunks.push(ARCHIVE_PROSE);
+  if (isBucketActive(activeBuckets, "modify")) chunks.push(buildModifyProse(categoryList));
+  if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
+  if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
+
+  chunks.push("Keep replies brief and conversational.");
+
+  return chunks.join("\n\n");
 }
 
 function buildConfirmationSystemPrompt(todayISO: string): string {
@@ -130,7 +186,14 @@ A destructive deletion is currently pending the user's confirmation — they wer
 Call confirmPendingDeletion with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should be deleted on anything less than a clear yes. Do not call any other tool.`;
 }
 
-function buildTools(categories: Category[], hasPendingConfirmation: boolean): ToolDefinition[] {
+// activeBuckets narrows the schemas sent to only what classifyIntent is
+// confident the message needs (see §24 in Roadmap.md); "all" (its fallback
+// sentinel) sends every schema, i.e. today's exact pre-§24 behavior.
+function buildTools(
+  categories: Category[],
+  hasPendingConfirmation: boolean,
+  activeBuckets: IntentBucket[] | "all",
+): ToolDefinition[] {
   const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
 
   if (hasPendingConfirmation) {
@@ -154,7 +217,7 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
     ];
   }
 
-  return [
+  const ALL_TOOLS: ToolDefinition[] = [
     {
       name: "createSingleTask",
       description: "Create a single one-off task (not recurring).",
@@ -802,6 +865,14 @@ function buildTools(categories: Category[], hasPendingConfirmation: boolean): To
       },
     },
   ];
+
+  if (activeBuckets === "all") return ALL_TOOLS;
+  const activeNames = new Set(
+    TOOL_MANIFEST.filter((entry) => entry.buckets.some((bucket) => activeBuckets.includes(bucket))).map(
+      (entry) => entry.name,
+    ),
+  );
+  return ALL_TOOLS.filter((tool) => activeNames.has(tool.name));
 }
 
 interface ProviderAttempt {
@@ -913,10 +984,25 @@ export async function handleAgentRequest(
   }
 
   const todayISO = new Date().toISOString().slice(0, 10);
-  const tools = buildTools(availableCategories, hasPendingConfirmation);
+
+  // §24 in Roadmap.md: classify the latest user message into tool-family
+  // buckets so buildTools/buildSystemPrompt only send what's relevant,
+  // instead of every tool's schema/prose on every request. Skipped entirely
+  // when hasPendingConfirmation, which already fully replaces both with its
+  // own single-tool payload above this classification would ever run.
+  const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  const classification = hasPendingConfirmation ? null : classifyIntent(latestUserMessage?.content ?? "");
+  const activeBuckets: IntentBucket[] | "all" = classification?.kind === "buckets" ? classification.buckets : "all";
+  if (!hasPendingConfirmation) {
+    console.log(
+      `[classifyIntent] ${classification?.kind === "buckets" ? classification.buckets.join(",") : "fallback:full"}`,
+    );
+  }
+
+  const tools = buildTools(availableCategories, hasPendingConfirmation, activeBuckets);
   const systemPrompt = hasPendingConfirmation
     ? buildConfirmationSystemPrompt(todayISO)
-    : buildSystemPrompt(availableCategories, todayISO);
+    : buildSystemPrompt(availableCategories, todayISO, activeBuckets);
 
   providerLoop: for (let i = 0; i < chain.length; i++) {
     const attempt = chain[i];

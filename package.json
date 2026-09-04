@@ -8,6 +8,7 @@
     "dev:phone": "adb reverse tcp:5173 tcp:5173 && vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
+    "test:classify": "node src/server/classifyIntent.test.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
   },
