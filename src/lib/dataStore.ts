@@ -717,3 +717,10 @@ export function isCategoryInUse(data: AppData, categoryId: string): boolean {
 export function deleteCategory(data: AppData, id: string): AppData {
   return { ...data, categories: data.categories.filter((category) => category.id !== id) };
 }
+
+// See §20 in Roadmap.md — client-trusted nudge off the shared trial key toward BYOK.
+export const SHARED_KEY_MESSAGE_CAP = 5;
+
+export function bumpSharedKeyMessageCount(data: AppData): AppData {
+  return { ...data, sharedKeyMessageCount: (data.sharedKeyMessageCount ?? 0) + 1 };
+}
