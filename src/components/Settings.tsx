@@ -11,6 +11,7 @@ import {
   type ByokProvider,
 } from "../lib/settingsStore";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
+import { loadDebugLog, clearDebugLog, type DebugLogEntry } from "../lib/debugLogStore";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
@@ -25,12 +26,23 @@ const PROVIDERS: { id: ByokProvider; label: string }[] = [
   { id: "gemini", label: "Google Gemini" },
 ];
 
+// §27 in Roadmap.md: a casual-access speed bump, not real security — the
+// expected value ships in the client bundle and is trivially visible via
+// devtools. Fails closed (never unlocks) if the env var itself is unset.
+function checkUnlockPassword(input: string): boolean {
+  const expected = import.meta.env.VITE_DEBUG_LOG_PASSWORD;
+  return Boolean(expected) && input === expected;
+}
+
 export default function Settings({ activeProvider, sharedKeyExhausted, onChange, onClose }: SettingsProps) {
   const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
   const [sttOwnKey, setSttOwnKey] = useState(getSttUsesOwnKey());
   const [ttsOn, setTtsOn] = useState(getTtsEnabled());
+  const [debugPasswordInput, setDebugPasswordInput] = useState("");
+  const [debugUnlocked, setDebugUnlocked] = useState(false);
+  const [debugLog, setDebugLog] = useState<DebugLogEntry[]>([]);
 
   function handleSelect(provider: ByokProvider) {
     setSelected(provider);
@@ -75,6 +87,19 @@ export default function Settings({ activeProvider, sharedKeyExhausted, onChange,
     setTtsEnabled(next);
     if (!next) cancelSpeech();
     onChange();
+  }
+
+  function handleUnlockDebugLog() {
+    if (checkUnlockPassword(debugPasswordInput)) {
+      setDebugUnlocked(true);
+      setDebugLog(loadDebugLog());
+    }
+    setDebugPasswordInput("");
+  }
+
+  function handleClearDebugLog() {
+    clearDebugLog();
+    setDebugLog([]);
   }
 
   return (
@@ -199,6 +224,71 @@ export default function Settings({ activeProvider, sharedKeyExhausted, onChange,
         </button>
       </div>
       {!ttsSupported && <p className="mt-1 text-xs text-slate-500">Not supported in this browser.</p>}
+
+      <hr className="my-4 border-slate-700" />
+
+      <h2 className="mb-2 font-medium">Debug log</h2>
+      <p className="mb-3 text-slate-400">
+        Recent model calls (provider, latency, retries, replies/errors) — useful for diagnosing
+        issues like the shared trial's message cap. Password-gated as a casual-access speed bump
+        only, not real security; re-locks whenever you close this panel.
+      </p>
+      {!debugUnlocked ? (
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={debugPasswordInput}
+            onChange={(event) => setDebugPasswordInput(event.target.value)}
+            placeholder="Password"
+            className="flex-1 rounded-md bg-slate-900 px-2 py-1.5"
+          />
+          <button
+            onClick={handleUnlockDebugLog}
+            className="rounded-md bg-violet-500 px-3 py-1.5 font-medium text-white hover:bg-violet-400"
+          >
+            Unlock
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-slate-400">
+              {debugLog.length} entr{debugLog.length === 1 ? "y" : "ies"}
+            </span>
+            <button
+              onClick={handleClearDebugLog}
+              className="rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {[...debugLog].reverse().map((entry, index) => (
+              <div key={index} className="rounded-md bg-slate-900 px-3 py-2 text-xs">
+                <div className="flex justify-between text-slate-400">
+                  <span>
+                    {entry.label} · {entry.model}
+                  </span>
+                  <span>
+                    {entry.latencyMs}ms · retry {entry.retryCount}
+                  </span>
+                </div>
+                <div className="text-slate-500">bucket: {entry.bucket}</div>
+                <div className="mt-1 truncate text-slate-300">"{entry.requestSummary.lastUserMessage}"</div>
+                <div className="mt-1">
+                  {"error" in entry.result ? (
+                    <span className="text-red-400">{entry.result.error}</span>
+                  ) : (
+                    <span className="text-slate-300">
+                      {entry.result.toolCallName ?? entry.result.reply ?? "(empty)"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

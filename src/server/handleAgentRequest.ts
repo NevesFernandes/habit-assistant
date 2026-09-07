@@ -39,12 +39,30 @@ export interface Byok {
   model?: string;
 }
 
+// §27 in Roadmap.md: a device-local, password-gated debug log of model
+// interactions (see Settings' "Debug log" section) — for diagnosing things
+// like whether §20's shared-trial message cap is actually firing correctly.
+// Never includes attempt.apiKey (BYOK or trial key) or full tool schemas.
+export interface AgentDebugEntry {
+  timestamp: string;
+  providerId: string;
+  label: string; // "byok" | "trial-primary" | "trial-fallback" | "trial-last-resort"
+  model: string;
+  latencyMs: number;
+  attempt: number; // 1-based position in the provider chain
+  retryCount: number; // which same-provider attempt this was (1 or 2)
+  bucket: string; // same string already logged as `[classifyIntent] ...`
+  requestSummary: { lastUserMessage: string; toolNames: string[] };
+  result: { reply?: string; toolCallName?: string } | { error: string };
+}
+
 export interface AgentResult {
   status: number;
   body: {
     reply?: string;
     toolCall?: { id: string; name: string; input: Record<string, unknown> };
     error?: string;
+    debug?: AgentDebugEntry;
   };
 }
 
@@ -1022,13 +1040,13 @@ export async function handleAgentRequest(
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
   const classification = hasPendingConfirmation ? null : classifyIntent(latestUserMessage?.content ?? "");
   const activeBuckets: IntentBucket[] | "all" = classification?.kind === "buckets" ? classification.buckets : "all";
+  const bucketLabel = classification?.kind === "buckets" ? classification.buckets.join(",") : "fallback:full";
   if (!hasPendingConfirmation) {
-    console.log(
-      `[classifyIntent] ${classification?.kind === "buckets" ? classification.buckets.join(",") : "fallback:full"}`,
-    );
+    console.log(`[classifyIntent] ${bucketLabel}`);
   }
 
   const tools = buildTools(availableCategories, hasPendingConfirmation, activeBuckets);
+  const toolNames = tools.map((tool) => tool.name);
   const systemPrompt = hasPendingConfirmation
     ? buildConfirmationSystemPrompt(todayISO)
     : buildSystemPrompt(availableCategories, todayISO, activeBuckets);
@@ -1048,6 +1066,19 @@ export async function handleAgentRequest(
     // before falling through to the next provider in the chain) — mirrors driveClient.ts's
     // retry-once pattern.
     for (let retry = 1; retry <= 2; retry++) {
+      const startedAt = Date.now();
+      const buildDebugEntry = (result: { reply?: string; toolCallName?: string } | { error: string }): AgentDebugEntry => ({
+        timestamp: new Date().toISOString(),
+        providerId: attempt.providerId,
+        label: attempt.label,
+        model: attempt.model ?? provider.defaultModel,
+        latencyMs: Date.now() - startedAt,
+        attempt: i + 1,
+        retryCount: retry,
+        bucket: bucketLabel,
+        requestSummary: { lastUserMessage: latestUserMessage?.content ?? "", toolNames },
+        result,
+      });
       try {
         const result = await withTimeout(
           (signal) =>
@@ -1065,7 +1096,8 @@ export async function handleAgentRequest(
         const toolCall = result.toolCall
           ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
           : undefined;
-        return { status: 200, body: { reply: result.reply, toolCall } };
+        const debug = buildDebugEntry({ reply: result.reply, toolCallName: result.toolCall?.name });
+        return { status: 200, body: { reply: result.reply, toolCall, debug } };
       } catch (err) {
         const status = err instanceof ProviderRequestError ? err.status : undefined;
         // A non-ProviderRequestError (network failure, etc.) has no status of
@@ -1090,12 +1122,14 @@ export async function handleAgentRequest(
           // meant for end users (e.g. Groq's rate-limit response) — log it
           // for debugging but never forward it verbatim into the chat UI.
           console.error(`Provider request failed (${err.status}):`, err.message);
+          const debug = buildDebugEntry({ error: err.message });
           return {
             status: err.status,
-            body: { error: "The assistant provider had a problem answering. Please try again in a moment." },
+            body: { error: "The assistant provider had a problem answering. Please try again in a moment.", debug },
           };
         }
-        return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error." } };
+        const debug = buildDebugEntry({ error: err instanceof Error ? err.message : "Unknown error." });
+        return { status: 500, body: { error: err instanceof Error ? err.message : "Unknown error.", debug } };
       }
     }
   }
