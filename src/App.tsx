@@ -23,7 +23,8 @@ import {
   type DriveSession,
   type DriveFileRef,
 } from "./lib/driveClient";
-import { sendMessage, type AgentHistoryMessage } from "./lib/agentClient";
+import { sendMessage, AgentRequestError, type AgentHistoryMessage } from "./lib/agentClient";
+import { appendDebugLogEntry } from "./lib/debugLogStore";
 import { toDisplayMessages } from "./server/agentHistory";
 import {
   addCategory,
@@ -418,6 +419,7 @@ export default function App() {
     attemptedWriteRef.current = false;
     try {
       const response = await sendMessage(nextMessages, byok, data.categories, pendingDeletion !== null);
+      if (response.debug) appendDebugLogEntry(response.debug);
 
       if (pendingDeletion) {
         // Tools were restricted server-side to confirmPendingDeletion only; anything else
@@ -493,6 +495,7 @@ export default function App() {
         await persist((current) => current);
       }
     } catch (err) {
+      if (err instanceof AgentRequestError && err.debug) appendDebugLogEntry(err.debug);
       pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
       // pendingDeletion is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network

@@ -7,6 +7,7 @@ import type { Category } from "../types/models";
 import type { CreateHabitInput, CreateRecurringTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
 import type { AgentHistoryMessage } from "../server/agentHistory";
+import type { AgentDebugEntry } from "../server/handleAgentRequest";
 
 export type { AgentHistoryMessage } from "../server/agentHistory";
 
@@ -127,6 +128,20 @@ export interface AgentResponse {
   // back into the next request's history to pair this call with its result.
   toolCall?: AgentToolCall & { id: string };
   error?: string;
+  debug?: AgentDebugEntry;
+}
+
+// §27 in Roadmap.md: carries the server's debug entry even on a failed
+// request (a failed/exhausted-failover call is exactly the case most worth
+// seeing in the debug log), since sendMessage otherwise only throws a plain
+// Error and the response body — including `debug` — would be lost.
+export class AgentRequestError extends Error {
+  debug?: AgentDebugEntry;
+  constructor(message: string, debug?: AgentDebugEntry) {
+    super(message);
+    this.name = "AgentRequestError";
+    this.debug = debug;
+  }
 }
 
 // §22 in Roadmap.md: a chat call gets a timeout (turns a hang into a loud failure instead of
@@ -176,7 +191,7 @@ export async function sendMessage(
   });
   const { ok, status, body } = await sendWithRetry(payload);
   if (!ok) {
-    throw new Error(body.error ?? `Agent request failed (${status}).`);
+    throw new AgentRequestError(body.error ?? `Agent request failed (${status}).`, body.debug);
   }
   return body;
 }
