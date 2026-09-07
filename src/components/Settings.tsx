@@ -11,13 +11,18 @@ import {
   type ByokProvider,
 } from "../lib/settingsStore";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
-import { loadDebugLog, clearDebugLog, type DebugLogEntry } from "../lib/debugLogStore";
+import type { DebugLogEntry } from "../lib/debugLogStore";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
   sharedKeyExhausted: boolean;
   onChange: () => void;
   onClose: () => void;
+  // §27 in Roadmap.md: owned by App.tsx (not loaded/cleared locally here) so
+  // the list stays live while this panel is open during a chat turn, instead
+  // of only reflecting a one-time snapshot taken when it was unlocked.
+  debugLog: DebugLogEntry[];
+  onClearDebugLog: () => void;
 }
 
 const PROVIDERS: { id: ByokProvider; label: string }[] = [
@@ -34,7 +39,14 @@ function checkUnlockPassword(input: string): boolean {
   return Boolean(expected) && input === expected;
 }
 
-export default function Settings({ activeProvider, sharedKeyExhausted, onChange, onClose }: SettingsProps) {
+export default function Settings({
+  activeProvider,
+  sharedKeyExhausted,
+  onChange,
+  onClose,
+  debugLog,
+  onClearDebugLog,
+}: SettingsProps) {
   const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
@@ -42,7 +54,6 @@ export default function Settings({ activeProvider, sharedKeyExhausted, onChange,
   const [ttsOn, setTtsOn] = useState(getTtsEnabled());
   const [debugPasswordInput, setDebugPasswordInput] = useState("");
   const [debugUnlocked, setDebugUnlocked] = useState(false);
-  const [debugLog, setDebugLog] = useState<DebugLogEntry[]>([]);
 
   function handleSelect(provider: ByokProvider) {
     setSelected(provider);
@@ -90,16 +101,8 @@ export default function Settings({ activeProvider, sharedKeyExhausted, onChange,
   }
 
   function handleUnlockDebugLog() {
-    if (checkUnlockPassword(debugPasswordInput)) {
-      setDebugUnlocked(true);
-      setDebugLog(loadDebugLog());
-    }
+    if (checkUnlockPassword(debugPasswordInput)) setDebugUnlocked(true);
     setDebugPasswordInput("");
-  }
-
-  function handleClearDebugLog() {
-    clearDebugLog();
-    setDebugLog([]);
   }
 
   return (
@@ -256,7 +259,7 @@ export default function Settings({ activeProvider, sharedKeyExhausted, onChange,
               {debugLog.length} entr{debugLog.length === 1 ? "y" : "ies"}
             </span>
             <button
-              onClick={handleClearDebugLog}
+              onClick={onClearDebugLog}
               className="rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
             >
               Clear
