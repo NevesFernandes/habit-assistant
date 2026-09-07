@@ -24,7 +24,7 @@ import {
   type DriveFileRef,
 } from "./lib/driveClient";
 import { sendMessage, AgentRequestError, type AgentHistoryMessage } from "./lib/agentClient";
-import { appendDebugLogEntry } from "./lib/debugLogStore";
+import { loadDebugLog, appendDebugLogEntry, clearDebugLog, type DebugLogEntry } from "./lib/debugLogStore";
 import { toDisplayMessages } from "./server/agentHistory";
 import {
   addCategory,
@@ -146,6 +146,10 @@ export default function App() {
   const [sttApiKey, setSttApiKey] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // §27 in Roadmap.md: hoisted here (not local to Settings.tsx) so the debug
+  // log panel updates live while it's open during a chat turn, instead of
+  // only reflecting a one-time snapshot taken when it was unlocked.
+  const [debugLog, setDebugLog] = useState<DebugLogEntry[]>(() => loadDebugLog());
 
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [selectedDate, setSelectedDate] = useState(todayISO());
@@ -166,6 +170,16 @@ export default function App() {
     setByok(getActiveByok());
     setSttApiKey(getActiveStt()?.apiKey ?? null);
     setTtsEnabled(getTtsEnabled());
+  }
+
+  function recordDebugEntry(entry: DebugLogEntry) {
+    appendDebugLogEntry(entry);
+    setDebugLog(loadDebugLog());
+  }
+
+  function handleClearDebugLog() {
+    clearDebugLog();
+    setDebugLog([]);
   }
 
   const prevMessageCountRef = useRef(0);
@@ -419,7 +433,7 @@ export default function App() {
     attemptedWriteRef.current = false;
     try {
       const response = await sendMessage(nextMessages, byok, data.categories, pendingDeletion !== null);
-      if (response.debug) appendDebugLogEntry(response.debug);
+      if (response.debug) recordDebugEntry(response.debug);
 
       if (pendingDeletion) {
         // Tools were restricted server-side to confirmPendingDeletion only; anything else
@@ -495,7 +509,7 @@ export default function App() {
         await persist((current) => current);
       }
     } catch (err) {
-      if (err instanceof AgentRequestError && err.debug) appendDebugLogEntry(err.debug);
+      if (err instanceof AgentRequestError && err.debug) recordDebugEntry(err.debug);
       pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
       // pendingDeletion is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network
@@ -797,6 +811,8 @@ export default function App() {
           sharedKeyExhausted={(data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP}
           onChange={refreshSettings}
           onClose={() => setSettingsOpen(false)}
+          debugLog={debugLog}
+          onClearDebugLog={handleClearDebugLog}
         />
       )}
 
