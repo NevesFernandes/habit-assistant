@@ -127,6 +127,17 @@ function loadDevVars(): AgentEnv & TranscribeEnv {
     TRIAL_PROVIDER: values.TRIAL_PROVIDER,
     TRIAL_API_KEY: values.TRIAL_API_KEY,
     TRIAL_MODEL: values.TRIAL_MODEL,
+    // §23/§26 in Roadmap.md: the failover chain's fallback and last-resort
+    // tiers were silently unreachable in local dev until this fix — this
+    // function only forwarded the primary-tier vars, so no .dev.vars
+    // configuration could ever activate them, unlike the real Worker (which
+    // reads env directly, with no such whitelist).
+    TRIAL_FALLBACK_PROVIDER: values.TRIAL_FALLBACK_PROVIDER,
+    TRIAL_FALLBACK_API_KEY: values.TRIAL_FALLBACK_API_KEY,
+    TRIAL_FALLBACK_MODEL: values.TRIAL_FALLBACK_MODEL,
+    WORKERS_AI_ACCOUNT_ID: values.WORKERS_AI_ACCOUNT_ID,
+    WORKERS_AI_API_TOKEN: values.WORKERS_AI_API_TOKEN,
+    WORKERS_AI_MODEL: values.WORKERS_AI_MODEL,
     STT_TRIAL_API_KEY: values.STT_TRIAL_API_KEY,
   };
 }
