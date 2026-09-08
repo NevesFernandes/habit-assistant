@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.dev.vars)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Bash(cat .dev.vars)",
+      "Bash(cat .env.local)",
+      "Bash(grep .dev.vars)",
+      "Bash(grep .env.local)",
+      "Bash(tail .dev.vars)",
+      "Bash(tail .env.local)",
+      "Bash(xxd .dev.vars)",
+      "Bash(xxd .env.local)"
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyRead": [".dev.vars", ".env", ".env.local"]
+    }
+  }
+}
