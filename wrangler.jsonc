@@ -32,12 +32,13 @@
   // tokenizer before enabling — not just assumed fixed.
   //
   // WORKERS_AI_ACCOUNT_ID/WORKERS_AI_API_TOKEN/WORKERS_AI_MODEL: §26's
-  // third, last-resort tier (Cloudflare Workers AI) — also deliberately NOT
-  // enabled here yet. The adapter (providers/workersAI.ts) was verified
-  // against the real API during implementation, but turning this on in
-  // production means putting a real account id + scoped API token here or
-  // in dashboard secrets, a deliberate step to take once ready, not a
-  // default. See .env.example for what each var does.
+  // third, last-resort tier (Cloudflare Workers AI). Verified end-to-end
+  // 2026-09-08 — with both higher tiers deliberately forced to fail, this
+  // tier produced a real successful reply, confirming the adapter and a
+  // correctly-scoped token work together, not just the adapter in
+  // isolation. Safe to enable via dashboard secrets (account id + scoped
+  // API token — never in this file). See .env.example for what each var
+  // does.
   "vars": {
     "TRIAL_PROVIDER": "gemini"
   },
