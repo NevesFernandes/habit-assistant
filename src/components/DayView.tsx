@@ -5,6 +5,7 @@ import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from 
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
+import { formatDurationMinutes } from "../lib/duration";
 
 type DayItem =
   | { kind: "habit"; item: Habit }
@@ -142,9 +143,18 @@ function HabitRow({
         ) : habit.completionType === "value" || habit.completionType === "timer" ? (
           <CompletionControl>
             <span className="rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
-              {entry?.value ?? "—"}
-              {habit.target !== undefined ? ` / ${habit.target}` : ""}
-              {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+              {habit.completionType === "timer" ? (
+                <>
+                  {entry?.value !== undefined ? formatDurationMinutes(entry.value) : "—"}
+                  {habit.target !== undefined ? ` / ${formatDurationMinutes(habit.target)}` : ""}
+                </>
+              ) : (
+                <>
+                  {entry?.value ?? "—"}
+                  {habit.target !== undefined ? ` / ${habit.target}` : ""}
+                  {habit.unit ? ` ${habit.unit}` : ""}
+                </>
+              )}
             </span>
           </CompletionControl>
         ) : progress ? (

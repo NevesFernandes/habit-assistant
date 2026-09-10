@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
 import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
+import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 import StatTile from "./StatTile";
@@ -144,8 +145,9 @@ function HabitDetail({
         {(habit.completionType === "value" || habit.completionType === "timer") && habit.target !== undefined && (
           <DetailRow label="Target">
             <span>
-              {habit.target}
-              {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+              {habit.completionType === "timer"
+                ? formatDurationMinutes(habit.target)
+                : `${habit.target}${habit.unit ? ` ${habit.unit}` : ""}`}
             </span>
           </DetailRow>
         )}
