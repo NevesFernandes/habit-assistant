@@ -4,6 +4,7 @@ import { isSingleTaskActiveOn } from "../lib/dataStore";
 import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
+import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
 
 type DayItem =
   | { kind: "habit"; item: Habit }
@@ -137,17 +138,21 @@ function HabitRow({
           )}
         </div>
         {habit.completionType === "yesno" ? (
-          <input type="checkbox" checked={isDone} onChange={() => onToggle(habit.id)} className="h-4 w-4" />
+          <YesNoCheckbox checked={isDone} onChange={() => onToggle(habit.id)} />
         ) : habit.completionType === "value" || habit.completionType === "timer" ? (
-          <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
-            {entry?.value ?? "—"}
-            {habit.target !== undefined ? ` / ${habit.target}` : ""}
-            {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
-          </span>
+          <CompletionControl>
+            <span className="rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
+              {entry?.value ?? "—"}
+              {habit.target !== undefined ? ` / ${habit.target}` : ""}
+              {habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : ""}
+            </span>
+          </CompletionControl>
         ) : progress ? (
-          <span className="shrink-0 rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
-            {progress.checked}/{progress.total}
-          </span>
+          <CompletionControl>
+            <span className="rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300">
+              {progress.checked}/{progress.total}
+            </span>
+          </CompletionControl>
         ) : null}
       </div>
       {habit.completionType === "checklist" && (
@@ -185,7 +190,7 @@ function RecurringTaskRow({
           </div>
         )}
       </div>
-      <input type="checkbox" checked={isDone} onChange={() => onToggle(task.id)} className="h-4 w-4" />
+      <YesNoCheckbox checked={isDone} onChange={() => onToggle(task.id)} />
     </li>
   );
 }
@@ -203,16 +208,11 @@ function TaskRow({
   return (
     <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
       <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
-      <input
-        type="checkbox"
-        checked={task.done}
-        onChange={() => onToggle(task.id)}
-        className="h-4 w-4"
-      />
       <div className={`flex-1 ${task.done ? "text-slate-500 line-through" : ""}`}>
         <div>{task.name}</div>
         {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
       </div>
+      <YesNoCheckbox checked={task.done} onChange={() => onToggle(task.id)} />
     </li>
   );
 }
