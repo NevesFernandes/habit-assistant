@@ -125,7 +125,7 @@ function HabitRow({
         habit.completionType === "checklist" ? "flex-col" : "items-center"
       }`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center gap-3">
         <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
         <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
           <div>{habit.name}</div>
