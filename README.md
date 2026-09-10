@@ -2,7 +2,7 @@
 
 See `CLAUDE.md` for the product vision and architecture decisions. This README is just the "how do I run it" instructions.
 
-**Status**: core loop built. Sign in, chat (typed or spoken — press-and-hold the mic button) with the assistant on a shared free trial by default or your own key via the Settings panel, and create/update/delete/archive Single Tasks, Habits, Recurring Tasks, and Categories. The v1 recurrence engine and per-habit/per-category stats (streaks, completion %) already work. Still filling in: real tracking for Habit completion types beyond Yes/No, an interactive shared checklist component, the remaining recurrence types, and dashboard visuals — see `CLAUDE.md`'s Status line for the full current/next breakdown.
+**Status**: core loop built, depth still filling in. Sign in, chat (typed or spoken — press-and-hold the mic button) with the assistant on a shared free trial by default or your own key via the Settings panel, and create/update/delete/archive Single Tasks, Habits, Recurring Tasks, and Categories. The full recurrence engine, per-habit/per-category stats, and a stats dashboard tab with a calendar-heatmap chart already work; Timer habits also have a real start/pause/stop tracking UI. Still filling in: real tracking for Numeric-value and Checklist Habit completion types, and a genuinely shared/interactive checklist component — see `CLAUDE.md`'s Status line for the full current/next breakdown.
 
 ## One-time setup (things only you can do)
 
