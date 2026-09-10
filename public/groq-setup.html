@@ -5,7 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f172a" />
-    <title>Get a free Groq key — Habit Assistant</title>
+    <title>Get a free Groq or Gemini key — Habit Assistant</title>
     <style>
       :root {
         color-scheme: dark;
@@ -25,6 +25,17 @@
         font-size: 1.4rem;
         margin-bottom: 0.5rem;
       }
+      h2 {
+        font-size: 1.1rem;
+        margin: 2.5rem 0 1rem;
+        padding-top: 2rem;
+        border-top: 1px solid #1e293b;
+      }
+      h2:first-of-type {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
       p.lead {
         color: #94a3b8;
         margin-top: 0;
@@ -32,7 +43,7 @@
       }
       ol {
         padding-left: 1.25rem;
-        margin: 0 0 2rem;
+        margin: 0 0 1.5rem;
       }
       li {
         margin-bottom: 1rem;
@@ -62,20 +73,32 @@
   </head>
   <body>
     <main>
-      <h1>Get a free Groq key</h1>
+      <h1>Get a free Groq or Gemini key</h1>
       <p class="lead">
-        Habit Assistant's shared trial is limited, but Groq's own free tier is generous — this takes about a
-        minute to set up, and after that your chats no longer share a limit with anyone else.
+        Habit Assistant's shared trial is limited, but Groq and Google Gemini both offer generous free tiers —
+        pick either one below. It takes about a minute to set up, and after that your chats no longer share a
+        limit with anyone else.
       </p>
+
+      <h2>Option 1: Groq</h2>
       <ol>
         <li>Go to <a href="https://console.groq.com" target="_blank" rel="noreferrer">console.groq.com</a> and sign up — it's free, no card required.</li>
         <li>In the left sidebar, click <strong>API Keys</strong>, then <strong>Create API Key</strong>.</li>
         <li>Give it any name you like, click <strong>Submit</strong>, then copy the key it shows you — it starts with <code>gsk_</code>. Groq only shows it once, so copy it now.</li>
         <li>Back in Habit Assistant, open <strong>Settings</strong> (the ⚙ button), choose <strong>Groq</strong> as the provider, paste the key in, and click <strong>Save &amp; use</strong>.</li>
       </ol>
+
+      <h2>Option 2: Gemini</h2>
+      <ol>
+        <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com</a> and sign in with your Google account — it's free, no card required.</li>
+        <li>Click <strong>Create API key</strong>, then pick (or create) a Google Cloud project when prompted.</li>
+        <li>Copy the key it shows you — it starts with <code>AIza</code>.</li>
+        <li>Back in Habit Assistant, open <strong>Settings</strong> (the ⚙ button), choose <strong>Google Gemini</strong> as the provider, paste the key in, and click <strong>Save &amp; use</strong>.</li>
+      </ol>
+
       <div class="note">
-        This key stays on your device only, saved in your browser — it's never uploaded anywhere except
-        directly to Groq when you chat.
+        Whichever you pick, the key stays on your device only, saved in your browser — it's never uploaded
+        anywhere except directly to that provider when you chat.
       </div>
       <a class="back" href="/">← Back to Habit Assistant</a>
     </main>

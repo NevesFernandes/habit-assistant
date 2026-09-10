@@ -137,7 +137,7 @@ export default function Settings({
         <p className="mb-3 text-xs text-slate-500">
           You've used your free trial messages.{" "}
           <a href="/groq-setup.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
-            Get a free Groq key →
+            Get a free groq or gemini key →
           </a>
         </p>
       )}
