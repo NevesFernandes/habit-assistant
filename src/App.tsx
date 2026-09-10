@@ -68,7 +68,8 @@ import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from ".
 import { speak } from "./lib/textToSpeech";
 import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
-type Tab = "chat" | "today" | "categories" | "habits" | "single tasks" | "recurring tasks" | "stats" | "timer";
+type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
+type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -153,6 +154,7 @@ export default function App() {
   const [debugLog, setDebugLog] = useState<DebugLogEntry[]>(() => loadDebugLog());
 
   const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [viewSubTab, setViewSubTab] = useState<ViewSubTab>("habits");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
 
@@ -819,7 +821,7 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "categories", "habits", "single tasks", "recurring tasks", "stats", "timer"] as const).map((tab) => (
+        {(["chat", "today", "categories", "view", "stats", "timer"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -874,31 +876,51 @@ export default function App() {
           />
         )}
 
-        {activeTab === "habits" && (
-          <HabitsView
-            habits={data.habits}
-            categories={data.categories}
-            completionLog={data.completionLog}
-            onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
-          />
-        )}
+        {activeTab === "view" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-4 border-b border-slate-700">
+              {(["habits", "single tasks", "recurring tasks"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setViewSubTab(tab)}
+                  className={`pb-1.5 text-xs capitalize ${
+                    viewSubTab === tab
+                      ? "border-b-2 border-violet-500 text-white"
+                      : "border-b-2 border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
 
-        {activeTab === "single tasks" && (
-          <SingleTasksView
-            singleTasks={data.singleTasks}
-            categories={data.categories}
-            onToggleChecklistItem={handleSingleTaskChecklistToggle}
-            onAddChecklistItem={handleSingleTaskChecklistAdd}
-          />
-        )}
+            {viewSubTab === "habits" && (
+              <HabitsView
+                habits={data.habits}
+                categories={data.categories}
+                completionLog={data.completionLog}
+                onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
+              />
+            )}
 
-        {activeTab === "recurring tasks" && (
-          <RecurringTasksView
-            recurringTasks={data.recurringTasks}
-            categories={data.categories}
-            onToggleChecklistItem={handleRecurringTaskChecklistToggle}
-            onAddChecklistItem={handleRecurringTaskChecklistAdd}
-          />
+            {viewSubTab === "single tasks" && (
+              <SingleTasksView
+                singleTasks={data.singleTasks}
+                categories={data.categories}
+                onToggleChecklistItem={handleSingleTaskChecklistToggle}
+                onAddChecklistItem={handleSingleTaskChecklistAdd}
+              />
+            )}
+
+            {viewSubTab === "recurring tasks" && (
+              <RecurringTasksView
+                recurringTasks={data.recurringTasks}
+                categories={data.categories}
+                onToggleChecklistItem={handleRecurringTaskChecklistToggle}
+                onAddChecklistItem={handleRecurringTaskChecklistAdd}
+              />
+            )}
+          </div>
         )}
 
         {activeTab === "stats" && (
