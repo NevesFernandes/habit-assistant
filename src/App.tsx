@@ -12,6 +12,7 @@ import RecurringTasksView from "./components/RecurringTasksView";
 import Dashboard from "./components/Dashboard";
 import TimerView from "./components/TimerView";
 import { useTimerSession } from "./lib/useTimerSession";
+import { formatDurationMinutes } from "./lib/duration";
 import {
   signIn,
   findOrCreateFolder,
@@ -608,8 +609,11 @@ export default function App() {
       return setHabitValue(latest, habit.id, dateISO, loggedValue);
     });
     if (saved) {
-      const unitSuffix = habit.completionType === "timer" ? " min" : habit.unit ? ` ${habit.unit}` : "";
-      pushAssistantMessage(`Logged ${loggedValue}${unitSuffix} for "${habit.name}".`, toolCall);
+      const loggedText =
+        habit.completionType === "timer"
+          ? formatDurationMinutes(loggedValue)
+          : `${loggedValue}${habit.unit ? ` ${habit.unit}` : ""}`;
+      pushAssistantMessage(`Logged ${loggedText} for "${habit.name}".`, toolCall);
     }
   }
 
