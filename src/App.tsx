@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Settings as SettingsIcon } from "lucide-react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
@@ -799,9 +800,10 @@ export default function App() {
         <h1 className="text-xl font-semibold">Habit Assistant</h1>
         <button
           onClick={() => setSettingsOpen((open) => !open)}
-          className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
+          className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
+          aria-label="Settings"
         >
-          {byok ? `Using your ${byok.provider} key` : "Using free trial"} ⚙
+          <SettingsIcon className="h-4 w-4" />
         </button>
       </div>
 
@@ -832,7 +834,13 @@ export default function App() {
 
       <div className="min-h-[60vh] flex-1">
         {activeTab === "chat" && (
-          <Chat messages={messages} onSend={handleSend} sending={sending} sttApiKey={sttApiKey} />
+          <Chat
+            messages={messages}
+            onSend={handleSend}
+            sending={sending}
+            sttApiKey={sttApiKey}
+            byokProvider={byok?.provider ?? null}
+          />
         )}
 
         {activeTab === "today" && (
