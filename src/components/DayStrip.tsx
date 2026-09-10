@@ -29,7 +29,7 @@ export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
     <div className="flex items-center gap-2">
       <button
         onClick={() => onSelect(addDays(selectedDate, -1))}
-        className="shrink-0 rounded-md bg-slate-800 px-2 py-1.5 text-slate-300 hover:bg-slate-700"
+        className="flex w-12 shrink-0 items-center justify-center rounded-md bg-slate-800 py-1.5 text-slate-300 hover:bg-slate-700"
         aria-label="Previous day"
       >
         ‹
@@ -48,7 +48,7 @@ export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
               ref={isSelected ? selectedRef : undefined}
               onClick={() => onSelect(dateISO)}
               style={{ scrollSnapAlign: "center" }}
-              className={`flex shrink-0 flex-col items-center rounded-md px-3 py-1.5 text-sm ${
+              className={`flex w-12 shrink-0 flex-col items-center rounded-md py-1.5 text-sm ${
                 isSelected ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
@@ -61,7 +61,7 @@ export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
 
       <button
         onClick={() => onSelect(addDays(selectedDate, 1))}
-        className="shrink-0 rounded-md bg-slate-800 px-2 py-1.5 text-slate-300 hover:bg-slate-700"
+        className="flex w-12 shrink-0 items-center justify-center rounded-md bg-slate-800 py-1.5 text-slate-300 hover:bg-slate-700"
         aria-label="Next day"
       >
         ›
@@ -70,7 +70,7 @@ export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
       {selectedDate !== today && (
         <button
           onClick={() => onSelect(today)}
-          className="shrink-0 rounded-md bg-slate-800 px-2 py-1.5 text-xs text-violet-300 hover:bg-slate-700"
+          className="flex w-12 shrink-0 items-center justify-center rounded-md bg-slate-800 py-1.5 text-xs text-violet-300 hover:bg-slate-700"
         >
           Today
         </button>
