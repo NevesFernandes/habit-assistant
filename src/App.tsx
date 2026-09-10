@@ -421,7 +421,7 @@ export default function App() {
       setMessages((prev) => [...prev, { role: "user", content: userText }]);
       pushAssistantMessage(
         `You've used all ${SHARED_KEY_MESSAGE_CAP} free trial messages. Open Settings (⚙) and add your own free Groq or Gemini key — ` +
-          "it takes about a minute. Step-by-step guide: /groq-setup.html",
+          "it takes about a minute. Step-by-step guide: /api-key-setup.html",
       );
       return;
     }
