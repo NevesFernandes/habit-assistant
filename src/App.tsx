@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, MessageCircle, Calendar, Tags, List, ChartColumn, Timer as TimerIcon } from "lucide-react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
@@ -70,6 +70,15 @@ import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
 type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
+
+const TAB_ICONS: Record<Tab, typeof MessageCircle> = {
+  chat: MessageCircle,
+  today: Calendar,
+  categories: Tags,
+  view: List,
+  stats: ChartColumn,
+  timer: TimerIcon,
+};
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -821,17 +830,22 @@ export default function App() {
       )}
 
       <div className="flex gap-2">
-        {(["chat", "today", "categories", "view", "stats", "timer"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`rounded-md px-3 py-1.5 text-sm capitalize ${
-              activeTab === tab ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+        {(["chat", "today", "categories", "view", "stats", "timer"] as const).map((tab) => {
+          const Icon = TAB_ICONS[tab];
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              aria-label={tab}
+              title={tab}
+              className={`flex flex-1 items-center justify-center rounded-md p-2 ${
+                activeTab === tab ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          );
+        })}
       </div>
 
       <div className="min-h-[60vh] flex-1">
