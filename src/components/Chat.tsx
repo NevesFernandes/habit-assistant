@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AgentHistoryMessage } from "../lib/agentClient";
+import type { ByokProvider } from "../lib/settingsStore";
 import { toDisplayMessages } from "../server/agentHistory";
 import VoiceButton from "./VoiceButton";
 
@@ -8,9 +9,10 @@ interface ChatProps {
   onSend: (message: string) => void;
   sending: boolean;
   sttApiKey: string | null;
+  byokProvider: ByokProvider | null;
 }
 
-export default function Chat({ messages, onSend, sending, sttApiKey }: ChatProps) {
+export default function Chat({ messages, onSend, sending, sttApiKey, byokProvider }: ChatProps) {
   const [draft, setDraft] = useState("");
 
   function handleSubmit(event: React.FormEvent) {
@@ -23,6 +25,9 @@ export default function Chat({ messages, onSend, sending, sttApiKey }: ChatProps
 
   return (
     <div className="flex h-full flex-col gap-3">
+      <p className="text-right text-xs text-slate-500">
+        {byokProvider ? `Using your ${byokProvider} key` : "Using free trial"}
+      </p>
       <div className="flex-1 space-y-2 overflow-y-auto rounded-md bg-slate-900 p-3">
         {messages.length === 0 && (
           <p className="text-sm text-slate-500">
