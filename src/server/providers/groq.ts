@@ -23,13 +23,28 @@ import { sendOpenAiCompatible } from "./openaiCompatible.ts";
 // IMPORTANT — verified 2026-09-04 against the real API: on this account's
 // free tier, *every* current Groq model with tool-calling support hard-
 // rejects this app's full ~17-tool request. gpt-oss-20b/120b cap at 8,000
-// TPM; qwen3.6-27b/qwen3.8-27b cap at 7,000 ITPM. The payload itself is
+// TPM; qwen3.6-27b/qwen3.8-27b cap at 7,000 ITPM. The payload itself was
 // ~8,670-10,550 tokens depending on the model's own tokenizer — bigger than
 // every one of those ceilings. §24 (closed 2026-09-04) narrowed the
-// per-request payload for confidently-classified messages, which should
-// help, but this needs re-verification against Groq's real tokenizer before
-// Groq is enabled as the shared trial's fallback tier again — see §26 in
-// Roadmap.md.
+// per-request payload for confidently-classified messages, which already fit
+// comfortably under both ceilings.
+//
+// The classifier's own fallback path (an unclassified message still gets
+// every tool) did not shrink from §24 alone, and remained the actual
+// blocker. A follow-up change collapsed each of createHabit/updateHabit/
+// createRecurringTask/updateRecurringTask's ~8 duplicated recurrence
+// parameters into one compact string field (src/server/recurrenceSpec.ts),
+// and separately widened classifyIntent.ts's keyword coverage so fewer real
+// messages hit the fallback path at all. Measured with a char-count/4
+// heuristic (not a real Groq tokenizer call — no live key was available when
+// this was done) rather than the live-API measurement above: the fallback
+// payload dropped from ~9,683 to ~8,732 estimated tokens, roughly a 10%
+// reduction. That is still bigger than both Groq ceilings — the fallback
+// path remains the blocker, and Groq should stay disabled as the shared
+// trial's fallback tier until this is re-measured against the real API and
+// either clears a ceiling or gets a further reduction (e.g. trimming the
+// fallback path's system-prompt prose, deliberately not built yet — see
+// Roadmap.md) — see §26 in Roadmap.md.
 //
 // That smaller/free model is measurably unreliable on ambiguous or
 // corrective turns: reproduced directly against the real API, its own

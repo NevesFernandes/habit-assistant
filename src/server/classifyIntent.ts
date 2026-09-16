@@ -30,7 +30,7 @@ const LIST_NOUNS = ["list", "checklist", "shopping list", "to-do list", "todo li
 // "modify" bucket), not checking off one item within a checklist.
 const CHECK_VERBS = ["check off", "uncheck", "tick off", "cross off"];
 
-const CREATE_VERBS = ["create", "add", "start", "new", "set up", "make"];
+const CREATE_VERBS = ["create", "add", "start", "new", "set up", "make", "schedule", "begin"];
 const CREATE_NOUNS = ["habit", "recurring task", "routine", "task", "reminder"];
 const RECURRENCE_PATTERNS: RegExp[] = [
   /\bevery day\b/, /\bdaily\b/, /\bevery week\b/, /\bweekly\b/, /\bevery month\b/, /\bmonthly\b/,
@@ -41,17 +41,17 @@ const RECURRENCE_PATTERNS: RegExp[] = [
   /\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/,
 ];
 
-const DELETE_VERBS = ["delete", "remove", "get rid of", "erase", "clear out", "wipe"];
+const DELETE_VERBS = ["delete", "remove", "get rid of", "erase", "clear out", "wipe", "cancel", "toss", "scrap"];
 const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
 
-const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal"];
+const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal", "shift", "swap", "tweak", "revise", "move"];
 // "mark my dentist task as done" / "mark it not done" — a whole-item
 // done/not-done toggle, handled by updateSingleTask.newDone, not a checklist
 // item check. The gap between "mark" and "done" is why this needs a regex
 // rather than a fixed phrase in MODIFY_VERBS.
 const MARK_DONE_PATTERN = /\bmark\b[\s\S]*\b(done|not done)\b/;
 
-const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with"];
+const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with", "practiced", "studied", "tracked"];
 const DURATION_WORDS = ["minute", "minutes", "hour", "hours", "glass", "glasses", "page", "pages", "rep", "reps", "mile", "miles", "step", "steps", "cup", "cups", "time", "times"];
 
 export function classifyIntent(rawText: string): ClassifyIntentResult {

@@ -28,6 +28,23 @@ const cases: Case[] = [
   ["delete my recurring shopping task", ["delete"]],
   ["add bread to my grocery list", ["checklist"]],
   ["check off bread on my grocery list", ["checklist"]],
+  // Coverage added to shrink the classifyIntent fallback gap (see CLAUDE.md's
+  // Cost model section) — new OR'd keywords, following the file's existing
+  // paired-condition / bare-verb discipline per bucket.
+  ["cancel my dentist task", ["delete"]],
+  ["toss my old grocery task", ["delete"]],
+  ["scrap my meeting task", ["delete"]],
+  ["shift my dentist appointment to next week", ["modify"]],
+  ["swap my gym habit's category to health", ["modify"]],
+  ["tweak my water goal", ["modify"]],
+  ["revise my task description", ["modify"]],
+  ["move my task to tomorrow", ["modify"]],
+  ["schedule a task to call the dentist", ["create"]],
+  ["begin tracking a habit to stretch daily", ["create"]],
+  ["I practiced guitar for 30 minutes today", ["modify"]],
+  ["studied for 2 hours today", ["modify"]],
+  ["tracked 5 miles today", ["modify"]],
+  ["I practiced my routine today", ["modify", "checklist"]],
 ];
 
 let failures = 0;
