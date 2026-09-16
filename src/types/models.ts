@@ -40,6 +40,19 @@ export type RecurrenceRule =
 
 export type CompletionType = "yesno" | "value" | "timer" | "checklist";
 
+// BYOK settings, synced across devices via AppData.byokSettings — see §30 in
+// Roadmap.md and CLAUDE.md's "Cost model / provider strategy". Defined here
+// (not in src/lib/settingsStore.ts, the only other place it's used) because
+// models.ts is a leaf module every lib/*.ts file imports one-way from, never
+// the reverse.
+export type ByokProvider = "anthropic" | "groq" | "gemini";
+
+export interface SyncedByokSettings {
+  activeProvider: ByokProvider | null;
+  keys: Partial<Record<ByokProvider, { apiKey: string; model?: string }>>;
+  sttUsesOwnKey?: boolean;
+}
+
 export interface Habit extends BaseItem {
   kind: "habit";
   categoryId: string; // required for Habits specifically, to enable category aggregate stats later
@@ -83,6 +96,17 @@ export interface AppData {
   completionLog: CompletionLogEntry[];
   // Shared-trial messages used so far, client-trusted honor-system counter — see §20 in Roadmap.md.
   sharedKeyMessageCount?: number;
+  // BYOK settings synced across devices, plain text (no passphrase encryption —
+  // see §30 in Roadmap.md and CLAUDE.md for why). Reflected into localStorage
+  // only at sign-in (src/lib/settingsStore.ts's importState/exportState),
+  // never mid-session, to avoid clobbering an in-flight Settings.tsx save.
+  byokSettings?: SyncedByokSettings;
+  // Whether spoken replies are on, per device — keyed by a random id each
+  // device generates and caches once (src/lib/ttsPreference.ts). Unlike
+  // byokSettings above, this is a per-key map, not a whole-blob sync: each
+  // device remembers its own choice under this account, rather than one
+  // toggle changing it everywhere.
+  ttsEnabledByDevice?: Record<string, boolean>;
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [

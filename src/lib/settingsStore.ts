@@ -1,12 +1,15 @@
-// BYOK settings live in browser localStorage, deliberately not the
-// Drive-synced data file — API keys are per-device secrets, while the Drive
-// file is meant to hold habit/task data, not credentials.
+// BYOK settings live in browser localStorage, mirroring AppData.byokSettings
+// (see §30 in Roadmap.md) — Drive is the cross-device source of truth, but
+// every existing read here stays synchronous/localStorage-backed to avoid
+// rewriting every call site; App.tsx's sign-in flow is the only place that
+// reconciles the two, via importState/exportState below.
 //
 // A key is remembered per provider (not just "the current one"), so
 // switching which provider is active — e.g. for testing — doesn't lose
 // whichever key isn't active right now.
+import type { ByokProvider, SyncedByokSettings } from "../types/models";
 
-export type ByokProvider = "anthropic" | "groq" | "gemini";
+export type { ByokProvider };
 
 export interface ByokSettings {
   provider: ByokProvider;
@@ -14,28 +17,46 @@ export interface ByokSettings {
   model?: string;
 }
 
-interface StoredState {
-  activeProvider: ByokProvider | null; // null = use the shared free trial (chat)
-  keys: Partial<Record<ByokProvider, { apiKey: string; model?: string }>>;
-  sttUsesOwnKey?: boolean; // independent of `activeProvider` — see getActiveStt()
-  ttsEnabled?: boolean; // independent of everything above — see getTtsEnabled()
+const STORAGE_KEY = "habit-assistant:byok";
+
+// A function, not a shared module-level object — loadState()'s callers mutate
+// the object they get back (e.g. saveProviderKey does `state.keys[x] = ...`),
+// so a single shared EMPTY_STATE.keys reference would get corrupted in place
+// the first time that happened while storage was empty, and stay corrupted
+// for the rest of the page's lifetime.
+function emptyState(): SyncedByokSettings {
+  return { activeProvider: null, keys: {} };
 }
 
-const STORAGE_KEY = "habit-assistant:byok";
-const EMPTY_STATE: StoredState = { activeProvider: null, keys: {} };
-
-function loadState(): StoredState {
+function loadState(): SyncedByokSettings {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { ...EMPTY_STATE };
+  if (!raw) return emptyState();
   try {
-    return { ...EMPTY_STATE, ...(JSON.parse(raw) as StoredState) };
+    return { ...emptyState(), ...(JSON.parse(raw) as SyncedByokSettings) };
   } catch {
-    return { ...EMPTY_STATE };
+    return emptyState();
   }
 }
 
-function saveState(state: StoredState): void {
+function saveState(state: SyncedByokSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/** The full current settings blob, for App.tsx to push into AppData.byokSettings on save. */
+export function exportState(): SyncedByokSettings {
+  return loadState();
+}
+
+/** Overwrites local storage with a remote (Drive-sourced) blob — called only at sign-in, never mid-session (see App.tsx's applyRemoteData). No-op if remote is undefined (an old Drive file predating this field). */
+export function importState(remote: SyncedByokSettings | undefined): void {
+  if (!remote) return;
+  saveState(remote);
+}
+
+/** True if this device has any locally-saved BYOK settings worth migrating into a Drive file that doesn't have byokSettings yet. */
+export function hasLocalByokSettings(): boolean {
+  const state = loadState();
+  return state.activeProvider !== null || Object.keys(state.keys).length > 0;
 }
 
 /** The key saved for a given provider, if any — independent of which provider is currently active. */
@@ -96,18 +117,4 @@ export function getActiveStt(): { apiKey: string } | null {
   if (!state.sttUsesOwnKey) return null;
   const saved = state.keys.groq;
   return saved ? { apiKey: saved.apiKey } : null;
-}
-
-// --- Text-to-speech: whether assistant replies are read aloud. Uses the
-// browser's built-in SpeechSynthesis, so there's no key/provider to choose —
-// just an on/off toggle, off by default (opt-in, like voice input itself). ---
-
-export function getTtsEnabled(): boolean {
-  return loadState().ttsEnabled ?? false;
-}
-
-export function setTtsEnabled(enabled: boolean): void {
-  const state = loadState();
-  state.ttsEnabled = enabled;
-  saveState(state);
 }

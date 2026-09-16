@@ -6,10 +6,9 @@ import {
   forgetProviderKey,
   getSttUsesOwnKey,
   setSttUsesOwnKey,
-  getTtsEnabled,
-  setTtsEnabled,
   type ByokProvider,
 } from "../lib/settingsStore";
+import { getTtsEnabled, setTtsEnabled } from "../lib/ttsPreference";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
 import type { DebugLogEntry } from "../lib/debugLogStore";
 
@@ -115,8 +114,9 @@ export default function Settings({
       </div>
       <p className="mb-3 text-slate-400">
         You're on the free shared trial by default. Save a key per provider below, then switch
-        between them any time — each one stays saved in this browser (never synced to your Drive
-        data) until you remove it, so testing back and forth doesn't lose anything.
+        between them any time — each one is saved with your account data (synced across your
+        devices via Drive, same as your habits and tasks, as plain text) until you remove it, so
+        testing back and forth doesn't lose anything.
       </p>
 
       <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">

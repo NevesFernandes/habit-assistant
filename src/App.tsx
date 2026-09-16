@@ -65,7 +65,19 @@ import {
   type UpdateCategoryPatch,
   type UpdatePatch,
 } from "./lib/dataStore";
-import { getActiveByok, getActiveStt, getTtsEnabled, type ByokSettings } from "./lib/settingsStore";
+import {
+  getActiveByok,
+  getActiveStt,
+  exportState as exportByokState,
+  importState as importByokState,
+  hasLocalByokSettings,
+  type ByokSettings,
+} from "./lib/settingsStore";
+import {
+  getDeviceId,
+  getTtsEnabled,
+  importTtsEnabled,
+} from "./lib/ttsPreference";
 import { speak } from "./lib/textToSpeech";
 import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
 
@@ -185,6 +197,20 @@ export default function App() {
     setTtsEnabled(getTtsEnabled());
   }
 
+  // §30 in Roadmap.md: reflects a freshly-loaded AppData's byokSettings into
+  // localStorage — called only from the sign-in flow below, never from
+  // persist()'s own setData calls, since data.byokSettings there can be stale
+  // relative to localStorage while a Settings.tsx save is mid-flight (it
+  // writes to localStorage synchronously, then fires an unawaited persist());
+  // an unrelated persist() resolving first and importing its stale carried-
+  // forward value would silently clobber a key just saved elsewhere.
+  function applyRemoteData(next: AppData) {
+    importByokState(next.byokSettings);
+    importTtsEnabled(next.ttsEnabledByDevice);
+    refreshSettings();
+    setData(next);
+  }
+
   function recordDebugEntry(entry: DebugLogEntry) {
     appendDebugLogEntry(entry);
     setDebugLog(loadDebugLog());
@@ -226,27 +252,39 @@ export default function App() {
       const existing = await findDataFile(newSession, folderId);
       if (existing) {
         const loaded = await readDataFile(newSession, existing.fileId);
+        // §30 in Roadmap.md: migrate this device's local BYOK settings into a
+        // Drive file that predates the byokSettings field, so other devices
+        // can pick them up on their next sign-in. Computed before rollover so
+        // the two don't interact beyond sharing one conditional write below.
+        const needsByokMigration = loaded.byokSettings === undefined && hasLocalByokSettings();
         const rolled = rolloverPersistentTasks(loaded, todayISO());
-        if (rolled !== loaded) {
+        const toWrite = needsByokMigration ? { ...rolled, byokSettings: exportByokState() } : rolled;
+        if (toWrite !== loaded) {
           try {
-            const newRef = await writeDataFile(newSession, existing, rolled);
+            const newRef = await writeDataFile(newSession, existing, toWrite);
             setFileRef(newRef);
-            setData(rolled);
+            applyRemoteData(toWrite);
           } catch {
-            // Rollover write failed (conflict, network, etc.) — don't block sign-in over
-            // a nice-to-have UI correction; just show the un-rolled-over data this session.
+            // Rollover/migration write failed (conflict, network, etc.) — don't block sign-in
+            // over a nice-to-have correction; just show the un-rolled-over data this session.
+            // loaded.byokSettings is still undefined here, so this device's local settings are
+            // left untouched — migration is simply retried on the next sign-in.
             setFileRef(existing);
-            setData(loaded);
+            applyRemoteData(loaded);
           }
         } else {
           setFileRef(existing);
-          setData(loaded);
+          applyRemoteData(loaded);
         }
       } else {
         const initial = emptyAppData();
-        const created = await createDataFile(newSession, folderId, initial);
+        // Covers a device signing in fresh (e.g. reinstalled) with pre-existing local BYOK
+        // settings — not just the "existing file, missing field" migration above — so a second
+        // device isn't stuck waiting on a transition that never happens on this one.
+        const withByok = hasLocalByokSettings() ? { ...initial, byokSettings: exportByokState() } : initial;
+        const created = await createDataFile(newSession, folderId, withByok);
         setFileRef(created);
-        setData(initial);
+        applyRemoteData(withByok);
       }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Sign-in failed.");
@@ -826,7 +864,20 @@ export default function App() {
         <SettingsPanel
           activeProvider={byok?.provider ?? null}
           sharedKeyExhausted={(data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP}
-          onChange={refreshSettings}
+          onChange={() => {
+            refreshSettings();
+            // §30 in Roadmap.md: push the whole BYOK blob to Drive on every
+            // Settings.tsx mutation (it already calls onChange after each one).
+            // ttsEnabledByDevice is a per-device map, not a whole-blob sync —
+            // merge in only this device's own key so a conflict-retry replay
+            // (current is the freshly-reloaded object then) never clobbers a
+            // different device's entry.
+            void persist((current) => ({
+              ...current,
+              byokSettings: exportByokState(),
+              ttsEnabledByDevice: { ...current.ttsEnabledByDevice, [getDeviceId()]: getTtsEnabled() },
+            }));
+          }}
           onClose={() => setSettingsOpen(false)}
           debugLog={debugLog}
           onClearDebugLog={handleClearDebugLog}
