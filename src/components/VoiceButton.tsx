@@ -28,6 +28,7 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
   const startTimeRef = useRef(0);
 
   async function startRecording() {
+    if (recorderRef.current) return; // already recording — avoid double-start from duplicate pointer/touch events
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -51,8 +52,9 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
   }
 
   function stopRecording() {
-    if (!recording) return;
-    recorderRef.current?.stop();
+    if (!recorderRef.current) return;
+    recorderRef.current.stop();
+    recorderRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     setRecording(false);
   }
@@ -87,14 +89,17 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
       <button
         type="button"
         disabled={disabled || transcribing}
-        onPointerDown={startRecording}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          void startRecording();
+        }}
         onPointerUp={stopRecording}
-        onPointerLeave={stopRecording}
         onPointerCancel={stopRecording}
         onContextMenu={(event) => event.preventDefault()}
+        onTouchStart={(event) => event.preventDefault()}
         title="Press and hold to speak"
         className={
-          "touch-none rounded-md px-3 py-2 font-medium text-white transition disabled:opacity-50 " +
+          "touch-none select-none [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent] rounded-md px-3 py-2 font-medium text-white transition disabled:opacity-50 " +
           (recording ? "bg-red-500 hover:bg-red-400" : "bg-slate-700 hover:bg-slate-600")
         }
       >
