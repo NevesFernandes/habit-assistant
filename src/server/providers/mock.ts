@@ -121,7 +121,7 @@ const mockAdapter: ProviderAdapter = {
       if (match) {
         const name = capitalize(match[1].replace(/\.$/, "").trim());
         return {
-          toolCall: { name: "createRecurringTask", input: { name, recurrenceType: "daily" } },
+          toolCall: { name: "createRecurringTask", input: { name, recurrence: "daily" } },
         };
       }
     }
@@ -133,7 +133,7 @@ const mockAdapter: ProviderAdapter = {
         return {
           toolCall: {
             name: "createHabit",
-            input: { name, categoryId: "other", recurrenceType: "daily" },
+            input: { name, categoryId: "other", recurrence: "daily" },
           },
         };
       }

@@ -81,16 +81,7 @@ export interface CreateHabitInput {
   startWeekday?: number;
   startWeekdayMode?: "closest" | "next";
   endDate?: string;
-  recurrenceType: RecurrenceRule["type"];
-  recurrenceDays?: number[];
-  recurrenceInterval?: number;
-  recurrencePeriod?: "week" | "month";
-  recurrenceCount?: number;
-  recurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
-  recurrenceWeekday?: number;
-  recurrenceDates?: string[]; // "MM-DD", no year
-  recurrenceOnDays?: number;
-  recurrenceOffDays?: number;
+  recurrence: RecurrenceRule;
   completionType?: Habit["completionType"];
   checklistItems?: string[];
   target?: number; // meaningful when completionType is "value" or "timer"; timer's target is always minutes
@@ -123,52 +114,6 @@ function resolveStartDate(input: StartDateInput): string {
   return normalizeStartDate(input.startDate);
 }
 
-type RecurrenceInput = Pick<
-  CreateHabitInput,
-  | "recurrenceType"
-  | "recurrenceDays"
-  | "recurrenceInterval"
-  | "recurrencePeriod"
-  | "recurrenceCount"
-  | "recurrenceNth"
-  | "recurrenceWeekday"
-  | "recurrenceDates"
-  | "recurrenceOnDays"
-  | "recurrenceOffDays"
->;
-
-function buildRecurrence(input: RecurrenceInput): RecurrenceRule {
-  switch (input.recurrenceType) {
-    case "daysOfWeek":
-      return { type: "daysOfWeek", days: input.recurrenceDays ?? [] };
-    case "intervalDays":
-      return { type: "intervalDays", interval: input.recurrenceInterval ?? 1 };
-    case "timesPerPeriod":
-      return {
-        type: "timesPerPeriod",
-        period: input.recurrencePeriod ?? "week",
-        count: input.recurrenceCount ?? 1,
-      };
-    case "nthWeekdayOfMonth":
-      return {
-        type: "nthWeekdayOfMonth",
-        nth: input.recurrenceNth ?? "first",
-        weekday: input.recurrenceWeekday ?? 0,
-      };
-    case "specificDatesOfYear":
-      return { type: "specificDatesOfYear", dates: input.recurrenceDates ?? [] };
-    case "onOffCycle":
-      return {
-        type: "onOffCycle",
-        onDays: input.recurrenceOnDays ?? 1,
-        offDays: input.recurrenceOffDays ?? 0,
-      };
-    case "daily":
-    default:
-      return { type: "daily" };
-  }
-}
-
 export function addHabit(data: AppData, input: CreateHabitInput): AppData {
   const categoryId =
     input.categoryId && data.categories.some((category) => category.id === input.categoryId)
@@ -185,7 +130,7 @@ export function addHabit(data: AppData, input: CreateHabitInput): AppData {
     priority: normalizePriority(input.priority),
     startDate: resolveStartDate(input),
     endDate: input.endDate,
-    recurrence: buildRecurrence(input),
+    recurrence: input.recurrence,
     completionType,
     checklist:
       completionType === "checklist"
@@ -246,16 +191,7 @@ export interface CreateRecurringTaskInput {
   startWeekday?: number;
   startWeekdayMode?: "closest" | "next";
   endDate?: string;
-  recurrenceType: RecurrenceRule["type"];
-  recurrenceDays?: number[];
-  recurrenceInterval?: number;
-  recurrencePeriod?: "week" | "month";
-  recurrenceCount?: number;
-  recurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
-  recurrenceWeekday?: number;
-  recurrenceDates?: string[]; // "MM-DD", no year
-  recurrenceOnDays?: number;
-  recurrenceOffDays?: number;
+  recurrence: RecurrenceRule;
 }
 
 export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
@@ -268,7 +204,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     priority: normalizePriority(input.priority),
     startDate: resolveStartDate(input),
     endDate: input.endDate,
-    recurrence: buildRecurrence(input),
+    recurrence: input.recurrence,
   };
   return { ...data, recurringTasks: [...data.recurringTasks, task] };
 }
@@ -410,16 +346,7 @@ export interface UpdatePatch {
   newEndDate?: string;
   newDone?: boolean; // SingleTask only
   newPersistency?: boolean; // SingleTask only
-  newRecurrenceType?: RecurrenceRule["type"]; // Habit + RecurringTask
-  newRecurrenceDays?: number[];
-  newRecurrenceInterval?: number;
-  newRecurrencePeriod?: "week" | "month";
-  newRecurrenceCount?: number;
-  newRecurrenceNth?: "first" | "second" | "third" | "fourth" | "fifth" | "last";
-  newRecurrenceWeekday?: number;
-  newRecurrenceDates?: string[]; // "MM-DD", no year — fully replaces the list, same as newChecklistItems
-  newRecurrenceOnDays?: number;
-  newRecurrenceOffDays?: number;
+  newRecurrence?: RecurrenceRule; // Habit + RecurringTask — fully replaces the existing rule
   newCompletionType?: CompletionType; // Habit only
   newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
   newTarget?: number; // Habit only — meaningful when completionType is "value" or "timer"
@@ -438,19 +365,7 @@ function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T 
 }
 
 function resolveRecurrence(current: RecurrenceRule, patch: UpdatePatch): RecurrenceRule {
-  if (patch.newRecurrenceType === undefined) return current;
-  return buildRecurrence({
-    recurrenceType: patch.newRecurrenceType,
-    recurrenceDays: patch.newRecurrenceDays,
-    recurrenceInterval: patch.newRecurrenceInterval,
-    recurrencePeriod: patch.newRecurrencePeriod,
-    recurrenceCount: patch.newRecurrenceCount,
-    recurrenceNth: patch.newRecurrenceNth,
-    recurrenceWeekday: patch.newRecurrenceWeekday,
-    recurrenceDates: patch.newRecurrenceDates,
-    recurrenceOnDays: patch.newRecurrenceOnDays,
-    recurrenceOffDays: patch.newRecurrenceOffDays,
-  });
+  return patch.newRecurrence ?? current;
 }
 
 export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch): AppData {

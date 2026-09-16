@@ -8,10 +8,11 @@
 // strategy"): a BYOK request uses the caller's own provider/key; otherwise
 // it falls back to the shared free trial configured via env vars.
 import { resolveProvider } from "./providers/index.ts";
-import { ProviderRequestError, type ToolDefinition } from "./providers/types.ts";
+import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category } from "../types/models.ts";
 import { classifyIntent, type IntentBucket } from "./classifyIntent.ts";
+import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
 
 export interface AgentEnv {
   TRIAL_PROVIDER?: string;
@@ -144,7 +145,7 @@ function buildDeleteProse(categoryList: string, todayISO: string): string {
 const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.`;
 
 function buildModifyProse(categoryList: string): string {
-  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrenceType (if set) replaces the entire recurrence rule, not just one piece of it — include whichever of newRecurrenceDays/newRecurrenceInterval/newRecurrencePeriod/newRecurrenceCount that type needs, exactly as you would for createHabit's recurrenceType. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).`;
 }
@@ -162,20 +163,12 @@ For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
 - priority is a positive whole number; higher means more important. Default to 1 (the lowest priority) unless the user signals otherwise (e.g. "this is really important" → a higher number).
 - startDate must be today or a future date (never in the past). If unspecified, it defaults to today automatically — leave it out. If the user explicitly asks for a start date that's already in the past, ask them to confirm what they actually meant rather than silently picking a different date.
-- Map how the user describes frequency to recurrenceType:
-  - "every day" / "daily" → recurrenceType "daily"
-  - specific weekdays (e.g. "Mon/Wed/Fri", "on weekends") → recurrenceType "daysOfWeek" with recurrenceDays as an array of 0=Sunday..6=Saturday
-  - "every N days" (e.g. "every 3 days") → recurrenceType "intervalDays" with recurrenceInterval = N
-  - "N times a week/month" (not pinned to specific days) → recurrenceType "timesPerPeriod" with recurrencePeriod ("week" or "month") and recurrenceCount = N
-  - "the Nth <weekday> of the month" (e.g. "every third Monday", "the last Friday of the month") → recurrenceType "nthWeekdayOfMonth" with recurrenceNth ("first"|"second"|"third"|"fourth"|"fifth"|"last") and recurrenceWeekday (0=Sunday..6=Saturday)
-  - a date that recurs every year (e.g. a birthday, an anniversary) → recurrenceType "specificDatesOfYear" with recurrenceDates as an array of "MM-DD" strings (no year). recurrenceDates always replaces the full list — you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing habit, ask them for the complete list of dates rather than guessing what's already there (same as checklistItems below).
-  - "N days on, M days off" (e.g. "5 days on, 2 days off") → recurrenceType "onOffCycle" with recurrenceOnDays = N and recurrenceOffDays = M
-  - If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing.
+- recurrence: how often it repeats, in the compact format described in the recurrence field's own description above. If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing.
 - completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). A "value" or "timer" habit always needs a target greater than 0 — completion means reaching 100% of it, so there's no such thing as tracking one without a goal. If the user states a specific amount (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they haven't given a specific amount, ask a short clarifying question for it rather than guessing or leaving it unset.
 
 For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
-- priority, startDate/startWeekday/startWeekdayMode, and recurrenceType (with its matching fields) all work exactly as they do for createHabit — see above.
+- priority, startDate/startWeekday/startWeekdayMode, and recurrence all work exactly as they do for createHabit — see above.
 - There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.`;
 }
 
@@ -306,60 +299,7 @@ function buildTools(
             type: "string",
             description: "Optional ISO date (YYYY-MM-DD) after which the habit stops recurring.",
           },
-          recurrenceType: {
-            type: "string",
-            description: "How this habit repeats.",
-            enum: [
-              "daily",
-              "daysOfWeek",
-              "intervalDays",
-              "timesPerPeriod",
-              "nthWeekdayOfMonth",
-              "specificDatesOfYear",
-              "onOffCycle",
-            ],
-          },
-          recurrenceDays: {
-            type: "array",
-            description: "Used when recurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
-            items: { type: "number" },
-          },
-          recurrenceInterval: {
-            type: "number",
-            description: "Used when recurrenceType is intervalDays: repeat every N days.",
-          },
-          recurrencePeriod: {
-            type: "string",
-            description: "Used when recurrenceType is timesPerPeriod.",
-            enum: ["week", "month"],
-          },
-          recurrenceCount: {
-            type: "number",
-            description: "Used when recurrenceType is timesPerPeriod: how many times per period.",
-          },
-          recurrenceNth: {
-            type: "string",
-            description: "Used when recurrenceType is nthWeekdayOfMonth: which occurrence of recurrenceWeekday in the month.",
-            enum: ["first", "second", "third", "fourth", "fifth", "last"],
-          },
-          recurrenceWeekday: {
-            type: "number",
-            description: "Used when recurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
-          },
-          recurrenceDates: {
-            type: "array",
-            description:
-              "Used when recurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year), e.g. \"03-15\".",
-            items: { type: "string" },
-          },
-          recurrenceOnDays: {
-            type: "number",
-            description: "Used when recurrenceType is onOffCycle: consecutive days on, starting at startDate.",
-          },
-          recurrenceOffDays: {
-            type: "number",
-            description: "Used when recurrenceType is onOffCycle: consecutive days off, following the on days.",
-          },
+          recurrence: { type: "string", description: RECURRENCE_SPEC_GRAMMAR },
           completionType: {
             type: "string",
             description: "How completion is tracked. Defaults to yesno.",
@@ -380,7 +320,7 @@ function buildTools(
             description: "Used when completionType is value: a short label for the number, e.g. \"glasses\", \"pages\", \"reps\".",
           },
         },
-        required: ["name", "categoryId", "recurrenceType"],
+        required: ["name", "categoryId", "recurrence"],
       },
     },
     {
@@ -421,62 +361,9 @@ function buildTools(
             type: "string",
             description: "Optional ISO date (YYYY-MM-DD) after which the task stops recurring.",
           },
-          recurrenceType: {
-            type: "string",
-            description: "How this task repeats.",
-            enum: [
-              "daily",
-              "daysOfWeek",
-              "intervalDays",
-              "timesPerPeriod",
-              "nthWeekdayOfMonth",
-              "specificDatesOfYear",
-              "onOffCycle",
-            ],
-          },
-          recurrenceDays: {
-            type: "array",
-            description: "Used when recurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
-            items: { type: "number" },
-          },
-          recurrenceInterval: {
-            type: "number",
-            description: "Used when recurrenceType is intervalDays: repeat every N days.",
-          },
-          recurrencePeriod: {
-            type: "string",
-            description: "Used when recurrenceType is timesPerPeriod.",
-            enum: ["week", "month"],
-          },
-          recurrenceCount: {
-            type: "number",
-            description: "Used when recurrenceType is timesPerPeriod: how many times per period.",
-          },
-          recurrenceNth: {
-            type: "string",
-            description: "Used when recurrenceType is nthWeekdayOfMonth: which occurrence of recurrenceWeekday in the month.",
-            enum: ["first", "second", "third", "fourth", "fifth", "last"],
-          },
-          recurrenceWeekday: {
-            type: "number",
-            description: "Used when recurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
-          },
-          recurrenceDates: {
-            type: "array",
-            description:
-              "Used when recurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year), e.g. \"03-15\".",
-            items: { type: "string" },
-          },
-          recurrenceOnDays: {
-            type: "number",
-            description: "Used when recurrenceType is onOffCycle: consecutive days on, starting at startDate.",
-          },
-          recurrenceOffDays: {
-            type: "number",
-            description: "Used when recurrenceType is onOffCycle: consecutive days off, following the on days.",
-          },
+          recurrence: { type: "string", description: RECURRENCE_SPEC_GRAMMAR },
         },
-        required: ["name", "recurrenceType"],
+        required: ["name", "recurrence"],
       },
     },
     {
@@ -612,59 +499,9 @@ function buildTools(
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
           newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
-          newRecurrenceType: {
+          newRecurrence: {
             type: "string",
-            description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
-            enum: [
-              "daily",
-              "daysOfWeek",
-              "intervalDays",
-              "timesPerPeriod",
-              "nthWeekdayOfMonth",
-              "specificDatesOfYear",
-              "onOffCycle",
-            ],
-          },
-          newRecurrenceDays: {
-            type: "array",
-            description: "Used when newRecurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
-            items: { type: "number" },
-          },
-          newRecurrenceInterval: {
-            type: "number",
-            description: "Used when newRecurrenceType is intervalDays: repeat every N days.",
-          },
-          newRecurrencePeriod: {
-            type: "string",
-            description: "Used when newRecurrenceType is timesPerPeriod.",
-            enum: ["week", "month"],
-          },
-          newRecurrenceCount: {
-            type: "number",
-            description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
-          },
-          newRecurrenceNth: {
-            type: "string",
-            description: "Used when newRecurrenceType is nthWeekdayOfMonth: which occurrence of newRecurrenceWeekday in the month.",
-            enum: ["first", "second", "third", "fourth", "fifth", "last"],
-          },
-          newRecurrenceWeekday: {
-            type: "number",
-            description: "Used when newRecurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
-          },
-          newRecurrenceDates: {
-            type: "array",
-            description:
-              "Used when newRecurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year). Fully replaces the existing list.",
-            items: { type: "string" },
-          },
-          newRecurrenceOnDays: {
-            type: "number",
-            description: "Used when newRecurrenceType is onOffCycle: consecutive days on, starting at startDate.",
-          },
-          newRecurrenceOffDays: {
-            type: "number",
-            description: "Used when newRecurrenceType is onOffCycle: consecutive days off, following the on days.",
+            description: `Replaces the entire existing recurrence rule. ${RECURRENCE_SPEC_GRAMMAR}`,
           },
           newCompletionType: {
             type: "string",
@@ -707,59 +544,9 @@ function buildTools(
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
           newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
-          newRecurrenceType: {
+          newRecurrence: {
             type: "string",
-            description: "New recurrence type. Replaces the entire recurrence rule — include the matching fields below for this type.",
-            enum: [
-              "daily",
-              "daysOfWeek",
-              "intervalDays",
-              "timesPerPeriod",
-              "nthWeekdayOfMonth",
-              "specificDatesOfYear",
-              "onOffCycle",
-            ],
-          },
-          newRecurrenceDays: {
-            type: "array",
-            description: "Used when newRecurrenceType is daysOfWeek: 0=Sunday..6=Saturday.",
-            items: { type: "number" },
-          },
-          newRecurrenceInterval: {
-            type: "number",
-            description: "Used when newRecurrenceType is intervalDays: repeat every N days.",
-          },
-          newRecurrencePeriod: {
-            type: "string",
-            description: "Used when newRecurrenceType is timesPerPeriod.",
-            enum: ["week", "month"],
-          },
-          newRecurrenceCount: {
-            type: "number",
-            description: "Used when newRecurrenceType is timesPerPeriod: how many times per period.",
-          },
-          newRecurrenceNth: {
-            type: "string",
-            description: "Used when newRecurrenceType is nthWeekdayOfMonth: which occurrence of newRecurrenceWeekday in the month.",
-            enum: ["first", "second", "third", "fourth", "fifth", "last"],
-          },
-          newRecurrenceWeekday: {
-            type: "number",
-            description: "Used when newRecurrenceType is nthWeekdayOfMonth: 0=Sunday..6=Saturday.",
-          },
-          newRecurrenceDates: {
-            type: "array",
-            description:
-              "Used when newRecurrenceType is specificDatesOfYear: annual dates as \"MM-DD\" strings (no year). Fully replaces the existing list.",
-            items: { type: "string" },
-          },
-          newRecurrenceOnDays: {
-            type: "number",
-            description: "Used when newRecurrenceType is onOffCycle: consecutive days on, starting at startDate.",
-          },
-          newRecurrenceOffDays: {
-            type: "number",
-            description: "Used when newRecurrenceType is onOffCycle: consecutive days off, following the on days.",
+            description: `Replaces the entire existing recurrence rule. ${RECURRENCE_SPEC_GRAMMAR}`,
           },
         },
         required: ["name"],
@@ -1008,6 +795,40 @@ function buildProviderChain(env: AgentEnv, byok?: Byok): ProviderAttempt[] {
   return chain;
 }
 
+// The compact recurrence string (see recurrenceSpec.ts) has to be expanded
+// into a real RecurrenceRule somewhere provider-agnostic, before it reaches
+// the client — this is the only place with access to the raw provider
+// result. A parse failure fails closed into a plain clarifying reply rather
+// than forwarding a broken tool call, mirroring groq.ts's own handling of a
+// malformed tool_use_failed response for the same underlying situation
+// (bad tool-call data, not a transient provider error) — so it's treated as
+// a terminal 200 response, never retried through the provider-failover loop.
+const RECURRENCE_TOOL_FIELDS: Record<string, "recurrence" | "newRecurrence"> = {
+  createHabit: "recurrence",
+  createRecurringTask: "recurrence",
+  updateHabit: "newRecurrence",
+  updateRecurringTask: "newRecurrence",
+};
+
+const RECURRENCE_PARSE_FAILURE_REPLY =
+  "Sorry, I didn't catch how often that should repeat — could you rephrase it (e.g. \"every Monday and Friday\", \"every 3 days\", \"twice a week\")?";
+
+function resolveRecurrenceToolCall(result: ProviderResult): ProviderResult {
+  const toolCall = result.toolCall;
+  const field = toolCall && RECURRENCE_TOOL_FIELDS[toolCall.name];
+  if (!toolCall || !field) return result;
+
+  const raw = toolCall.input[field];
+  if (raw === undefined && field === "newRecurrence") return result; // optional on update tools
+
+  const parsed = parseCompactRecurrence(typeof raw === "string" ? raw : undefined);
+  if (!parsed.ok) {
+    console.error(`[recurrenceSpec] ${toolCall.name}.${field}: ${parsed.error}`);
+    return { reply: RECURRENCE_PARSE_FAILURE_REPLY };
+  }
+  return { ...result, toolCall: { ...toolCall, input: { ...toolCall.input, [field]: parsed.rule } } };
+}
+
 export async function handleAgentRequest(
   messages: AgentHistoryMessage[],
   env: AgentEnv,
@@ -1080,18 +901,20 @@ export async function handleAgentRequest(
         result,
       });
       try {
-        const result = await withTimeout(
-          (signal) =>
-            provider.send({
-              messages,
-              tools,
-              systemPrompt,
-              apiKey: attempt.apiKey,
-              model: attempt.model,
-              accountId: attempt.accountId,
-              signal,
-            }),
-          attempt.timeoutMs ?? PROVIDER_TIMEOUT_MS,
+        const result = resolveRecurrenceToolCall(
+          await withTimeout(
+            (signal) =>
+              provider.send({
+                messages,
+                tools,
+                systemPrompt,
+                apiKey: attempt.apiKey,
+                model: attempt.model,
+                accountId: attempt.accountId,
+                signal,
+              }),
+            attempt.timeoutMs ?? PROVIDER_TIMEOUT_MS,
+          ),
         );
         const toolCall = result.toolCall
           ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
