@@ -14,8 +14,8 @@ const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "last"] as const;
 
 export const RECURRENCE_SPEC_GRAMMAR = `How often this repeats, as a single compact string:
-- "daily"
-- "days:<list>" — specific weekdays, comma-separated from sun,mon,tue,wed,thu,fri,sat (e.g. "days:mon,wed,fri"; "days:sat,sun" for weekends)
+- "daily" — ONLY when the user says "every day"/"daily" and names no specific weekdays. If the user lists two or more specific weekdays (e.g. "Tuesday, Thursday, Saturday and Sunday"), that is ALWAYS "days:<list>", never "daily" — even when the list covers most or all of the week. Never collapse or round a named list of weekdays to "daily".
+- "days:<list>" — specific weekdays, comma-separated from sun,mon,tue,wed,thu,fri,sat, one entry per weekday the user named, in any order (e.g. "days:mon,wed,fri"; "days:sat,sun" for weekends; "days:tue,thu,sat,sun" for "Tuesday, Thursday, Saturday and Sunday")
 - "every:<N>" — every N days (e.g. "every:3")
 - "times:<N>/<period>" — N times per week or month, not pinned to specific days; period is "week" or "month" (e.g. "times:3/week")
 - "nth:<ordinal>:<weekday>" — the ordinal occurrence of a weekday each month; ordinal is first, second, third, fourth, fifth, or last (e.g. "nth:third:mon", "nth:last:fri")
