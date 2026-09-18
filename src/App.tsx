@@ -211,6 +211,18 @@ function buildDeleteConfirmationQuestion(
   return `Are you sure you want to delete ${subject}${historyWarning}`.trimEnd();
 }
 
+/** Item types an update patch can apply to — e.g. newTarget only makes sense on a habit, newDone only on a one-off task. */
+function updateKindsFor(patch: UpdatePatch, isArchive: boolean): DeletableItemKind[] {
+  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newTarget, patch.newUnit].some(
+    (value) => value !== undefined,
+  );
+  const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
+  const recurringOnly = patch.newRecurrence !== undefined || isArchive;
+  if (habitOnly) return singleTaskOnly ? [] : ["habit"];
+  if (singleTaskOnly) return recurringOnly ? [] : ["singleTask"];
+  return recurringOnly ? ["habit", "recurringTask"] : ["habit", "recurringTask", "singleTask"];
+}
+
 /** Fast-path eligibility: only an unambiguous single-name filter, nothing else composed with it. */
 function isNameOnlyCriteria(criteria: DeleteCriteria): boolean {
   const { name, ...rest } = criteria;
@@ -498,7 +510,7 @@ export default function App() {
   }
 
   async function handleUpdateRequest(
-    kind: DeletableItemKind,
+    requestedKind: DeletableItemKind,
     input: ItemSelector & UpdatePatch,
     toolCall: ToolCallRef,
     actionVerb: string = "Updated",
@@ -506,6 +518,7 @@ export default function App() {
     if (!data) return;
     // categoryId is the §32 selector (which item), never a field to change — that's newCategoryId.
     const { name, categoryId, ...patch } = input;
+    const kind = resolveKind(requestedKind, updateKindsFor(patch, actionVerb === "Archived"), { name, categoryId });
     const target = pickItem(kind, { name, categoryId }, toolCall);
     if (!target) return;
     if (!hasAnyPatchField(patch)) {
@@ -536,6 +549,23 @@ export default function App() {
     } else {
       pushAssistantMessage(describeUpdate(before, after, data.categories, todayISO()), toolCall);
     }
+  }
+
+  // §32: the model can't see the user's data, so it can guess the wrong item type (e.g.
+  // updateRecurringTask for what's really a habit). If the requested type has no match,
+  // use the first of `alternatives` (types that can take the same action) that does.
+  // During a number-pick rerun, the picked item's own type wins.
+  function resolveKind(
+    requested: DeletableItemKind,
+    alternatives: DeletableItemKind[],
+    selector: ItemSelector,
+  ): DeletableItemKind {
+    const forced = forcedPickRef.current;
+    if (forced && (forced.kind === requested || alternatives.includes(forced.kind))) return forced.kind;
+    if (!data) return requested;
+    const hasMatch = (kind: DeletableItemKind) => selectOne(itemsOf(data, kind), selector).kind !== "none";
+    if (hasMatch(requested)) return requested;
+    return alternatives.find((kind) => kind !== requested && hasMatch(kind)) ?? requested;
   }
 
   // §32: the one place single-item chat actions (update/archive/log/checklist) resolve which
@@ -683,15 +713,15 @@ export default function App() {
     } else if (toolCall.name === "logHabitProgress") {
       await handleLogHabitProgress(toolCall.input, toolCall);
     } else if (toolCall.name === "addRecurringTaskChecklistItem") {
-      await handleAddRecurringTaskChecklistItemChat(toolCall.input, toolCall);
+      await handleAddTaskChecklistItemChat("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "addSingleTaskChecklistItem") {
-      await handleAddSingleTaskChecklistItemChat(toolCall.input, toolCall);
+      await handleAddTaskChecklistItemChat("singleTask", toolCall.input, toolCall);
     } else if (toolCall.name === "checkHabitChecklistItem") {
       await handleCheckHabitChecklistItem(toolCall.input, toolCall);
     } else if (toolCall.name === "checkRecurringTaskChecklistItem") {
-      await handleCheckRecurringTaskChecklistItem(toolCall.input, toolCall);
+      await handleCheckTaskChecklistItem("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "checkSingleTaskChecklistItem") {
-      await handleCheckSingleTaskChecklistItem(toolCall.input, toolCall);
+      await handleCheckTaskChecklistItem("singleTask", toolCall.input, toolCall);
     }
   }
 
@@ -877,20 +907,20 @@ export default function App() {
     });
   }
 
-  async function handleAddRecurringTaskChecklistItemChat(
+  // Recurring and one-off tasks share these: the model may guess the wrong task type (§32).
+  async function handleAddTaskChecklistItemChat(
+    requestedKind: "recurringTask" | "singleTask",
     input: ItemSelector & { text: string },
     toolCall: ToolCallRef,
   ) {
-    const task = pickItem("recurringTask", input, toolCall);
+    const kind = resolveKind(requestedKind, ["recurringTask", "singleTask"], input) as "recurringTask" | "singleTask";
+    const task = pickItem(kind, input, toolCall);
     if (!task) return;
-    const saved = await persist((current) => addRecurringTaskChecklistItem(current, task.id, input.text));
-    if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
-  }
-
-  async function handleAddSingleTaskChecklistItemChat(input: ItemSelector & { text: string }, toolCall: ToolCallRef) {
-    const task = pickItem("singleTask", input, toolCall);
-    if (!task) return;
-    const saved = await persist((current) => addSingleTaskChecklistItem(current, task.id, input.text));
+    const saved = await persist((current) =>
+      kind === "recurringTask"
+        ? addRecurringTaskChecklistItem(current, task.id, input.text)
+        : addSingleTaskChecklistItem(current, task.id, input.text),
+    );
     if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
   }
 
@@ -931,11 +961,13 @@ export default function App() {
     }
   }
 
-  async function handleCheckRecurringTaskChecklistItem(
+  async function handleCheckTaskChecklistItem(
+    requestedKind: "recurringTask" | "singleTask",
     input: ItemSelector & { item: string; checked?: boolean },
     toolCall: ToolCallRef,
   ) {
-    const task = pickItem("recurringTask", input, toolCall);
+    const kind = resolveKind(requestedKind, ["recurringTask", "singleTask"], input) as "recurringTask" | "singleTask";
+    const task = pickItem(kind, input, toolCall);
     if (!task) return;
     const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
     if (itemMatches.length === 0) {
@@ -951,34 +983,9 @@ export default function App() {
     }
     const checked = input.checked ?? true;
     const saved = await persist((current) =>
-      setRecurringTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
-    );
-    if (saved) {
-      pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
-    }
-  }
-
-  async function handleCheckSingleTaskChecklistItem(
-    input: ItemSelector & { item: string; checked?: boolean },
-    toolCall: ToolCallRef,
-  ) {
-    const task = pickItem("singleTask", input, toolCall);
-    if (!task) return;
-    const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
-    if (itemMatches.length === 0) {
-      pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${task.name}".`, toolCall);
-      return;
-    }
-    if (itemMatches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one checklist item matching "${input.item}" on "${task.name}": ${formatQuotedList(itemMatches.map((item) => item.text))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const checked = input.checked ?? true;
-    const saved = await persist((current) =>
-      setSingleTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
+      kind === "recurringTask"
+        ? setRecurringTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked)
+        : setSingleTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
     );
     if (saved) {
       pushAssistantMessage(`${checked ? "Checked off" : "Unchecked"} "${itemMatches[0].text}" on "${task.name}".`, toolCall);
