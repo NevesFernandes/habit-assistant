@@ -50,10 +50,15 @@ function toGeminiMessages(history: AgentHistoryMessage[]): GeminiOutgoingContent
   });
 }
 
-// Documented fallback free tier alongside Groq. "-latest" alias avoids
-// having to track Gemini's fast-moving version numbers here.
+// "-latest" alias avoids having to track Gemini's fast-moving version numbers
+// here. Flash-*Lite*, not Flash: verified 2026-09-18 that "gemini-flash-latest"
+// (then gemini-3.8-flash) allows only 20 free-tier requests per day per
+// project — exhausted within one testing session, silently pushing every
+// shared-trial message down the failover chain to weaker models. Applies to
+// BYOK Gemini users without a model override too, whose free keys hit the
+// same cap.
 const geminiAdapter: ProviderAdapter = {
-  defaultModel: "gemini-flash-latest",
+  defaultModel: "gemini-flash-lite-latest",
 
   async send({ messages, tools, systemPrompt, apiKey, model, signal }: ProviderCallArgs): Promise<ProviderResult> {
     const chosenModel = model ?? geminiAdapter.defaultModel;

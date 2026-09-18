@@ -117,7 +117,7 @@ function buildIdentityPreamble(todayISO: string, todayWeekday: string): string {
 
 Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any relative date the user gives you — "today", "tomorrow", "in 3 days", etc. — and resolve it to an exact ISO date (YYYY-MM-DD) yourself before calling a tool.
 
-Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically.`;
+Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically. The same goes for changing an existing item's start day: use newStartWeekday/newStartWeekdayMode and leave newStartDate unset — never ask the user to confirm a date you computed.`;
 }
 
 function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
@@ -490,7 +490,21 @@ function buildTools(
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newDone: { type: "boolean", description: "New completion status: true = done, false = not done." },
           newPersistency: {
@@ -519,7 +533,21 @@ function buildTools(
             enum: categories.map((category) => category.id),
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newRecurrence: {
             type: "string",
@@ -565,7 +593,21 @@ function buildTools(
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newRecurrence: {
             type: "string",
