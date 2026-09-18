@@ -60,6 +60,26 @@ Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for 
 
 There's also `npm run workers:dev`, which builds the site and then uses Cloudflare's own `wrangler dev` against `wrangler.jsonc` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
 
+## Chat scenario tests (real models, no browser, no Google login)
+
+`npm run test:chat` plays scripted conversations against the **real** model and checks each turn. It checks which action the model chose, the reply text, what ended up stored, and which provider answered. It runs the app's own chat logic (`src/lib/chatEngine.ts`, the same code `App.tsx` uses), with test habits and tasks loaded from `tests/chat/fixtures/*.json` instead of Google Drive. It reads the keys from `.dev.vars`, like `npm run dev`.
+
+```bash
+npm run test:chat -- s32-identical       # scenarios whose name contains this (a filter is required)
+npm run test:chat -- --all               # every scenario — rarely worth it, see below
+npm run test:chat -- s32-identical --repeat 5   # 5x, with a pass rate per scenario
+npm run test:chat -- s32-identical --provider groq   # gemini (default) | groq | workersAI | chain (the full failover chain)
+npm run test:chat -- s32-identical --delay 3000     # ms between model calls, for tight free-tier rate limits
+npm run test:chat -- s32-identical --verbose        # also show the server's own logging
+```
+
+- **One provider at a time by default.** A failing model shows up as a failure, and isn't hidden by the failover chain.
+- **Full report:** every message, reply, tool call and debug entry goes to `test-results/chat-<timestamp>.json`. That folder is gitignored.
+- **Run only what you need.** Scenarios are meant to be written for the specific thing being changed or investigated, and run on their own. With no filter, the runner lists the scenarios instead of running them all.
+- **Cost:** each turn that reaches the model is one real API call on the free tier. A number pick like "2" is resolved in the app and costs nothing.
+- **Separate test key (optional):** put `TEST_GEMINI_API_KEY=...` in `.dev.vars` to keep test runs off the quota the dev app and shared trial use.
+- **Adding a scenario:** add an entry to a file in `tests/chat/scenarios/` (register a new file in `tests/chat/run.ts`). Each turn is `{ user, expect }`. See `tests/chat/types.ts` for what `expect` can check.
+
 ## Testing on your Android phone
 
 Since most real usage will be on a phone, it's worth testing there directly during development — without deploying anywhere public. `adb reverse` (standard Android developer tooling) forwards the phone's own `http://localhost:5173` to your laptop's dev server over the USB cable, so the phone's browser sees the exact same origin your laptop already uses. That means **no new Google OAuth origin, no HTTPS cert, no Vite config changes, and no traffic ever leaves the USB cable** — the cleanest way to avoid a public deployment just for testing.

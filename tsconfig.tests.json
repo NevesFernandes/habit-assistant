@@ -1,0 +1,19 @@
+{
+  // §33: the headless chat-scenario tests and their .dev.vars loader — Node
+  // scripts that also pull in app code from src/, so both lib sets.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true
+  },
+  "include": ["tests/**/*.ts", "scripts/**/*.ts"]
+}
