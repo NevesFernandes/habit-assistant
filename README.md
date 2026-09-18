@@ -65,17 +65,18 @@ There's also `npm run workers:dev`, which builds the site and then uses Cloudfla
 `npm run test:chat` plays scripted conversations against the **real** model and checks each turn. It checks which action the model chose, the reply text, what ended up stored, and which provider answered. It runs the app's own chat logic (`src/lib/chatEngine.ts`, the same code `App.tsx` uses), with test habits and tasks loaded from `tests/chat/fixtures/*.json` instead of Google Drive. It reads the keys from `.dev.vars`, like `npm run dev`.
 
 ```bash
-npm run test:chat                        # every scenario, Gemini only
-npm run test:chat -- s32-identical       # only scenarios whose name contains this
-npm run test:chat -- --repeat 5          # each scenario 5x, with a pass rate per scenario
-npm run test:chat -- --provider groq     # gemini (default) | groq | workersAI | chain (the full failover chain)
-npm run test:chat -- --delay 3000        # ms between model calls, for tight free-tier rate limits
-npm run test:chat -- --verbose           # also show the server's own logging
+npm run test:chat -- s32-identical       # scenarios whose name contains this (a filter is required)
+npm run test:chat -- --all               # every scenario — rarely worth it, see below
+npm run test:chat -- s32-identical --repeat 5   # 5x, with a pass rate per scenario
+npm run test:chat -- s32-identical --provider groq   # gemini (default) | groq | workersAI | chain (the full failover chain)
+npm run test:chat -- s32-identical --delay 3000     # ms between model calls, for tight free-tier rate limits
+npm run test:chat -- s32-identical --verbose        # also show the server's own logging
 ```
 
 - **One provider at a time by default.** A failing model shows up as a failure, and isn't hidden by the failover chain.
 - **Full report:** every message, reply, tool call and debug entry goes to `test-results/chat-<timestamp>.json`. That folder is gitignored.
-- **Cost:** each turn that reaches the model is one real API call on the free tier. The current scenarios are about 15 calls per full run. A number pick like "2" is resolved in the app and costs nothing.
+- **Run only what you need.** Scenarios are meant to be written for the specific thing being changed or investigated, and run on their own. With no filter, the runner lists the scenarios instead of running them all.
+- **Cost:** each turn that reaches the model is one real API call on the free tier. A number pick like "2" is resolved in the app and costs nothing.
 - **Separate test key (optional):** put `TEST_GEMINI_API_KEY=...` in `.dev.vars` to keep test runs off the quota the dev app and shared trial use.
 - **Adding a scenario:** add an entry to a file in `tests/chat/scenarios/` (register a new file in `tests/chat/run.ts`). Each turn is `{ user, expect }`. See `tests/chat/types.ts` for what `expect` can check.
 

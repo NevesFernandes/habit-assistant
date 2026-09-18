@@ -3,12 +3,16 @@
 // model — handleAgentRequest called directly with .dev.vars keys, no HTTP, no
 // Google Drive (an in-memory persist over a JSON fixture instead).
 //
-//   npm run test:chat                        all scenarios, Gemini only
-//   npm run test:chat -- s32-identical      only scenarios whose name contains this
+//   npm run test:chat -- s32-identical      scenarios whose name contains this (a filter is required)
+//   npm run test:chat -- --all               every scenario — only on explicit request, see below
 //   npm run test:chat -- --repeat 5          each scenario 5x, prints pass rates
 //   npm run test:chat -- --provider groq     gemini | groq | workersAI | chain (the full failover chain)
 //   npm run test:chat -- --delay 3000        ms to wait between model calls (free-tier rate limits)
 //   npm run test:chat -- --verbose           also show the server's own console logging
+//
+// Scenarios are meant to be written and run ad-hoc, for the specific behavior being
+// changed or investigated — every turn is a real model call on free-tier quota, so the
+// runner refuses to run the whole set without an explicit --all.
 //
 // A full report (every message, reply, tool call and debug entry) is written to
 // test-results/chat-<timestamp>.json (gitignored). Exit code 1 if anything failed.
@@ -37,16 +41,18 @@ interface Options {
   provider: ProviderChoice;
   delayMs: number;
   verbose: boolean;
+  all: boolean;
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { filters: [], repeat: 1, provider: "gemini", delayMs: 1500, verbose: false };
+  const options: Options = { filters: [], repeat: 1, provider: "gemini", delayMs: 1500, verbose: false, all: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--repeat") options.repeat = Math.max(1, Number(argv[++i]));
     else if (arg === "--provider") options.provider = argv[++i] as ProviderChoice;
     else if (arg === "--delay") options.delayMs = Number(argv[++i]);
     else if (arg === "--verbose") options.verbose = true;
+    else if (arg === "--all") options.all = true;
     else options.filters.push(arg);
   }
   if (!["gemini", "groq", "workersAI", "chain"].includes(options.provider)) {
@@ -237,8 +243,16 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   verbose = options.verbose;
   const { env, expectedProviderId } = buildEnv(options.provider);
+  if (options.filters.length === 0 && !options.all) {
+    console.error(
+      "Pass a scenario name filter (e.g. npm run test:chat -- s32-identical) — or --all to run every scenario.\n" +
+        "Scenarios:\n" +
+        ALL_SCENARIOS.map((scenario) => `  ${scenario.name}`).join("\n"),
+    );
+    process.exit(1);
+  }
   const selected = ALL_SCENARIOS.filter(
-    (scenario) => options.filters.length === 0 || options.filters.some((filter) => scenario.name.includes(filter)),
+    (scenario) => options.all || options.filters.some((filter) => scenario.name.includes(filter)),
   );
   if (selected.length === 0) {
     console.error(`No scenarios match: ${options.filters.join(", ")}`);
