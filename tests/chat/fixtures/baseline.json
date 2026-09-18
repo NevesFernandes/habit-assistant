@@ -1,0 +1,22 @@
+{
+  "_comment": "Claude's own test data for the §33 chat scenarios — mirrors the real habit list from the §32 testing session (duplicate names, Test: prefixes, mixed tracking types). Categories are omitted and filled in with the defaults. Item ids are readable on purpose, so scenario checks can name them.",
+  "habits": [
+    { "kind": "habit", "id": "read-1", "name": "Read", "categoryId": "study", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "yesno" },
+    { "kind": "habit", "id": "read-2", "name": "Read", "categoryId": "study", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "yesno" },
+    { "kind": "habit", "id": "technical-reading", "name": "Technical Reading", "categoryId": "study", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daysOfWeek", "days": [1, 2, 3, 4, 5] }, "completionType": "yesno" },
+    { "kind": "habit", "id": "water-nutrition", "name": "Drink water", "categoryId": "nutrition", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "value", "target": 8, "unit": "glasses" },
+    { "kind": "habit", "id": "water-sports", "name": "Drink water", "categoryId": "sports", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "yesno" },
+    { "kind": "habit", "id": "water-test", "name": "Test: Drink water", "categoryId": "health", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "value", "target": 8, "unit": "glasses" },
+    { "kind": "habit", "id": "meditate", "name": "Meditate", "categoryId": "health", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "timer", "target": 10 },
+    { "kind": "habit", "id": "meditate-test", "name": "Test: Meditate", "categoryId": "health", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "timer", "target": 10 },
+    { "kind": "habit", "id": "run", "name": "Run", "categoryId": "sports", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daysOfWeek", "days": [0, 2, 4, 6] }, "completionType": "yesno" },
+    { "kind": "habit", "id": "journal", "name": "Journal", "categoryId": "other", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "yesno" }
+  ],
+  "recurringTasks": [
+    { "kind": "recurringTask", "id": "shopping", "name": "Weekly shopping", "categoryId": "home", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "timesPerPeriod", "period": "week", "count": 1 }, "checklist": [{ "id": "eggs", "text": "eggs", "checked": false }] }
+  ],
+  "singleTasks": [
+    { "kind": "singleTask", "id": "dentist", "name": "Call the dentist", "priority": 1, "startDate": "2026-09-01", "done": false, "persistency": true }
+  ],
+  "completionLog": []
+}

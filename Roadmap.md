@@ -15,11 +15,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-## Now
-
-### §33 — Automated chat-scenario tests Claude can run on its own
-Manual chat testing (user types, copies the reply and debug log back, Claude diagnoses) is slow and needs the user present. Extract the post-model chat logic out of `App.tsx` into a UI-free `ChatSession` engine (`src/lib/chatEngine.ts`) so the same code runs in Node; add a harness (`npm run test:chat`) that loads habits/tasks from local JSON fixtures, calls the real models directly via `handleAgentRequest` with `.dev.vars` keys, and checks each turn's tool call, reply, stored data, and which provider answered (debug entry). No Google login needed — Drive is only storage. Supports `--repeat N` pass rates and `--provider` forcing; writes a full gitignored report. First scenarios = the §31/§32 manual tests.
-
 ## Next
 
 ### §29 — Block completion-status edits on future-dated occurrences

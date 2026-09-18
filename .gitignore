@@ -35,3 +35,6 @@ npm-debug.log*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# §33 chat-scenario reports — full model transcripts, local only
+test-results/
