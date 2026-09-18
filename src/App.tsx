@@ -79,7 +79,16 @@ import {
   importTtsEnabled,
 } from "./lib/ttsPreference";
 import { speak } from "./lib/textToSpeech";
-import { emptyAppData, type AppData, type ChecklistItem } from "./types/models";
+import {
+  describeArchive,
+  describeCreatedHabit,
+  describeCreatedRecurringTask,
+  describeCreatedSingleTask,
+  describeUpdate,
+  formatDate,
+  formatGoalMinutes,
+} from "./lib/confirmations";
+import { emptyAppData, type AppData, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
 type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
@@ -95,6 +104,11 @@ const TAB_ICONS: Record<Tab, typeof MessageCircle> = {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function findItem(data: AppData, kind: "singleTask" | "habit" | "recurringTask", id: string) {
+  const items = kind === "habit" ? data.habits : kind === "recurringTask" ? data.recurringTasks : data.singleTasks;
+  return items.find((item) => item.id === id);
 }
 
 type DeletableItemKind = "singleTask" | "habit" | "recurringTask";
@@ -452,14 +466,29 @@ export default function App() {
     }
 
     const target = matches[0];
-    const saved = await persist((current) =>
-      kind === "habit"
-        ? updateHabit(current, target.id, patch)
-        : kind === "recurringTask"
-          ? updateRecurringTask(current, target.id, patch)
-          : updateSingleTask(current, target.id, patch),
-    );
-    if (saved) pushAssistantMessage(`${actionVerb} "${target.name}".`, toolCall);
+    // §31: capture before/after inside the mutator so a §21 conflict-replay
+    // describes what was actually written, not this render's stale copy.
+    let before: Habit | RecurringTask | SingleTask | undefined;
+    let after: Habit | RecurringTask | SingleTask | undefined;
+    const saved = await persist((current) => {
+      const next =
+        kind === "habit"
+          ? updateHabit(current, target.id, patch)
+          : kind === "recurringTask"
+            ? updateRecurringTask(current, target.id, patch)
+            : updateSingleTask(current, target.id, patch);
+      before = findItem(current, kind, target.id);
+      after = findItem(next, kind, target.id);
+      return next;
+    });
+    if (!saved) return;
+    if (!before || !after) {
+      pushAssistantMessage(`${actionVerb} "${target.name}".`, toolCall);
+    } else if (actionVerb === "Archived") {
+      pushAssistantMessage(describeArchive(after), toolCall);
+    } else {
+      pushAssistantMessage(describeUpdate(before, after, data.categories, todayISO()), toolCall);
+    }
   }
 
   async function handleSend(userText: string) {
@@ -493,22 +522,44 @@ export default function App() {
         const confirmed = confirmTc?.input.confirmed === true;
         await resolvePendingDeletion(confirmed, confirmTc);
       } else if (response.toolCall?.name === "createSingleTask") {
+        // §31: each add* appends, so the stored item is the new array's last element.
         const toolCall = response.toolCall;
-        const saved = await persist((current) => addSingleTask(current, toolCall.input));
-        if (saved) {
-          pushAssistantMessage(`Added "${toolCall.input.name}" to your tasks.`, toolCall);
+        let created: SingleTask | undefined;
+        const saved = await persist((current) => {
+          const next = addSingleTask(current, toolCall.input);
+          created = next.singleTasks[next.singleTasks.length - 1];
+          return next;
+        });
+        if (saved && created) {
+          pushAssistantMessage(describeCreatedSingleTask(created, toolCall.input, todayISO()), toolCall);
         }
       } else if (response.toolCall?.name === "createHabit") {
         const toolCall = response.toolCall;
-        const saved = await persist((current) => addHabit(current, toolCall.input));
-        if (saved) {
-          pushAssistantMessage(`Added "${toolCall.input.name}" as a habit.`, toolCall);
+        let created: Habit | undefined;
+        const saved = await persist((current) => {
+          const next = addHabit(current, toolCall.input);
+          created = next.habits[next.habits.length - 1];
+          return next;
+        });
+        if (saved && created) {
+          pushAssistantMessage(
+            describeCreatedHabit(created, toolCall.input, data.categories, userText, todayISO()),
+            toolCall,
+          );
         }
       } else if (response.toolCall?.name === "createRecurringTask") {
         const toolCall = response.toolCall;
-        const saved = await persist((current) => addRecurringTask(current, toolCall.input));
-        if (saved) {
-          pushAssistantMessage(`Added "${toolCall.input.name}" as a recurring task.`, toolCall);
+        let created: RecurringTask | undefined;
+        const saved = await persist((current) => {
+          const next = addRecurringTask(current, toolCall.input);
+          created = next.recurringTasks[next.recurringTasks.length - 1];
+          return next;
+        });
+        if (saved && created) {
+          pushAssistantMessage(
+            describeCreatedRecurringTask(created, toolCall.input, data.categories, userText, todayISO()),
+            toolCall,
+          );
         }
       } else if (response.toolCall?.name === "deleteSingleTasks") {
         await handleDeleteRequest("singleTask", response.toolCall.input, response.toolCall);
@@ -651,7 +702,12 @@ export default function App() {
         habit.completionType === "timer"
           ? formatDurationMinutes(loggedValue)
           : `${loggedValue}${habit.unit ? ` ${habit.unit}` : ""}`;
-      pushAssistantMessage(`Logged ${loggedText} for "${habit.name}".`, toolCall);
+      const goalText =
+        habit.target && habit.target > 0
+          ? ` — ${Math.round((loggedValue / habit.target) * 100)}% of your ${habit.completionType === "timer" ? formatGoalMinutes(habit.target) : `${habit.target}${habit.unit ? ` ${habit.unit}` : ""}`} goal`
+          : "";
+      const dateText = dateISO === todayISO() ? "today" : `on ${formatDate(dateISO, todayISO())}`;
+      pushAssistantMessage(`Logged ${loggedText} for "${habit.name}" ${dateText}${goalText}.`, toolCall);
     }
   }
 

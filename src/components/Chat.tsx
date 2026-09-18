@@ -40,7 +40,7 @@ export default function Chat({ messages, onSend, sending, sttApiKey, byokProvide
             className={
               message.role === "user"
                 ? "ml-auto max-w-[80%] rounded-md bg-violet-600 px-3 py-2 text-white"
-                : "mr-auto max-w-[80%] rounded-md bg-slate-700 px-3 py-2 text-slate-100"
+                : "mr-auto max-w-[80%] whitespace-pre-wrap rounded-md bg-slate-700 px-3 py-2 text-slate-100"
             }
           >
             {message.content}

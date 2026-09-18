@@ -10,6 +10,7 @@
     "typecheck": "tsc -b --noEmit",
     "test:classify": "node src/server/classifyIntent.test.ts",
     "test:recurrenceSpec": "node src/server/recurrenceSpec.test.ts",
+    "test:confirmations": "node src/lib/confirmations.test.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
   },

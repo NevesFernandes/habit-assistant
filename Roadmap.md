@@ -15,11 +15,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-## Now
-
-### §31 — Self-explaining agent confirmations (show what was actually saved, flag assumed defaults)
-Today every successful agent action ends in a hardcoded one-line template built client-side in `App.tsx` (`Added "X" as a habit.`, `Updated "X".`) — the model never writes the confirmation, and anything it says alongside a tool call is discarded. So the user can't see which recurrence, category, tracking type, or start date was actually stored (a Tue/Thu/Sat/Sun habit silently saved as "daily" looked identical to a correct one), and new users never learn those options exist. Fix: deterministic summaries built from the *stored* item (not the tool input, and not a second LLM call — that would cost money/latency and could paraphrase wrongly): recurrence, category, completion type/target, start date (always shown), and end date if set. Any field the user didn't specify (model omitted it, or the app fell back to a default) gets flagged in a short hint line with an example of how to change it — always, whenever something was assumed. Updates show only the changed fields as before → after. The richer text also becomes the tool result in history, so follow-up corrections have real context. Assistant chat bubbles need `white-space: pre-wrap` for the hint line.
-
 ## Next
 
 ### §29 — Block completion-status edits on future-dated occurrences

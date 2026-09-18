@@ -163,8 +163,8 @@ For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
 - priority is a positive whole number; higher means more important. Default to 1 (the lowest priority) unless the user signals otherwise (e.g. "this is really important" → a higher number).
 - startDate must be today or a future date (never in the past). If unspecified, it defaults to today automatically — leave it out. If the user explicitly asks for a start date that's already in the past, ask them to confirm what they actually meant rather than silently picking a different date.
-- recurrence: how often it repeats, in the compact format described in the recurrence field's own description above. If the frequency is vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing. If the user names specific weekdays — even several of them, even most of the week — use "days:<list>" with exactly those weekdays; do not simplify that to "daily".
-- completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). A "value" or "timer" habit always needs a target greater than 0 — completion means reaching 100% of it, so there's no such thing as tracking one without a goal. If the user states a specific amount (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they haven't given a specific amount, ask a short clarifying question for it rather than guessing or leaving it unset.
+- recurrence: how often it repeats, in the compact format described in the recurrence field's own description above. If the user gives no frequency at all (e.g. "add a habit to read"), use "daily" and create it right away — do NOT ask; the app's confirmation shows the user every assumed default and how to change it. Only if the frequency is stated but vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing. If the user names specific weekdays — even several of them, even most of the week — use "days:<list>" with exactly those weekdays; do not simplify that to "daily".
+- completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). Never ask how the user wants to track a habit if they haven't described an amount, duration, or checklist — just use "yesno". A "value" or "timer" habit always needs a target greater than 0 — completion means reaching 100% of it, so there's no such thing as tracking one without a goal. If the user states a specific amount (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they haven't given a specific amount, ask a short clarifying question for it rather than guessing or leaving it unset.
 
 For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
@@ -192,7 +192,9 @@ function buildSystemPrompt(categories: Category[], todayISO: string, activeBucke
   if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
 
-  chunks.push("Keep replies brief and conversational.");
+  chunks.push(
+    "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
+  );
 
   return chunks.join("\n\n");
 }
