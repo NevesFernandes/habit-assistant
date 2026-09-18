@@ -117,7 +117,7 @@ function buildIdentityPreamble(todayISO: string, todayWeekday: string): string {
 
 Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any relative date the user gives you — "today", "tomorrow", "in 3 days", etc. — and resolve it to an exact ISO date (YYYY-MM-DD) yourself before calling a tool.
 
-Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically.`;
+Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically. The same goes for changing an existing item's start day: use newStartWeekday/newStartWeekdayMode and leave newStartDate unset — never ask the user to confirm a date you computed.`;
 }
 
 function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
@@ -127,7 +127,9 @@ function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
 
 const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
-If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.`;
+If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
+
+You cannot see the user's habits or tasks, so never ask which existing item they mean. For any tool that selects an existing item by name (update, archive, log progress, checklist), a word from the user's own message is enough (e.g. "log six glasses of water" → name: "water"): call the tool right away and the app finds the matches itself — if several match, it shows the user a numbered list to pick from.`;
 
 function buildDeleteProse(categoryList: string, todayISO: string): string {
   return `For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
@@ -147,12 +149,18 @@ const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the sa
 function buildModifyProse(categoryList: string): string {
   return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
+${PICK_FROM_LIST_PROSE}
+
 For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).`;
 }
 
+const PICK_FROM_LIST_PROSE = `If the app answered with a numbered "which one did you mean?" list and the user picks one (e.g. "the one in Nutrition"), call the same tool again with the same name plus categoryId set to that item's category id. categoryId only ever selects — to move an item to another category, use newCategoryId.`;
+
 const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
 
-For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.`;
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
+
+${PICK_FROM_LIST_PROSE}`;
 
 function buildCreateProse(categoryList: string): string {
   return `For createSingleTask specifically:
@@ -202,10 +210,20 @@ function buildSystemPrompt(categories: Category[], todayISO: string, activeBucke
 function buildConfirmationSystemPrompt(todayISO: string): string {
   return `You are the in-app assistant for Habit Assistant. Today's date is ${todayISO}.
 
-A destructive deletion is currently pending the user's confirmation — they were already shown exactly what would be deleted in the previous message. The user's latest message is their answer to that question.
+The user was just asked a yes/no confirmation question in the previous message (e.g. before deleting something, or before creating an item whose name is already in use), and was shown exactly what it concerns. The user's latest message is their answer to that question.
 
-Call confirmPendingDeletion with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should be deleted on anything less than a clear yes. Do not call any other tool.`;
+Call confirmPendingAction with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should happen on anything less than a clear yes. Do not call any other tool.`;
 }
+
+// §32 in Roadmap.md: lets the model act on the user's answer to the app's
+// numbered "which one did you mean?" list (e.g. "the Nutrition one") by
+// passing the same name plus that item's category. Plain string, not an enum
+// of every category id, to keep the per-tool payload small (§24).
+const CATEGORY_SELECTOR_FIELD = {
+  type: "string",
+  description:
+    "Optional. Only to pick between same-named items the app listed for the user: that item's category id. Never a new value.",
+} as const;
 
 // activeBuckets narrows the schemas sent to only what classifyIntent is
 // confident the message needs (see §24 in Roadmap.md); "all" (its fallback
@@ -220,9 +238,9 @@ function buildTools(
   if (hasPendingConfirmation) {
     return [
       {
-        name: "confirmPendingDeletion",
+        name: "confirmPendingAction",
         description:
-          "Record whether the user just confirmed or declined a pending deletion. Call this exactly once, interpreting the user's latest message as their answer.",
+          "Record whether the user just confirmed or declined the pending action they were asked about. Call this exactly once, interpreting the user's latest message as their answer.",
         parameters: {
           type: "object",
           properties: {
@@ -464,6 +482,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the task." },
           newDescription: { type: "string", description: "New description. Empty string clears it." },
           newCategoryId: {
@@ -471,7 +490,21 @@ function buildTools(
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newDone: { type: "boolean", description: "New completion status: true = done, false = not done." },
           newPersistency: {
@@ -491,6 +524,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the habit's current name, to find which habit to change." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the habit." },
           newDescription: { type: "string", description: "New description. Empty string clears it." },
           newCategoryId: {
@@ -499,7 +533,21 @@ function buildTools(
             enum: categories.map((category) => category.id),
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newRecurrence: {
             type: "string",
@@ -537,6 +585,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the task." },
           newDescription: { type: "string", description: "New description. Empty string clears it." },
           newCategoryId: {
@@ -544,7 +593,21 @@ function buildTools(
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
           newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
-          newStartDate: { type: "string", description: "New start date, ISO (YYYY-MM-DD), today or later." },
+          newStartDate: {
+            type: "string",
+            description:
+              "New start date, ISO (YYYY-MM-DD), today or later. Do not use this for a start day given by weekday name — use newStartWeekday/newStartWeekdayMode instead.",
+          },
+          newStartWeekday: {
+            type: "number",
+            description:
+              "Use instead of newStartDate when the user names the new start day by weekday (e.g. 'next Monday'). 0=Sunday..6=Saturday.",
+          },
+          newStartWeekdayMode: {
+            type: "string",
+            description: "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
+          },
           newEndDate: { type: "string", description: "New end date, ISO (YYYY-MM-DD). Empty string clears it." },
           newRecurrence: {
             type: "string",
@@ -562,6 +625,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the habit's current name, to find which habit to archive." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
         },
         required: ["name"],
       },
@@ -574,6 +638,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's current name, to find which recurring task to archive." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
         },
         required: ["name"],
       },
@@ -586,6 +651,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the habit's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
           value: {
             type: "number",
@@ -609,6 +675,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the recurring task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           text: { type: "string", description: "The item to add." },
         },
         required: ["name", "text"],
@@ -622,6 +689,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           text: { type: "string", description: "The item to add." },
         },
         required: ["name", "text"],
@@ -635,6 +703,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the habit's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           item: { type: "string", description: "Fragment to match against the checklist item's text." },
           checked: {
             type: "boolean",
@@ -653,6 +722,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the recurring task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           item: { type: "string", description: "Fragment to match against the checklist item's text." },
           checked: {
             type: "boolean",
@@ -670,6 +740,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
           item: { type: "string", description: "Fragment to match against the checklist item's text." },
           checked: {
             type: "boolean",

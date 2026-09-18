@@ -36,8 +36,8 @@ const mockAdapter: ProviderAdapter = {
     const text = lastUserMessage?.content.trim() ?? "";
 
     // A pending deletion restricts the real tool list to just this one entry.
-    if (tools.some((tool) => tool.name === "confirmPendingDeletion")) {
-      return { toolCall: { name: "confirmPendingDeletion", input: { confirmed: YES_PATTERN.test(text) } } };
+    if (tools.some((tool) => tool.name === "confirmPendingAction")) {
+      return { toolCall: { name: "confirmPendingAction", input: { confirmed: YES_PATTERN.test(text) } } };
     }
 
     const archiveHabitMatch = text.match(ARCHIVE_HABIT);

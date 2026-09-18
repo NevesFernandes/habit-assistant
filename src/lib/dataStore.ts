@@ -343,6 +343,10 @@ export interface UpdatePatch {
   newCategoryId?: string;
   newPriority?: number;
   newStartDate?: string;
+  // Same deterministic weekday resolution as creation's startWeekday — preferred
+  // over newStartDate when the user names the new start day by weekday.
+  newStartWeekday?: number;
+  newStartWeekdayMode?: "closest" | "next";
   newEndDate?: string;
   newDone?: boolean; // SingleTask only
   newPersistency?: boolean; // SingleTask only
@@ -359,7 +363,12 @@ function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T 
     name: patch.newName?.trim() ? patch.newName.trim() : item.name,
     description: patch.newDescription !== undefined ? patch.newDescription || undefined : item.description,
     priority: patch.newPriority !== undefined ? normalizePriority(patch.newPriority) : item.priority,
-    startDate: patch.newStartDate !== undefined ? normalizeStartDate(patch.newStartDate) : item.startDate,
+    startDate:
+      patch.newStartWeekday !== undefined
+        ? resolveStartDate({ startWeekday: patch.newStartWeekday, startWeekdayMode: patch.newStartWeekdayMode })
+        : patch.newStartDate !== undefined
+          ? normalizeStartDate(patch.newStartDate)
+          : item.startDate,
     endDate: patch.newEndDate !== undefined ? patch.newEndDate || undefined : item.endDate,
   };
 }

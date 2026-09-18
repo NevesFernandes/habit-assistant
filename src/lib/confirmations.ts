@@ -3,8 +3,8 @@
 // second LLM call — so the user can spot a mis-parsed request (e.g. a
 // Tue/Thu/Sat/Sun habit silently saved as "every day") and learn what
 // options exist. Whatever isn't in the user's own message but ended up
-// stored anyway (a default, or the model's own pick) is flagged in a hint
-// line, with an example of how to change it.
+// stored anyway (a default, or the model's own pick) is flagged in a short
+// "Assumed: ..." hint line.
 //
 // The same text is also fed back to the LLM as the tool result (App.tsx's
 // pushAssistantMessage), so follow-up corrections have real context.
@@ -227,4 +227,51 @@ export function describeUpdate(before: AnyItem, after: AnyItem, categories: Cate
 
 export function describeArchive(item: AnyItem): string {
   return `Archived "${item.name}" — no more occurrences after today, and its completion history is kept.`;
+}
+
+// §32: enough detail to tell same-named items apart (category first, since
+// that's what the model can pass back as a selector).
+export function itemDetails(item: AnyItem, categories: Category[], todayISO: string): string {
+  if (item.kind === "singleTask") {
+    return [formatDate(item.startDate, todayISO), item.done ? "done" : "not done"].join(" · ");
+  }
+  const parts = [categoryName(item.categoryId, categories), recurrenceText(item)];
+  if (item.kind === "habit") {
+    parts.push(item.completionType === "yesno" ? "yes/no" : describeTracking(item).replace(" — ", ", "));
+  }
+  if (item.endDate && item.endDate < todayISO) parts.push("archived");
+  return parts.join(" · ");
+}
+
+/** Numbered items with their details — shared by the "which one?", duplicate, and delete questions. */
+export function describeItemList(items: AnyItem[], categories: Category[], todayISO: string): string {
+  return items
+    .map((item, index) => `${index + 1}. "${item.name}" — ${itemDetails(item, categories, todayISO)}`)
+    .join("\n");
+}
+
+/** The "which one did you mean?" question, numbered and with details so identical names can be told apart. */
+export function describeCandidates(
+  noun: string,
+  fragment: string,
+  items: AnyItem[],
+  categories: Category[],
+  todayISO: string,
+): string {
+  return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean? You can reply with its number.`;
+}
+
+/** Asked before creating an item whose name is already in use — nothing is created until the user confirms. */
+export function describeDuplicateQuestion(
+  noun: string,
+  name: string,
+  existing: AnyItem[],
+  categories: Category[],
+  todayISO: string,
+): string {
+  const already =
+    existing.length === 1
+      ? `You already have a ${noun} called "${existing[0].name}" (${itemDetails(existing[0], categories, todayISO)}).`
+      : `You already have ${existing.length} ${noun}s called "${name}":\n${describeItemList(existing, categories, todayISO)}\n`;
+  return `${already}${existing.length === 1 ? " " : ""}Are you sure you want to create a new one with the same name?`;
 }
