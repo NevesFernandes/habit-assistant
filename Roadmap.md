@@ -15,11 +15,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ---
 
-## Now
-
-### §32 — Smarter "which one did you mean?" when a name matches several items
-When an update/archive/log/checklist request's name fragment matches more than one item, the app asks "which one?" with a names-only list — useless when two items share a name (e.g. two "Drink water" habits), and the user's answer ("the one in Nutrition") can't be acted on, because those tools only select by name, so the same ambiguity repeats. Fix: numbered candidates with distinguishing details (category · repeats · tracking); an optional category selector on single-item tools so the model can act on the user's pick; prefer exact name matches over fragment matches; drop candidates that can't take the action at all (e.g. a yes/no habit for "log 6 glasses"); and warn at creation when an item with the same name already exists.
-
 ## Next
 
 ### §29 — Block completion-status edits on future-dated occurrences

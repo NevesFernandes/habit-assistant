@@ -3,11 +3,14 @@
 import assert from "node:assert/strict";
 import {
   describeArchive,
+  describeCandidates,
   describeCreatedHabit,
   describeCreatedRecurringTask,
   describeCreatedSingleTask,
+  describeDuplicateQuestion,
   describeUpdate,
   formatDate,
+  itemDetails,
 } from "./confirmations.ts";
 import type { Category, Habit, RecurringTask, SingleTask } from "../types/models.ts";
 
@@ -134,5 +137,29 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
 }
 
 assert.match(describeArchive(habit()), /^Archived "Read"/);
+
+// §32: numbered candidates with details, so identical names can be told apart.
+{
+  const nutrition = habit({ id: "n", name: "Drink water", categoryId: "other", completionType: "value", target: 8, unit: "glasses" });
+  const sports = habit({ id: "s", name: "Drink water", categoryId: "sports", recurrence: { type: "daysOfWeek", days: [1, 3] } });
+  assert.equal(
+    describeCandidates("habit", "Drink water", [nutrition, sports], categories, TODAY),
+    `I found 2 habits matching "Drink water":\n` +
+      `1. "Drink water" — Other · every day · number, goal 8 glasses\n` +
+      `2. "Drink water" — Sports · every Mon, Wed · yes/no\n` +
+      "Which one did you mean?",
+  );
+  assert.equal(
+    describeDuplicateQuestion("habit", "Drink water", [sports], categories, TODAY),
+    `You already have a habit called "Drink water" (Sports · every Mon, Wed · yes/no). Are you sure you want to create a new one with the same name?`,
+  );
+  assert.match(
+    describeDuplicateQuestion("habit", "Drink water", [nutrition, sports], categories, TODAY),
+    /^You already have 2 habits called "Drink water":\n1\. .*\n2\. .*\nAre you sure you want to create a new one with the same name\?$/,
+  );
+  const task: SingleTask = { kind: "singleTask", id: "s1", name: "Buy milk", priority: 0, startDate: TODAY, done: false, persistency: true };
+  assert.equal(itemDetails(task, categories, TODAY), "today (Fri 18 Sep) · not done");
+  assert.match(itemDetails(habit({ endDate: "2026-09-01" }), categories, TODAY), /· archived$/);
+}
 
 console.log("confirmations.test.ts: all passed");

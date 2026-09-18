@@ -25,7 +25,8 @@ import {
   type DriveSession,
   type DriveFileRef,
 } from "./lib/driveClient";
-import { sendMessage, AgentRequestError, type AgentHistoryMessage } from "./lib/agentClient";
+import { sendMessage, AgentRequestError, type AgentHistoryMessage, type AgentToolCall } from "./lib/agentClient";
+import { findSameName, selectOne, type ItemSelector } from "./lib/itemSelection";
 import { loadDebugLog, appendDebugLogEntry, clearDebugLog, type DebugLogEntry } from "./lib/debugLogStore";
 import { toDisplayMessages } from "./server/agentHistory";
 import {
@@ -81,14 +82,25 @@ import {
 import { speak } from "./lib/textToSpeech";
 import {
   describeArchive,
+  describeCandidates,
   describeCreatedHabit,
   describeCreatedRecurringTask,
   describeCreatedSingleTask,
+  describeDuplicateQuestion,
+  describeItemList,
   describeUpdate,
   formatDate,
   formatGoalMinutes,
 } from "./lib/confirmations";
-import { emptyAppData, type AppData, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "./types/models";
+import {
+  emptyAppData,
+  type AppData,
+  type Category,
+  type ChecklistItem,
+  type Habit,
+  type RecurringTask,
+  type SingleTask,
+} from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
 type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
@@ -106,18 +118,38 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function findItem(data: AppData, kind: "singleTask" | "habit" | "recurringTask", id: string) {
-  const items = kind === "habit" ? data.habits : kind === "recurringTask" ? data.recurringTasks : data.singleTasks;
-  return items.find((item) => item.id === id);
-}
-
 type DeletableItemKind = "singleTask" | "habit" | "recurringTask";
 
-interface PendingDeletion {
-  itemKind: DeletableItemKind;
-  ids: string[];
-  names: string[];
+interface ItemOfKind {
+  habit: Habit;
+  recurringTask: RecurringTask;
+  singleTask: SingleTask;
 }
+
+function itemsOf<K extends DeletableItemKind>(data: AppData, kind: K): ItemOfKind[K][] {
+  const items = kind === "habit" ? data.habits : kind === "recurringTask" ? data.recurringTasks : data.singleTasks;
+  return items as ItemOfKind[K][];
+}
+
+function findItem(data: AppData, kind: DeletableItemKind, id: string) {
+  return itemsOf(data, kind).find((item) => item.id === id);
+}
+
+type CreateToolCall = Extract<AgentToolCall, { name: "createSingleTask" | "createHabit" | "createRecurringTask" }> & {
+  id: string;
+};
+
+const CREATE_TOOL_KINDS: Record<CreateToolCall["name"], DeletableItemKind> = {
+  createSingleTask: "singleTask",
+  createHabit: "habit",
+  createRecurringTask: "recurringTask",
+};
+
+// Both kinds share the same chat-based yes/no resolution (confirmPendingAction):
+// a delete always asks first; a create asks only when the name is already in use (§32).
+type PendingConfirmation =
+  | { type: "delete"; itemKind: DeletableItemKind; ids: string[]; names: string[] }
+  | { type: "create"; toolCall: CreateToolCall; userText: string };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass response.toolCall, whose `input` is one of AgentToolCall's concrete
@@ -149,15 +181,23 @@ const ITEM_NOUNS: Record<DeletableItemKind, string> = {
   recurringTask: "recurring task",
 };
 
-function buildDeleteConfirmationQuestion(kind: DeletableItemKind, names: string[]): string {
+function buildDeleteConfirmationQuestion(
+  kind: DeletableItemKind,
+  items: (Habit | RecurringTask | SingleTask)[],
+  categories: Category[],
+): string {
   const noun = ITEM_NOUNS[kind];
   const subject =
-    names.length === 1
-      ? `the ${noun} ${formatQuotedList(names)}`
-      : `these ${names.length} ${noun}s: ${formatQuotedList(names)}`;
+    items.length === 1
+      ? `the ${noun} ${formatQuotedList(items.map((item) => item.name))}?`
+      : `these ${items.length} ${noun}s?\n${describeItemList(items, categories, todayISO())}\n`;
   const historyWarning =
-    kind !== "singleTask" ? " This will also permanently delete its tracked completion history." : "";
-  return `Are you sure you want to delete ${subject}?${historyWarning}`;
+    kind !== "singleTask"
+      ? items.length === 1
+        ? " This will also permanently delete its tracked completion history."
+        : "This will also permanently delete their tracked completion history."
+      : "";
+  return `Are you sure you want to delete ${subject}${historyWarning}`.trimEnd();
 }
 
 /** Fast-path eligibility: only an unambiguous single-name filter, nothing else composed with it. */
@@ -192,7 +232,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [viewSubTab, setViewSubTab] = useState<ViewSubTab>("habits");
   const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
 
   // Called here, at the root, not inside TimerView — every tab's component fully unmounts
   // on tab switch (see the render block below), so a running/paused timer needs to live
@@ -406,14 +446,23 @@ export default function App() {
       return;
     }
 
-    setPendingDeletion({ itemKind: kind, ids, names });
-    pushAssistantMessage(buildDeleteConfirmationQuestion(kind, names), toolCall);
+    setPendingConfirmation({ type: "delete", itemKind: kind, ids, names });
+    pushAssistantMessage(buildDeleteConfirmationQuestion(kind, matches, data.categories), toolCall);
   }
 
-  async function resolvePendingDeletion(confirmed: boolean, toolCall?: ToolCallRef) {
-    const pending = pendingDeletion;
-    setPendingDeletion(null);
+  async function resolvePendingConfirmation(confirmed: boolean, toolCall?: ToolCallRef) {
+    const pending = pendingConfirmation;
+    setPendingConfirmation(null);
     if (!pending || !data) return;
+
+    if (pending.type === "create") {
+      if (confirmed && toolCall) {
+        await handleCreateRequest(pending.toolCall, pending.userText, { confirmedDuplicate: true, replyTo: toolCall });
+      } else {
+        pushAssistantMessage("Okay, I didn't create it.", toolCall);
+      }
+      return;
+    }
 
     if (!confirmed) {
       pushAssistantMessage("Okay, I won't delete that.", toolCall);
@@ -436,36 +485,20 @@ export default function App() {
 
   async function handleUpdateRequest(
     kind: DeletableItemKind,
-    input: { name: string } & UpdatePatch,
+    input: ItemSelector & UpdatePatch,
     toolCall: ToolCallRef,
     actionVerb: string = "Updated",
   ) {
     if (!data) return;
-    const { name: fragment, ...patch } = input;
-    const matches =
-      kind === "habit"
-        ? resolveHabits(data, { name: fragment })
-        : kind === "recurringTask"
-          ? resolveRecurringTasks(data, { name: fragment })
-          : resolveSingleTasks(data, { name: fragment });
-
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any ${ITEM_NOUNS[kind]} matching "${fragment}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one ${ITEM_NOUNS[kind]} matching "${fragment}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
+    // categoryId is the §32 selector (which item), never a field to change — that's newCategoryId.
+    const { name, categoryId, ...patch } = input;
+    const target = pickItem(kind, { name, categoryId }, toolCall);
+    if (!target) return;
     if (!hasAnyPatchField(patch)) {
       pushAssistantMessage("What would you like to change about it?", toolCall);
       return;
     }
 
-    const target = matches[0];
     // §31: capture before/after inside the mutator so a §21 conflict-replay
     // describes what was actually written, not this render's stale copy.
     let before: Habit | RecurringTask | SingleTask | undefined;
@@ -491,13 +524,105 @@ export default function App() {
     }
   }
 
+  // §32: the one place single-item chat actions (update/archive/log/checklist) resolve which
+  // item the user means. Pushes the "not found" / "which one?" reply itself and returns null
+  // in those cases, so callers just bail out.
+  function pickItem<K extends DeletableItemKind>(
+    kind: K,
+    selector: ItemSelector,
+    toolCall: ToolCallRef,
+    canTakeAction?: (item: ItemOfKind[K]) => boolean,
+    ineligibleMessage?: (items: ItemOfKind[K][]) => string,
+  ): ItemOfKind[K] | null {
+    if (!data) return null;
+    const noun = ITEM_NOUNS[kind];
+    const selection = selectOne(itemsOf(data, kind), selector, canTakeAction);
+    switch (selection.kind) {
+      case "one":
+        return selection.item;
+      case "none": {
+        const category = data.categories.find((c) => c.id === selector.categoryId);
+        pushAssistantMessage(
+          `I couldn't find any ${noun} matching "${selector.name}"${category ? ` in ${category.name}` : ""}.`,
+          toolCall,
+        );
+        return null;
+      }
+      case "ineligible":
+        pushAssistantMessage(ineligibleMessage?.(selection.items) ?? `I couldn't find a matching ${noun} for that.`, toolCall);
+        return null;
+      case "many":
+        pushAssistantMessage(describeCandidates(noun, selector.name, selection.items, data.categories, todayISO()), toolCall);
+        return null;
+    }
+  }
+
+  // §31 + §32: creates the item and replies with what was stored — unless the name is already
+  // in use, in which case nothing is created until the user confirms (resolvePendingConfirmation
+  // calls back in with confirmedDuplicate, replying under the confirmation's own tool call).
+  async function handleCreateRequest(
+    toolCall: CreateToolCall,
+    userText: string,
+    options: { confirmedDuplicate?: boolean; replyTo?: ToolCallRef } = {},
+  ) {
+    if (!data) return;
+    const kind = CREATE_TOOL_KINDS[toolCall.name];
+    const replyTo = options.replyTo ?? toolCall;
+
+    if (!options.confirmedDuplicate) {
+      const existing = findSameName<Habit | RecurringTask | SingleTask>(itemsOf(data, kind), toolCall.input.name, todayISO());
+      if (existing.length > 0) {
+        setPendingConfirmation({ type: "create", toolCall, userText });
+        pushAssistantMessage(
+          describeDuplicateQuestion(ITEM_NOUNS[kind], toolCall.input.name, existing, data.categories, todayISO()),
+          toolCall,
+        );
+        return;
+      }
+    }
+
+    // Each add* appends, so the stored item is the new array's last element.
+    if (toolCall.name === "createSingleTask") {
+      let created: SingleTask | undefined;
+      const saved = await persist((current) => {
+        const next = addSingleTask(current, toolCall.input);
+        created = next.singleTasks[next.singleTasks.length - 1];
+        return next;
+      });
+      if (saved && created) pushAssistantMessage(describeCreatedSingleTask(created, toolCall.input, todayISO()), replyTo);
+    } else if (toolCall.name === "createHabit") {
+      let created: Habit | undefined;
+      const saved = await persist((current) => {
+        const next = addHabit(current, toolCall.input);
+        created = next.habits[next.habits.length - 1];
+        return next;
+      });
+      if (saved && created) {
+        pushAssistantMessage(describeCreatedHabit(created, toolCall.input, data.categories, userText, todayISO()), replyTo);
+      }
+    } else {
+      let created: RecurringTask | undefined;
+      const saved = await persist((current) => {
+        const next = addRecurringTask(current, toolCall.input);
+        created = next.recurringTasks[next.recurringTasks.length - 1];
+        return next;
+      });
+      if (saved && created) {
+        pushAssistantMessage(
+          describeCreatedRecurringTask(created, toolCall.input, data.categories, userText, todayISO()),
+          replyTo,
+        );
+      }
+    }
+  }
+
   async function handleSend(userText: string) {
     if (!data) return;
 
     const usingSharedKey = !byok;
-    // Skip the gate while a delete confirmation is outstanding — it only has a chat-based
+    // Skip the gate while a confirmation is outstanding — it only has a chat-based
     // confirm/decline path, so blocking it here would leave it stuck with no way to resolve.
-    if (usingSharedKey && !pendingDeletion && (data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP) {
+    if (usingSharedKey && !pendingConfirmation && (data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP) {
       setMessages((prev) => [...prev, { role: "user", content: userText }]);
       pushAssistantMessage(
         `You've used all ${SHARED_KEY_MESSAGE_CAP} free trial messages. Open Settings (⚙) and add your own free Groq or Gemini key — ` +
@@ -512,55 +637,21 @@ export default function App() {
     pendingSharedKeyBumpRef.current = usingSharedKey;
     attemptedWriteRef.current = false;
     try {
-      const response = await sendMessage(nextMessages, byok, data.categories, pendingDeletion !== null);
+      const response = await sendMessage(nextMessages, byok, data.categories, pendingConfirmation !== null);
       if (response.debug) recordDebugEntry(response.debug);
 
-      if (pendingDeletion) {
-        // Tools were restricted server-side to confirmPendingDeletion only; anything else
-        // (a plain reply, no tool call) is treated as a decline — fail closed on a destructive action.
-        const confirmTc = response.toolCall?.name === "confirmPendingDeletion" ? response.toolCall : undefined;
+      if (pendingConfirmation) {
+        // Tools were restricted server-side to confirmPendingAction only; anything else
+        // (a plain reply, no tool call) is treated as a decline — fail closed.
+        const confirmTc = response.toolCall?.name === "confirmPendingAction" ? response.toolCall : undefined;
         const confirmed = confirmTc?.input.confirmed === true;
-        await resolvePendingDeletion(confirmed, confirmTc);
-      } else if (response.toolCall?.name === "createSingleTask") {
-        // §31: each add* appends, so the stored item is the new array's last element.
-        const toolCall = response.toolCall;
-        let created: SingleTask | undefined;
-        const saved = await persist((current) => {
-          const next = addSingleTask(current, toolCall.input);
-          created = next.singleTasks[next.singleTasks.length - 1];
-          return next;
-        });
-        if (saved && created) {
-          pushAssistantMessage(describeCreatedSingleTask(created, toolCall.input, todayISO()), toolCall);
-        }
-      } else if (response.toolCall?.name === "createHabit") {
-        const toolCall = response.toolCall;
-        let created: Habit | undefined;
-        const saved = await persist((current) => {
-          const next = addHabit(current, toolCall.input);
-          created = next.habits[next.habits.length - 1];
-          return next;
-        });
-        if (saved && created) {
-          pushAssistantMessage(
-            describeCreatedHabit(created, toolCall.input, data.categories, userText, todayISO()),
-            toolCall,
-          );
-        }
-      } else if (response.toolCall?.name === "createRecurringTask") {
-        const toolCall = response.toolCall;
-        let created: RecurringTask | undefined;
-        const saved = await persist((current) => {
-          const next = addRecurringTask(current, toolCall.input);
-          created = next.recurringTasks[next.recurringTasks.length - 1];
-          return next;
-        });
-        if (saved && created) {
-          pushAssistantMessage(
-            describeCreatedRecurringTask(created, toolCall.input, data.categories, userText, todayISO()),
-            toolCall,
-          );
-        }
+        await resolvePendingConfirmation(confirmed, confirmTc);
+      } else if (
+        response.toolCall?.name === "createSingleTask" ||
+        response.toolCall?.name === "createHabit" ||
+        response.toolCall?.name === "createRecurringTask"
+      ) {
+        await handleCreateRequest(response.toolCall, userText);
       } else if (response.toolCall?.name === "deleteSingleTasks") {
         await handleDeleteRequest("singleTask", response.toolCall.input, response.toolCall);
       } else if (response.toolCall?.name === "deleteHabits") {
@@ -576,14 +667,14 @@ export default function App() {
       } else if (response.toolCall?.name === "archiveHabit") {
         await handleUpdateRequest(
           "habit",
-          { name: response.toolCall.input.name, newEndDate: todayISO() },
+          { name: response.toolCall.input.name, categoryId: response.toolCall.input.categoryId, newEndDate: todayISO() },
           response.toolCall,
           "Archived",
         );
       } else if (response.toolCall?.name === "archiveRecurringTask") {
         await handleUpdateRequest(
           "recurringTask",
-          { name: response.toolCall.input.name, newEndDate: todayISO() },
+          { name: response.toolCall.input.name, categoryId: response.toolCall.input.categoryId, newEndDate: todayISO() },
           response.toolCall,
           "Archived",
         );
@@ -613,7 +704,7 @@ export default function App() {
     } catch (err) {
       if (err instanceof AgentRequestError && err.debug) recordDebugEntry(err.debug);
       pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
-      // pendingDeletion is deliberately left untouched here — only a real
+      // pendingConfirmation is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network
       // failure while awaiting confirmation doesn't silently drop it.
     } finally {
@@ -666,27 +757,23 @@ export default function App() {
   }
 
   async function handleLogHabitProgress(
-    input: { name: string; date?: string; value?: number; delta?: number },
+    input: ItemSelector & { date?: string; value?: number; delta?: number },
     toolCall: ToolCallRef,
   ) {
     if (!data) return;
-    const matches = resolveHabits(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any habit matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one habit matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const habit = matches[0];
-    if (habit.completionType !== "value" && habit.completionType !== "timer") {
-      pushAssistantMessage(`"${habit.name}" isn't tracked with a number or timer, so there's nothing to log.`, toolCall);
-      return;
-    }
+    // §32: only number/timer habits can take a logged value, so a same-named yes/no habit
+    // never makes this ambiguous.
+    const habit = pickItem(
+      "habit",
+      input,
+      toolCall,
+      (candidate) => candidate.completionType === "value" || candidate.completionType === "timer",
+      (candidates) =>
+        candidates.length === 1
+          ? `"${candidates[0].name}" isn't tracked with a number or timer, so there's nothing to log.`
+          : `None of the habits matching "${input.name}" are tracked with a number or timer, so there's nothing to log.`,
+    );
+    if (!habit) return;
     const dateISO = input.date ?? todayISO();
     // Recompute inside the mutator (not before persist()) so a delta re-derives against
     // whatever data a conflict-replay actually reloads, rather than replaying a stale
@@ -724,64 +811,37 @@ export default function App() {
   }
 
   async function handleAddRecurringTaskChecklistItemChat(
-    input: { name: string; text: string },
+    input: ItemSelector & { text: string },
     toolCall: ToolCallRef,
   ) {
-    if (!data) return;
-    const matches = resolveRecurringTasks(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any recurring task matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one recurring task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const task = matches[0];
+    const task = pickItem("recurringTask", input, toolCall);
+    if (!task) return;
     const saved = await persist((current) => addRecurringTaskChecklistItem(current, task.id, input.text));
     if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
   }
 
-  async function handleAddSingleTaskChecklistItemChat(input: { name: string; text: string }, toolCall: ToolCallRef) {
-    if (!data) return;
-    const matches = resolveSingleTasks(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any task matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const task = matches[0];
+  async function handleAddSingleTaskChecklistItemChat(input: ItemSelector & { text: string }, toolCall: ToolCallRef) {
+    const task = pickItem("singleTask", input, toolCall);
+    if (!task) return;
     const saved = await persist((current) => addSingleTaskChecklistItem(current, task.id, input.text));
     if (saved) pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
   }
 
   async function handleCheckHabitChecklistItem(
-    input: { name: string; item: string; checked?: boolean; date?: string },
+    input: ItemSelector & { item: string; checked?: boolean; date?: string },
     toolCall: ToolCallRef,
   ) {
-    if (!data) return;
-    const matches = resolveHabits(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any habit matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one habit matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const habit = matches[0];
+    const habit = pickItem(
+      "habit",
+      input,
+      toolCall,
+      (candidate) => candidate.completionType === "checklist",
+      (candidates) =>
+        candidates.length === 1
+          ? `"${candidates[0].name}" isn't tracked with a checklist.`
+          : `None of the habits matching "${input.name}" are tracked with a checklist.`,
+    );
+    if (!habit) return;
     const itemMatches = resolveChecklistItemMatches(habit.checklist, input.item);
     if (itemMatches.length === 0) {
       pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${habit.name}".`, toolCall);
@@ -805,23 +865,11 @@ export default function App() {
   }
 
   async function handleCheckRecurringTaskChecklistItem(
-    input: { name: string; item: string; checked?: boolean },
+    input: ItemSelector & { item: string; checked?: boolean },
     toolCall: ToolCallRef,
   ) {
-    if (!data) return;
-    const matches = resolveRecurringTasks(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any recurring task matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one recurring task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const task = matches[0];
+    const task = pickItem("recurringTask", input, toolCall);
+    if (!task) return;
     const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
     if (itemMatches.length === 0) {
       pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${task.name}".`, toolCall);
@@ -844,23 +892,11 @@ export default function App() {
   }
 
   async function handleCheckSingleTaskChecklistItem(
-    input: { name: string; item: string; checked?: boolean },
+    input: ItemSelector & { item: string; checked?: boolean },
     toolCall: ToolCallRef,
   ) {
-    if (!data) return;
-    const matches = resolveSingleTasks(data, { name: input.name });
-    if (matches.length === 0) {
-      pushAssistantMessage(`I couldn't find any task matching "${input.name}".`, toolCall);
-      return;
-    }
-    if (matches.length > 1) {
-      pushAssistantMessage(
-        `I found more than one task matching "${input.name}": ${formatQuotedList(matches.map((match) => match.name))}. Which one did you mean?`,
-        toolCall,
-      );
-      return;
-    }
-    const task = matches[0];
+    const task = pickItem("singleTask", input, toolCall);
+    if (!task) return;
     const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
     if (itemMatches.length === 0) {
       pushAssistantMessage(`I couldn't find a checklist item matching "${input.item}" on "${task.name}".`, toolCall);

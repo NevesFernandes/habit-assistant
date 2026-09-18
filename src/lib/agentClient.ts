@@ -43,62 +43,62 @@ export interface DeleteRecurringTasksToolCall {
 
 export interface UpdateSingleTaskToolCall {
   name: "updateSingleTask";
-  input: { name: string } & UpdatePatch;
+  input: { name: string; categoryId?: string } & UpdatePatch;
 }
 
 export interface UpdateHabitToolCall {
   name: "updateHabit";
-  input: { name: string } & UpdatePatch;
+  input: { name: string; categoryId?: string } & UpdatePatch;
 }
 
 export interface UpdateRecurringTaskToolCall {
   name: "updateRecurringTask";
-  input: { name: string } & UpdatePatch;
+  input: { name: string; categoryId?: string } & UpdatePatch;
 }
 
 export interface ArchiveHabitToolCall {
   name: "archiveHabit";
-  input: { name: string };
+  input: { name: string; categoryId?: string };
 }
 
 export interface ArchiveRecurringTaskToolCall {
   name: "archiveRecurringTask";
-  input: { name: string };
+  input: { name: string; categoryId?: string };
 }
 
-export interface ConfirmPendingDeletionToolCall {
-  name: "confirmPendingDeletion";
+export interface ConfirmPendingActionToolCall {
+  name: "confirmPendingAction";
   input: { confirmed: boolean };
 }
 
 export interface LogHabitProgressToolCall {
   name: "logHabitProgress";
-  input: { name: string; date?: string; value?: number; delta?: number };
+  input: { name: string; categoryId?: string; date?: string; value?: number; delta?: number };
 }
 
 export interface AddRecurringTaskChecklistItemToolCall {
   name: "addRecurringTaskChecklistItem";
-  input: { name: string; text: string };
+  input: { name: string; categoryId?: string; text: string };
 }
 
 export interface AddSingleTaskChecklistItemToolCall {
   name: "addSingleTaskChecklistItem";
-  input: { name: string; text: string };
+  input: { name: string; categoryId?: string; text: string };
 }
 
 export interface CheckHabitChecklistItemToolCall {
   name: "checkHabitChecklistItem";
-  input: { name: string; item: string; checked?: boolean; date?: string };
+  input: { name: string; categoryId?: string; item: string; checked?: boolean; date?: string };
 }
 
 export interface CheckRecurringTaskChecklistItemToolCall {
   name: "checkRecurringTaskChecklistItem";
-  input: { name: string; item: string; checked?: boolean };
+  input: { name: string; categoryId?: string; item: string; checked?: boolean };
 }
 
 export interface CheckSingleTaskChecklistItemToolCall {
   name: "checkSingleTaskChecklistItem";
-  input: { name: string; item: string; checked?: boolean };
+  input: { name: string; categoryId?: string; item: string; checked?: boolean };
 }
 
 export type AgentToolCall =
@@ -113,7 +113,7 @@ export type AgentToolCall =
   | UpdateRecurringTaskToolCall
   | ArchiveHabitToolCall
   | ArchiveRecurringTaskToolCall
-  | ConfirmPendingDeletionToolCall
+  | ConfirmPendingActionToolCall
   | LogHabitProgressToolCall
   | AddRecurringTaskChecklistItemToolCall
   | AddSingleTaskChecklistItemToolCall
