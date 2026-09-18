@@ -258,7 +258,7 @@ export function describeCandidates(
   categories: Category[],
   todayISO: string,
 ): string {
-  return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean?`;
+  return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean? You can reply with its number.`;
 }
 
 /** Asked before creating an item whose name is already in use — nothing is created until the user confirms. */

@@ -1,7 +1,7 @@
 // Plain assert-based check for itemSelection.ts (§32) — same no-framework
 // pattern as src/server/recurrenceSpec.test.ts. Run: node src/lib/itemSelection.test.ts
 import assert from "node:assert/strict";
-import { findSameName, selectOne } from "./itemSelection.ts";
+import { findSameName, parsePick, selectOne } from "./itemSelection.ts";
 import type { Habit, SingleTask } from "../types/models.ts";
 
 const TODAY = "2026-09-18";
@@ -81,6 +81,19 @@ const isLoggable = (h: Habit) => h.completionType === "value" || h.completionTyp
   });
   assert.deepEqual(findSameName([task("done", true), task("open", false)], "Buy milk", TODAY).map((t) => t.id), ["open"]);
   assert.equal(findSameName([task("done", true)], "Buy milk", TODAY).length, 0);
+}
+
+// parsePick: a bare pick from the numbered list, or null (-> goes to the model).
+{
+  const picks: [string, number][] = [
+    ["2", 2], [" 1 ", 1], ["#2", 2], ["number 2", 2], ["no. 3", 3], ["option 1", 1], ["2.", 2],
+    ["the first one", 1], ["second", 2], ["the 2nd one", 2], ["Third please", 3], ["last", 3], ["the last one", 3],
+    ["7", 7], // out of range is still returned — the caller rejects it
+  ];
+  for (const [text, expected] of picks) assert.equal(parsePick(text, 3), expected, text);
+  for (const text of ["yes", "the Nutrition one", "read", "change it to 2 glasses", "one", "", "2 and 3"]) {
+    assert.equal(parsePick(text, 3), null, text);
+  }
 }
 
 console.log("itemSelection.test.ts: all passed");

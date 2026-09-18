@@ -46,6 +46,29 @@ export function selectOne<T extends BaseItem>(
   return narrowed.length === 1 ? { kind: "one", item: narrowed[0] } : { kind: "many", items: narrowed };
 }
 
+const ORDINALS: Record<string, number> = {
+  first: 1, "1st": 1, second: 2, "2nd": 2, third: 3, "3rd": 3, fourth: 4, "4th": 4, fifth: 5, "5th": 5,
+  sixth: 6, "6th": 6, seventh: 7, "7th": 7, eighth: 8, "8th": 8, ninth: 9, "9th": 9, tenth: 10, "10th": 10,
+};
+const PICK_PATTERN =
+  /^(?:the\s+)?(?:number\s+|no\.?\s*|#\s*|option\s+)?(\d+|[a-z0-9]+|last)(?:\s+one)?(?:\s+please)?[.!]?$/;
+
+/**
+ * Reads a reply to the numbered "which one did you mean?" list as a 1-based
+ * pick — "2", "#2", "number 2", "the second one", "last". `count` is the
+ * list length, needed for "last". Returns null for anything else (so it goes
+ * to the model as a normal message); an out-of-range number is still
+ * returned, for the caller to reject.
+ */
+export function parsePick(text: string, count: number): number | null {
+  const match = PICK_PATTERN.exec(text.trim().toLowerCase());
+  if (!match) return null;
+  const token = match[1];
+  if (token === "last") return count;
+  if (/^\d+$/.test(token)) return Number(token);
+  return ORDINALS[token] ?? null;
+}
+
 type AnyItem = Habit | RecurringTask | SingleTask;
 
 /** Still-live items with exactly this name — archived habits/recurring tasks and finished one-off tasks don't count. */

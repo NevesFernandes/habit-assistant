@@ -26,7 +26,7 @@ import {
   type DriveFileRef,
 } from "./lib/driveClient";
 import { sendMessage, AgentRequestError, type AgentHistoryMessage, type AgentToolCall } from "./lib/agentClient";
-import { findSameName, selectOne, type ItemSelector } from "./lib/itemSelection";
+import { findSameName, parsePick, selectOne, type ItemSelector } from "./lib/itemSelection";
 import { loadDebugLog, appendDebugLogEntry, clearDebugLog, type DebugLogEntry } from "./lib/debugLogStore";
 import { toDisplayMessages } from "./server/agentHistory";
 import {
@@ -147,6 +147,17 @@ const CREATE_TOOL_KINDS: Record<CreateToolCall["name"], DeletableItemKind> = {
 
 // Both kinds share the same chat-based yes/no resolution (confirmPendingAction):
 // a delete always asks first; a create asks only when the name is already in use (§32).
+type DispatchableToolCall = AgentToolCall & { id: string };
+
+// §32: the numbered "which one did you mean?" list the app just showed — a reply
+// that's only a number ("2", "the first one") reruns `toolCall` on exactly that
+// item, resolved in the app without another model call.
+interface PendingPick {
+  kind: DeletableItemKind;
+  itemIds: string[];
+  toolCall: DispatchableToolCall;
+}
+
 type PendingConfirmation =
   | { type: "delete"; itemKind: DeletableItemKind; ids: string[]; names: string[] }
   | { type: "create"; toolCall: CreateToolCall; userText: string };
@@ -233,6 +244,9 @@ export default function App() {
   const [viewSubTab, setViewSubTab] = useState<ViewSubTab>("habits");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
+  // Set only while rerunning a picked action, so pickItem returns that exact item.
+  const forcedPickRef = useRef<{ kind: DeletableItemKind; id: string } | null>(null);
 
   // Called here, at the root, not inside TimerView — every tab's component fully unmounts
   // on tab switch (see the render block below), so a running/paused timer needs to live
@@ -536,6 +550,16 @@ export default function App() {
   ): ItemOfKind[K] | null {
     if (!data) return null;
     const noun = ITEM_NOUNS[kind];
+
+    const forced = forcedPickRef.current;
+    if (forced && forced.kind === kind) {
+      forcedPickRef.current = null;
+      const item = itemsOf(data, kind).find((candidate) => candidate.id === forced.id);
+      if (item && (!canTakeAction || canTakeAction(item))) return item;
+      pushAssistantMessage(`That ${noun} doesn't seem to exist anymore.`, toolCall);
+      return null;
+    }
+
     const selection = selectOne(itemsOf(data, kind), selector, canTakeAction);
     switch (selection.kind) {
       case "one":
@@ -552,6 +576,11 @@ export default function App() {
         pushAssistantMessage(ineligibleMessage?.(selection.items) ?? `I couldn't find a matching ${noun} for that.`, toolCall);
         return null;
       case "many":
+        setPendingPick({
+          kind,
+          itemIds: selection.items.map((item) => item.id),
+          toolCall: toolCall as DispatchableToolCall,
+        });
         pushAssistantMessage(describeCandidates(noun, selector.name, selection.items, data.categories, todayISO()), toolCall);
         return null;
     }
@@ -616,8 +645,88 @@ export default function App() {
     }
   }
 
+  // Carries out a tool call the model chose — or, for a §32 number pick, the
+  // original tool call rerun with forcedPickRef set.
+  async function dispatchToolCall(toolCall: DispatchableToolCall, userText: string) {
+    if (
+      toolCall.name === "createSingleTask" ||
+      toolCall.name === "createHabit" ||
+      toolCall.name === "createRecurringTask"
+    ) {
+      await handleCreateRequest(toolCall, userText);
+    } else if (toolCall.name === "deleteSingleTasks") {
+      await handleDeleteRequest("singleTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "deleteHabits") {
+      await handleDeleteRequest("habit", toolCall.input, toolCall);
+    } else if (toolCall.name === "deleteRecurringTasks") {
+      await handleDeleteRequest("recurringTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "updateSingleTask") {
+      await handleUpdateRequest("singleTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "updateHabit") {
+      await handleUpdateRequest("habit", toolCall.input, toolCall);
+    } else if (toolCall.name === "updateRecurringTask") {
+      await handleUpdateRequest("recurringTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "archiveHabit") {
+      await handleUpdateRequest(
+        "habit",
+        { name: toolCall.input.name, categoryId: toolCall.input.categoryId, newEndDate: todayISO() },
+        toolCall,
+        "Archived",
+      );
+    } else if (toolCall.name === "archiveRecurringTask") {
+      await handleUpdateRequest(
+        "recurringTask",
+        { name: toolCall.input.name, categoryId: toolCall.input.categoryId, newEndDate: todayISO() },
+        toolCall,
+        "Archived",
+      );
+    } else if (toolCall.name === "logHabitProgress") {
+      await handleLogHabitProgress(toolCall.input, toolCall);
+    } else if (toolCall.name === "addRecurringTaskChecklistItem") {
+      await handleAddRecurringTaskChecklistItemChat(toolCall.input, toolCall);
+    } else if (toolCall.name === "addSingleTaskChecklistItem") {
+      await handleAddSingleTaskChecklistItemChat(toolCall.input, toolCall);
+    } else if (toolCall.name === "checkHabitChecklistItem") {
+      await handleCheckHabitChecklistItem(toolCall.input, toolCall);
+    } else if (toolCall.name === "checkRecurringTaskChecklistItem") {
+      await handleCheckRecurringTaskChecklistItem(toolCall.input, toolCall);
+    } else if (toolCall.name === "checkSingleTaskChecklistItem") {
+      await handleCheckSingleTaskChecklistItem(toolCall.input, toolCall);
+    }
+  }
+
+  // §32: a bare number reply to the last "which one?" list. Returns true if it handled
+  // the message (no model call, so no shared-trial message is used up).
+  async function handlePickReply(userText: string): Promise<boolean> {
+    const pick = pendingPick;
+    if (!pick) return false;
+    const index = parsePick(userText, pick.itemIds.length);
+    if (index === null) return false;
+
+    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    if (index < 1 || index > pick.itemIds.length) {
+      pushAssistantMessage(`Please pick a number from 1 to ${pick.itemIds.length}.`);
+      return true;
+    }
+    setPendingPick(null);
+    forcedPickRef.current = { kind: pick.kind, id: pick.itemIds[index - 1] };
+    attemptedWriteRef.current = false;
+    setSending(true);
+    try {
+      // Fresh id: the original call is already paired with its "which one?" result in history.
+      await dispatchToolCall({ ...pick.toolCall, id: crypto.randomUUID() }, userText);
+    } finally {
+      forcedPickRef.current = null;
+      setSending(false);
+    }
+    return true;
+  }
+
   async function handleSend(userText: string) {
     if (!data) return;
+    if (!pendingConfirmation && (await handlePickReply(userText))) return;
+    // Any other message moves on from the list; a new "which one?" can set it again below.
+    setPendingPick(null);
 
     const usingSharedKey = !byok;
     // Skip the gate while a confirmation is outstanding — it only has a chat-based
@@ -646,50 +755,8 @@ export default function App() {
         const confirmTc = response.toolCall?.name === "confirmPendingAction" ? response.toolCall : undefined;
         const confirmed = confirmTc?.input.confirmed === true;
         await resolvePendingConfirmation(confirmed, confirmTc);
-      } else if (
-        response.toolCall?.name === "createSingleTask" ||
-        response.toolCall?.name === "createHabit" ||
-        response.toolCall?.name === "createRecurringTask"
-      ) {
-        await handleCreateRequest(response.toolCall, userText);
-      } else if (response.toolCall?.name === "deleteSingleTasks") {
-        await handleDeleteRequest("singleTask", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "deleteHabits") {
-        await handleDeleteRequest("habit", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "deleteRecurringTasks") {
-        await handleDeleteRequest("recurringTask", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "updateSingleTask") {
-        await handleUpdateRequest("singleTask", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "updateHabit") {
-        await handleUpdateRequest("habit", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "updateRecurringTask") {
-        await handleUpdateRequest("recurringTask", response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "archiveHabit") {
-        await handleUpdateRequest(
-          "habit",
-          { name: response.toolCall.input.name, categoryId: response.toolCall.input.categoryId, newEndDate: todayISO() },
-          response.toolCall,
-          "Archived",
-        );
-      } else if (response.toolCall?.name === "archiveRecurringTask") {
-        await handleUpdateRequest(
-          "recurringTask",
-          { name: response.toolCall.input.name, categoryId: response.toolCall.input.categoryId, newEndDate: todayISO() },
-          response.toolCall,
-          "Archived",
-        );
-      } else if (response.toolCall?.name === "logHabitProgress") {
-        await handleLogHabitProgress(response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "addRecurringTaskChecklistItem") {
-        await handleAddRecurringTaskChecklistItemChat(response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "addSingleTaskChecklistItem") {
-        await handleAddSingleTaskChecklistItemChat(response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "checkHabitChecklistItem") {
-        await handleCheckHabitChecklistItem(response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "checkRecurringTaskChecklistItem") {
-        await handleCheckRecurringTaskChecklistItem(response.toolCall.input, response.toolCall);
-      } else if (response.toolCall?.name === "checkSingleTaskChecklistItem") {
-        await handleCheckSingleTaskChecklistItem(response.toolCall.input, response.toolCall);
+      } else if (response.toolCall) {
+        await dispatchToolCall(response.toolCall, userText);
       } else if (response.reply) {
         pushAssistantMessage(response.reply);
       } else {
