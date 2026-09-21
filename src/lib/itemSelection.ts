@@ -24,17 +24,36 @@ function normalize(text: string): string {
   return text.trim().toLowerCase();
 }
 
-export function selectOne<T extends BaseItem>(
-  items: T[],
-  selector: ItemSelector,
-  canTakeAction: (item: T) => boolean = () => true,
-): Selection<T> {
-  const needle = normalize(selector.name);
-  if (!needle) return { kind: "none" };
+// §34 in Roadmap.md: words a user hangs off an item's name when talking about it
+// ("add milk to my shopping list" for a task called "Weekly shopping", "mark my
+// dentist task as done"). The model passes the whole phrase as the name, so a
+// literal substring match finds nothing.
+const GENERIC_WORDS = new Set([
+  "a", "an", "the", "my", "our", "your", "this", "that",
+  "item", "items", "list", "lists", "task", "tasks", "habit", "habits", "todo", "to-do",
+]);
 
+/**
+ * §34: the name fragment with those generic words dropped, or null when that
+ * wouldn't give a usable second try — nothing was dropped, or everything was
+ * (so "my list" doesn't turn into a match-everything empty needle).
+ */
+function withoutGenericWords(needle: string): string | null {
+  const words = needle.split(/\s+/);
+  const kept = words.filter((word) => !GENERIC_WORDS.has(word.replace(/[^a-z0-9-]/g, "")));
+  if (kept.length === 0 || kept.length === words.length) return null;
+  return kept.join(" ");
+}
+
+function selectByName<T extends BaseItem>(
+  items: T[],
+  needle: string,
+  categoryId: string | undefined,
+  canTakeAction: (item: T) => boolean,
+): Selection<T> {
   let candidates = items.filter((item) => normalize(item.name).includes(needle));
-  if (selector.categoryId) {
-    candidates = candidates.filter((item) => item.categoryId === selector.categoryId);
+  if (categoryId) {
+    candidates = candidates.filter((item) => item.categoryId === categoryId);
   }
   if (candidates.length === 0) return { kind: "none" };
 
@@ -44,6 +63,22 @@ export function selectOne<T extends BaseItem>(
   const exact = eligible.filter((item) => normalize(item.name) === needle);
   const narrowed = exact.length > 0 ? exact : eligible;
   return narrowed.length === 1 ? { kind: "one", item: narrowed[0] } : { kind: "many", items: narrowed };
+}
+
+export function selectOne<T extends BaseItem>(
+  items: T[],
+  selector: ItemSelector,
+  canTakeAction: (item: T) => boolean = () => true,
+): Selection<T> {
+  const needle = normalize(selector.name);
+  if (!needle) return { kind: "none" };
+
+  const selection = selectByName(items, needle, selector.categoryId, canTakeAction);
+  // §34: only as a fallback, so an item genuinely called "Shopping list" still
+  // wins the literal match over one called "Shopping".
+  if (selection.kind !== "none") return selection;
+  const relaxed = withoutGenericWords(needle);
+  return relaxed ? selectByName(items, relaxed, selector.categoryId, canTakeAction) : selection;
 }
 
 const ORDINALS: Record<string, number> = {
