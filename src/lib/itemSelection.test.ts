@@ -63,6 +63,35 @@ const isLoggable = (h: Habit) => h.completionType === "value" || h.completionTyp
   assert.equal(result.kind === "one" && result.item.id, "s");
 }
 
+// §34: generic words the user hangs off a name ("my shopping list", "the dentist task").
+{
+  const shopping = habit("shop", "Weekly shopping");
+  const shoppingList = habit("shop-list", "Shopping list");
+  const items = [shopping, ...waterHabits];
+
+  const picked = (result: ReturnType<typeof selectOne<Habit>>) => (result.kind === "one" ? result.item.id : result.kind);
+
+  // The whole fragment matches nothing -> retry without the generic words.
+  assert.equal(picked(selectOne(items, { name: "my shopping list" })), "shop");
+  assert.equal(picked(selectOne(items, { name: "the shopping list" })), "shop");
+  assert.equal(picked(selectOne(items, { name: "the water habit" }, isLoggable)), "n");
+
+  // A literal match wins: an item really called "Shopping list" isn't passed over.
+  assert.equal(picked(selectOne([shopping, shoppingList], { name: "shopping list" })), "shop-list");
+
+  // Guardrails: all-generic fragments and still-unmatched ones stay "none".
+  assert.equal(selectOne(items, { name: "my list" }).kind, "none");
+  assert.equal(selectOne(items, { name: "the" }).kind, "none");
+  assert.equal(selectOne(items, { name: "my gym habit" }).kind, "none");
+
+  // The fallback keeps the category filter and the action filter.
+  assert.equal(selectOne(waterHabits, { name: "the water habit", categoryId: "finance" }).kind, "none");
+  assert.equal(selectOne([waterHabits[0], waterHabits[2]], { name: "my water habit" }, isLoggable).kind, "ineligible");
+
+  // Ambiguity still asks rather than guessing.
+  assert.equal(selectOne(waterHabits, { name: "my water habit" }).kind, "many");
+}
+
 // findSameName: exact names only, ignoring archived habits and finished one-off tasks.
 {
   const archived = habit("a", "Drink water", { endDate: "2026-09-10" });

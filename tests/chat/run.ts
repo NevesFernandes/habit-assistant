@@ -28,8 +28,10 @@ import { readDevVarsFile, loadDevVars } from "../../scripts/devVars.ts";
 import type { Scenario, TextMatch, Turn } from "./types.ts";
 import { scenarios as s31 } from "./scenarios/s31-confirmations.ts";
 import { scenarios as s32 } from "./scenarios/s32-disambiguation.ts";
+import { scenarios as s34 } from "./scenarios/s34-name-matching.ts";
+import { scenarios as s35 } from "./scenarios/s35-word-forms.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s31, ...s32];
+const ALL_SCENARIOS: Scenario[] = [...s31, ...s32, ...s34, ...s35];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -121,6 +123,8 @@ interface TurnReport {
   user: string;
   reply: string;
   toolCalls: string[];
+  /** The model's tool-call arguments this turn (e.g. which name fragment it sent). */
+  toolInputs: Record<string, unknown>[];
   debug: AgentDebugEntry[];
   failures: string[];
 }
@@ -171,8 +175,11 @@ async function runScenario(
       .filter((message) => message.role === "assistant")
       .map((message) => message.content)
       .join("\n");
+    const toolInputs = session.messages
+      .slice(before)
+      .flatMap((message) => (message.role === "assistant" && message.toolCall ? [message.toolCall.input] : []));
     const toolCalls = turnDebug.flatMap((entry) => ("toolCallName" in entry.result && entry.result.toolCallName ? [entry.result.toolCallName] : []));
-    turns.push({ user: turn.user, reply, toolCalls, debug: turnDebug, failures: checkTurn(turn, reply, toolCalls, turnDebug, data, expectedProviderId) });
+    turns.push({ user: turn.user, reply, toolCalls, toolInputs, debug: turnDebug, failures: checkTurn(turn, reply, toolCalls, turnDebug, data, expectedProviderId) });
   }
   return { name: scenario.name, run, passed: turns.every((t) => t.failures.length === 0), turns, finalData: data };
 }
@@ -269,7 +276,8 @@ async function main() {
       console.log(`${report.passed ? "PASS" : "FAIL"}  ${label}`);
       for (const turn of report.turns) {
         const via = turn.debug.map((d) => `${d.providerId}/${d.model} ${d.latencyMs}ms`).join(", ") || "no model call";
-        console.log(`    > ${turn.user}   [${turn.toolCalls.join(", ") || "-"} · ${via}]`);
+        const names = turn.toolInputs.flatMap((input) => (typeof input.name === "string" ? [`name="${input.name}"`] : []));
+        console.log(`    > ${turn.user}   [${[turn.toolCalls.join(", ") || "-", ...names].join(" ")} · ${via}]`);
         if (turn.failures.length > 0 || !report.passed) console.log(indent(turn.reply || "(no reply)"));
         for (const failure of turn.failures) console.log(`      ✗ ${failure}`);
       }
