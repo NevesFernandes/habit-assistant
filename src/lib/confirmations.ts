@@ -261,6 +261,14 @@ export function describeCandidates(
   return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean? You can reply with its number.`;
 }
 
+/**
+ * §29: asked before completing a one-off task dated in the future. Doing it early is
+ * legitimate, but the record should say when it actually happened — hence the move.
+ */
+export function describeFutureTaskQuestion(name: string, startDateISO: string, todayISO: string): string {
+  return `"${name}" is set for ${formatDate(startDateISO, todayISO)}, which hasn't happened yet. Mark it done and move it to today?`;
+}
+
 /** Asked before creating an item whose name is already in use — nothing is created until the user confirms. */
 export function describeDuplicateQuestion(
   noun: string,

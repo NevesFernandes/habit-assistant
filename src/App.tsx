@@ -44,9 +44,11 @@ import {
   toggleSingleTaskChecklistItem,
   toggleSingleTaskDone,
   updateCategory,
+  updateSingleTask,
   type CreateCategoryInput,
   type UpdateCategoryPatch,
 } from "./lib/dataStore";
+import { isFutureDate } from "./lib/recurrence";
 import {
   getActiveByok,
   getActiveStt,
@@ -346,19 +348,28 @@ export default function App() {
     void persist((current) => toggleSingleTaskDone(current, taskId));
   }
 
+  // §29: the controls for these are already disabled on a future day — these guards are
+  // the second line, so a stale render can't write a completion that hasn't happened.
   function handleHabitToggle(habitId: string) {
-    if (!data) return;
+    if (!data || isFutureDate(selectedDate, todayISO())) return;
     void persist((current) => toggleHabitCompletion(current, habitId, selectedDate));
   }
 
   function handleRecurringTaskToggle(taskId: string) {
-    if (!data) return;
+    if (!data || isFutureDate(selectedDate, todayISO())) return;
     void persist((current) => toggleRecurringTaskCompletion(current, taskId, selectedDate));
   }
 
   function handleHabitChecklistToggle(habitId: string, itemId: string, dateISO: string) {
-    if (!data) return;
+    if (!data || isFutureDate(dateISO, todayISO())) return;
     void persist((current) => toggleHabitChecklistItem(current, habitId, itemId, dateISO));
+  }
+
+  // §29: completing a one-off task early is allowed, but only after the user confirms in
+  // DayView — and the task moves to today, so its record says when it was actually done.
+  function handleFutureTaskComplete(taskId: string) {
+    if (!data) return;
+    void persist((current) => updateSingleTask(current, taskId, { newDone: true, newStartDate: todayISO() }));
   }
 
   function handleRecurringTaskChecklistToggle(taskId: string, itemId: string) {
@@ -486,6 +497,7 @@ export default function App() {
             <DayStrip selectedDate={selectedDate} onSelect={setSelectedDate} />
             <DayView
               selectedDate={selectedDate}
+              todayISO={todayISO()}
               habits={data.habits}
               singleTasks={data.singleTasks}
               recurringTasks={data.recurringTasks}
@@ -495,6 +507,7 @@ export default function App() {
               onToggleTask={handleTaskToggle}
               onToggleRecurringTask={handleRecurringTaskToggle}
               onToggleHabitChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, selectedDate)}
+              onCompleteFutureTask={handleFutureTaskComplete}
             />
           </div>
         )}

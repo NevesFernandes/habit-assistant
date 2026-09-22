@@ -5,9 +5,12 @@ interface ChecklistProps {
   items: ChecklistItem[];
   onToggle: (itemId: string) => void;
   onAdd?: (text: string) => void; // omit to disable "add item" UI — a Habit's completion-type role has no add interaction
+  /** §29: read-only, for a habit occurrence on a day that hasn't happened yet. */
+  disabled?: boolean;
+  title?: string;
 }
 
-export default function Checklist({ items, onToggle, onAdd }: ChecklistProps) {
+export default function Checklist({ items, onToggle, onAdd, disabled = false, title }: ChecklistProps) {
   const [draft, setDraft] = useState("");
 
   function submitDraft() {
@@ -27,7 +30,9 @@ export default function Checklist({ items, onToggle, onAdd }: ChecklistProps) {
               type="checkbox"
               checked={item.checked}
               onChange={() => onToggle(item.id)}
-              className="h-4 w-4 shrink-0"
+              disabled={disabled}
+              title={title}
+              className={`h-4 w-4 shrink-0 ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
             />
             <span className={item.checked ? "text-slate-500 line-through" : ""}>{item.text}</span>
           </li>

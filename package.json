@@ -12,6 +12,7 @@
     "test:recurrenceSpec": "node src/server/recurrenceSpec.test.ts",
     "test:confirmations": "node src/lib/confirmations.test.ts",
     "test:itemSelection": "node src/lib/itemSelection.test.ts",
+    "test:futureCompletion": "tsx src/lib/futureCompletion.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"

@@ -39,11 +39,13 @@ import {
   describeCreatedRecurringTask,
   describeCreatedSingleTask,
   describeDuplicateQuestion,
+  describeFutureTaskQuestion,
   describeItemList,
   describeUpdate,
   formatDate,
   formatGoalMinutes,
 } from "./confirmations";
+import { isFutureDate } from "./recurrence";
 import type { AppData, Category, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -88,7 +90,9 @@ interface PendingPick {
 // a delete always asks first; a create asks only when the name is already in use (§32).
 export type PendingConfirmation =
   | { type: "delete"; itemKind: ItemKind; ids: string[]; names: string[] }
-  | { type: "create"; toolCall: CreateToolCall; userText: string };
+  | { type: "create"; toolCall: CreateToolCall; userText: string }
+  // §29: completing a future-dated one-off task, which also moves it to today.
+  | { type: "completeFutureTask"; taskId: string; name: string; startDate: string; patch: UpdatePatch };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -381,6 +385,24 @@ export class ChatSession {
       return;
     }
 
+    if (pending.type === "completeFutureTask") {
+      const today = this.todayISO;
+      if (!confirmed) {
+        this.pushAssistantMessage(
+          `Okay, I left "${pending.name}" on ${formatDate(pending.startDate, today)}.`,
+          toolCall,
+        );
+        return;
+      }
+      // Moving startDate to today is the point of the question: the task's own record then
+      // says it was done today, not on a day that never happened.
+      const saved = await this.deps.persist((current) =>
+        updateSingleTask(current, pending.taskId, { ...pending.patch, newStartDate: today }),
+      );
+      if (saved) this.pushAssistantMessage(`Marked "${pending.name}" done and moved it to today.`, toolCall);
+      return;
+    }
+
     if (!confirmed) {
       this.pushAssistantMessage("Okay, I won't delete that.", toolCall);
       return;
@@ -411,6 +433,21 @@ export class ChatSession {
     if (!target) return;
     if (!hasAnyPatchField(patch)) {
       this.pushAssistantMessage("What would you like to change about it?", toolCall);
+      return;
+    }
+
+    // §29: a one-off task dated in the future can be completed early — that's honest — but
+    // not silently, and the record should say when it actually happened. Habits and
+    // recurring tasks have no chat path to their done/not-done toggle at all.
+    if (kind === "singleTask" && patch.newDone === true && isFutureDate(target.startDate, this.todayISO)) {
+      this.pendingConfirmation = {
+        type: "completeFutureTask",
+        taskId: target.id,
+        name: target.name,
+        startDate: target.startDate,
+        patch,
+      };
+      this.pushAssistantMessage(describeFutureTaskQuestion(target.name, target.startDate, this.todayISO), toolCall);
       return;
     }
 
@@ -588,6 +625,15 @@ export class ChatSession {
     if (!habit) return;
     const today = this.todayISO;
     const dateISO = input.date ?? today;
+    // §29: a day that hasn't happened yet can't have progress on it — logging one would
+    // only inflate the habit's streak and completion %. Says why rather than no-opping.
+    if (isFutureDate(dateISO, today)) {
+      this.pushAssistantMessage(
+        `I can't log progress for "${habit.name}" on ${formatDate(dateISO, today)} — that day hasn't happened yet.`,
+        toolCall,
+      );
+      return;
+    }
     // Recompute inside the mutator (not before persist()) so a delta re-derives against
     // whatever data a conflict-replay actually reloads, rather than replaying a stale
     // absolute value — see §21.
@@ -647,7 +693,17 @@ export class ChatSession {
     const itemMatches = resolveChecklistItemMatches(habit.checklist, input.item);
     if (!this.checkSingleChecklistMatch(itemMatches, input.item, habit.name, toolCall)) return;
     const checked = input.checked ?? true;
-    const dateISO = input.date ?? this.todayISO;
+    const today = this.todayISO;
+    const dateISO = input.date ?? today;
+    // §29: a habit's checklist state is that occurrence's completion, so the same
+    // future-date rule as logHabitProgress applies.
+    if (isFutureDate(dateISO, today)) {
+      this.pushAssistantMessage(
+        `I can't change "${habit.name}" for ${formatDate(dateISO, today)} — that day hasn't happened yet.`,
+        toolCall,
+      );
+      return;
+    }
     const saved = await this.deps.persist((current) =>
       setHabitChecklistItemChecked(current, habit.id, itemMatches[0].id, checked, dateISO),
     );
