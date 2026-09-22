@@ -3,6 +3,8 @@
 // Measured 2026-09-21 while closing §34: "change my reading habit to mondays" silently
 // updated "Technical Reading" — the wrong habit, no question asked — 3/3 times.
 // The fix offers every match, closest first, so success here is the numbered question.
+// Re-measured 2026-09-22 after the fix: 6/6 on gemini-flash-lite, with the model sending
+// the same name="reading" that used to pick the wrong habit.
 import type { Scenario } from "../types.ts";
 import type { AppData } from "../../../src/types/models.ts";
 import { check, habitById } from "./helpers.ts";
