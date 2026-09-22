@@ -9,6 +9,7 @@ import type {
   CompletionLogEntry,
   CompletionType,
   Habit,
+  PausePeriod,
   RecurrenceRule,
   RecurringTask,
   SingleTask,
@@ -375,6 +376,56 @@ function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T 
 
 function resolveRecurrence(current: RecurrenceRule, patch: UpdatePatch): RecurrenceRule {
   return patch.newRecurrence ?? current;
+}
+
+/** §28: a pause that's already over — its days stay excluded from stats forever. */
+function isFinishedPause(pause: PausePeriod, todayISO: string): boolean {
+  return !!pause.resumeOn && pause.resumeOn <= todayISO;
+}
+
+/**
+ * §28: pause a Habit or Recurring Task. Any pause still in force or not yet started is
+ * replaced rather than stacked — "pause it, actually until the 10th" should read as one
+ * window — while finished pauses are kept, since their days must stay unscheduled.
+ */
+export function pauseItem(
+  data: AppData,
+  kind: "habit" | "recurringTask",
+  id: string,
+  pause: PausePeriod,
+  todayISO: string,
+): AppData {
+  return mapPausable(data, kind, id, (pauses) => [
+    ...pauses.filter((existing) => isFinishedPause(existing, todayISO)),
+    pause,
+  ]);
+}
+
+/**
+ * §28: back on today. A pause already under way ends today, keeping the days it covered;
+ * one that starts today or later is dropped outright, having protected nothing yet.
+ */
+export function resumeItem(data: AppData, kind: "habit" | "recurringTask", id: string, todayISO: string): AppData {
+  return mapPausable(data, kind, id, (pauses) =>
+    pauses.flatMap((pause) => {
+      if (isFinishedPause(pause, todayISO)) return [pause];
+      if (pause.from >= todayISO) return [];
+      return [{ ...pause, resumeOn: todayISO }];
+    }),
+  );
+}
+
+function mapPausable(
+  data: AppData,
+  kind: "habit" | "recurringTask",
+  id: string,
+  next: (pauses: PausePeriod[]) => PausePeriod[],
+): AppData {
+  const apply = <T extends { id: string; pauses?: PausePeriod[] }>(item: T): T =>
+    item.id === id ? { ...item, pauses: next(item.pauses ?? []) } : item;
+  return kind === "habit"
+    ? { ...data, habits: data.habits.map(apply) }
+    : { ...data, recurringTasks: data.recurringTasks.map(apply) };
 }
 
 export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch): AppData {

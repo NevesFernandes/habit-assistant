@@ -40,6 +40,20 @@ export type RecurrenceRule =
 
 export type CompletionType = "yesno" | "value" | "timer" | "checklist";
 
+/**
+ * §28 in Roadmap.md: a stretch where a Habit or Recurring Task generates no occurrences,
+ * without archiving it. `from` is the first paused day; `resumeOn` is the first day back
+ * (exclusive), or undefined for an open-ended pause the user resumes by asking.
+ *
+ * Finished pauses are kept, never cleared on resume: a paused day counts as neither done
+ * nor missed, so dropping the record would turn those days back into misses and silently
+ * undo the streak the pause protected.
+ */
+export interface PausePeriod {
+  from: string; // ISO date, always today or later when created
+  resumeOn?: string; // ISO date, exclusive — the first day the item is due again
+}
+
 // BYOK settings, synced across devices via AppData.byokSettings — see §30 in
 // Roadmap.md and CLAUDE.md's "Cost model / provider strategy". Defined here
 // (not in src/lib/settingsStore.ts, the only other place it's used) because
@@ -61,12 +75,14 @@ export interface Habit extends BaseItem {
   checklist?: ChecklistItem[]; // only meaningful when completionType === "checklist"
   target?: number; // meaningful when completionType is "value" or "timer"; timer's target is always minutes
   unit?: string; // meaningful when completionType is "value", e.g. "glasses", "pages" — free text
+  pauses?: PausePeriod[]; // §28; absent on items saved before pausing existed
 }
 
 export interface RecurringTask extends BaseItem {
   kind: "recurringTask";
   recurrence: RecurrenceRule;
   checklist?: ChecklistItem[];
+  pauses?: PausePeriod[]; // §28; absent on items saved before pausing existed
 }
 
 export interface SingleTask extends BaseItem {

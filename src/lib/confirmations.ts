@@ -8,9 +8,9 @@
 //
 // The same text is also fed back to the LLM as the tool result (App.tsx's
 // pushAssistantMessage), so follow-up corrections have real context.
-import type { Category, Habit, RecurringTask, SingleTask } from "../types/models.ts";
+import type { Category, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
-import { describeRecurrence } from "./recurrence.ts";
+import { describeRecurrence, isPaused } from "./recurrence.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -225,6 +225,22 @@ export function describeUpdate(before: AnyItem, after: AnyItem, categories: Cate
   return `Updated "${before.name}":\n${bullets(changes)}`;
 }
 
+/**
+ * §28: states the window as stored, so a misread relative phrase ("until the 15th") is
+ * visible in the reply and can be corrected — same principle as §31's confirmations.
+ */
+export function describePause(name: string, pause: PausePeriod, todayISO: string): string {
+  const from = pause.from <= todayISO ? "from today" : `from ${formatDate(pause.from, todayISO)}`;
+  if (!pause.resumeOn) {
+    return `Paused "${name}" ${from} — no occurrences until you ask me to resume it.`;
+  }
+  return `Paused "${name}" ${from} — back on ${formatDate(pause.resumeOn, todayISO)}. Paused days don't count as missed.`;
+}
+
+export function describeResume(name: string): string {
+  return `Resumed "${name}" — it's due again from today.`;
+}
+
 export function describeArchive(item: AnyItem): string {
   return `Archived "${item.name}" — no more occurrences after today, and its completion history is kept.`;
 }
@@ -240,6 +256,7 @@ export function itemDetails(item: AnyItem, categories: Category[], todayISO: str
     parts.push(item.completionType === "yesno" ? "yes/no" : describeTracking(item).replace(" — ", ", "));
   }
   if (item.endDate && item.endDate < todayISO) parts.push("archived");
+  if (isPaused(item, todayISO)) parts.push("paused");
   return parts.join(" · ");
 }
 

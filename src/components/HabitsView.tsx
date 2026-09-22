@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
-import { describeRecurrence, isArchived, todayISO } from "../lib/recurrence";
+import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
 import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
@@ -61,6 +61,9 @@ export default function HabitsView({ habits, categories, completionLog, onToggle
                 <div>
                   {habit.name}
                   {isArchived(habit) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
+                  {!isArchived(habit) && currentPause(habit, todayISO()) && (
+                    <span className="ml-2 text-xs text-sky-400">Paused</span>
+                  )}
                 </div>
                 {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
                 <div className="text-xs text-slate-500">{describeRecurrence(habit.recurrence)}</div>
@@ -88,6 +91,7 @@ function HabitDetail({
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
   const archived = isArchived(habit);
+  const pause = currentPause(habit, todayISO()) ?? upcomingPause(habit, todayISO());
   const stats = computeHabitStats(habit, completionLog, todayISO());
   const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
   const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
@@ -131,6 +135,16 @@ function HabitDetail({
         {habit.endDate && (
           <DetailRow label={archived ? "Archived since" : "End date"}>
             <span>{habit.endDate}</span>
+          </DetailRow>
+        )}
+
+        {/* §28: a pause is distinct from archiving — it ends by itself, or when asked. */}
+        {pause && (
+          <DetailRow label={pause.from > todayISO() ? "Pausing on" : "Paused since"}>
+            <span>
+              {pause.from}
+              {pause.resumeOn ? ` — back on ${pause.resumeOn}` : " — until you resume it"}
+            </span>
           </DetailRow>
         )}
 
