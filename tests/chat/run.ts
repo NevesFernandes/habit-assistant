@@ -26,12 +26,13 @@ import { toDisplayMessages } from "../../src/server/agentHistory.ts";
 import { DEFAULT_CATEGORIES, type AppData } from "../../src/types/models.ts";
 import { readDevVarsFile, loadDevVars } from "../../scripts/devVars.ts";
 import type { Scenario, TextMatch, Turn } from "./types.ts";
+import { scenarios as s29 } from "./scenarios/s29-future-dates.ts";
 import { scenarios as s31 } from "./scenarios/s31-confirmations.ts";
 import { scenarios as s32 } from "./scenarios/s32-disambiguation.ts";
 import { scenarios as s34 } from "./scenarios/s34-name-matching.ts";
 import { scenarios as s35 } from "./scenarios/s35-word-forms.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s31, ...s32, ...s34, ...s35];
+const ALL_SCENARIOS: Scenario[] = [...s29, ...s31, ...s32, ...s34, ...s35];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

@@ -21,8 +21,7 @@ _Nothing queued — pick the top of Next._
 
 ## Next
 
-### §29 — Block completion-status edits on future-dated occurrences
-Today a Habit or Recurring Task's completion status can be toggled from any daily view, including dates after today — but marking a future occurrence "done" is inherently dishonest (it hasn't happened yet), useful only for inflating your own streak/stats. Scope is narrow and deliberate: this blocks changing *completion status only* for any date later than today — the Yes/No toggle now, and the same rule extends to Timer, Numeric-value, and Checklist completion once those get real tracking (`CLAUDE.md`'s "Habit" section — Numeric/Checklist are still label-only, Timer already has a real start/stop flow via `useTimerSession.ts`/`TimerView.tsx`). It does **not** restrict editing the item itself from a future daily view — name, description, category, priority, dates, or recurrence rule all stay editable going forward, since that's ordinary planning (e.g. rescheduling, or changing a habit's target starting next week), not record-tampering. Needs: a date check (occurrence date > today → reject) in whichever paths currently allow completion toggling — the agent tool path (`logHabitProgress` and friends in `handleAgentRequest.ts`) and any direct UI toggle in `HabitsView`/`RecurringTasksView` — with a clear message explaining why, rather than a silent no-op.
+_Nothing queued — pick the top of Later._
 
 ## Later
 

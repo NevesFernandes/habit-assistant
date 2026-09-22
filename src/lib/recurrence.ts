@@ -161,6 +161,16 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * §29 in Roadmap.md: whether a date is later than today. Completion status can't be
+ * changed for such a date — it hasn't happened yet, so marking it done would only
+ * inflate a streak. ISO dates compare lexicographically, the same way endDate and
+ * startDate are compared elsewhere. Today itself is not "future".
+ */
+export function isFutureDate(dateISO: string, todayISO: string): boolean {
+  return dateISO > todayISO;
+}
+
 export function isArchived(item: { endDate?: string }): boolean {
   return !!item.endDate && item.endDate <= todayISO();
 }
