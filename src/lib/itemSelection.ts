@@ -45,24 +45,105 @@ function withoutGenericWords(needle: string): string | null {
   return kept.join(" ");
 }
 
+// §35 in Roadmap.md: the user says the name in a different word form than the item
+// carries ("my reading habit" for a habit called "Read", "20 minutes of meditation"
+// for "Meditate"). Substring matching never lines those up, and — worse than §34 —
+// a fragment like "reading" *does* literally match a different item ("Technical
+// Reading"), so the wrong one was silently edited. Matching is token-based rather
+// than substring here on purpose: "ready" must not match "Read".
+const MIN_STEM = 3;
+
+/**
+ * A deliberately small stemmer — one suffix rule, then a trailing "e" — kept in this
+ * file with no dependency. Each rule earns its place from a real phrasing; -er and -y
+ * are left alone, since missing "reader" costs less than matching an unrelated item.
+ */
+function stem(word: string): string {
+  const cut = (suffix: string, replacement = ""): string | null => {
+    if (!word.endsWith(suffix)) return null;
+    const stemmed = word.slice(0, -suffix.length) + replacement;
+    return stemmed.length >= MIN_STEM ? stemmed : null;
+  };
+
+  let result =
+    cut("sses", "ss") ?? // glasses -> glass, but glass stays glass
+    cut("ies", "y") ?? // studies -> study
+    (word.endsWith("ss") ? word : null) ??
+    cut("s") ??
+    undouble(cut("ing") ?? cut("ed")) ??
+    cut("ion") ?? // meditation -> meditat, meeting "meditate" below
+    cut("ment") ??
+    word;
+  // Applied after any rule above, so measurement -> measure -> measur matches measure.
+  result = (result.endsWith("e") && result.length - 1 >= MIN_STEM ? result.slice(0, -1) : result);
+  return result;
+}
+
+/** shopping -> shopp -> shop, running -> runn -> run. Not for l/s/z: call and press keep theirs. */
+function undouble(word: string | null): string | null {
+  if (!word) return null;
+  const last = word.slice(-1);
+  const doubled = word.length > MIN_STEM && word.slice(-2, -1) === last && !"lsz".includes(last);
+  return doubled ? word.slice(0, -1) : word;
+}
+
+function stemTokens(text: string): string[] {
+  return normalize(text)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(stem);
+}
+
+/** Whether `needle`'s tokens appear as a contiguous run in `tokens` — "read" in ["technical", "read"]. */
+function containsRun(tokens: string[], needle: string[]): boolean {
+  if (needle.length === 0 || needle.length > tokens.length) return false;
+  return tokens.some((_, start) => needle.every((token, offset) => tokens[start + offset] === token));
+}
+
+// How close a match is, best first. An exact name still wins outright (§34's guardrail);
+// below that nothing plausible is hidden — the "which one?" list shows every match in
+// this order, so the user picks rather than the app guessing (decided 2026-09-21).
+const EXACT_NAME = 0;
+const EXACT_WORD_FORM = 1;
+const PARTIAL_NAME = 2;
+const PARTIAL_WORD_FORM = 3;
+
+function matchTier(itemName: string, needle: string, needleTokens: string[]): number | null {
+  const name = normalize(itemName);
+  if (name === needle) return EXACT_NAME;
+  const tokens = stemTokens(itemName);
+  if (tokens.length === needleTokens.length && tokens.every((token, i) => token === needleTokens[i])) {
+    return EXACT_WORD_FORM;
+  }
+  if (name.includes(needle)) return PARTIAL_NAME;
+  if (containsRun(tokens, needleTokens)) return PARTIAL_WORD_FORM;
+  return null;
+}
+
 function selectByName<T extends BaseItem>(
   items: T[],
   needle: string,
   categoryId: string | undefined,
   canTakeAction: (item: T) => boolean,
 ): Selection<T> {
-  let candidates = items.filter((item) => normalize(item.name).includes(needle));
+  const needleTokens = stemTokens(needle);
+  let candidates = items.flatMap((item) => {
+    const tier = matchTier(item.name, needle, needleTokens);
+    return tier === null ? [] : [{ item, tier }];
+  });
   if (categoryId) {
-    candidates = candidates.filter((item) => item.categoryId === categoryId);
+    candidates = candidates.filter(({ item }) => item.categoryId === categoryId);
   }
   if (candidates.length === 0) return { kind: "none" };
 
-  const eligible = candidates.filter(canTakeAction);
-  if (eligible.length === 0) return { kind: "ineligible", items: candidates };
+  const eligible = candidates.filter(({ item }) => canTakeAction(item));
+  if (eligible.length === 0) return { kind: "ineligible", items: candidates.map(({ item }) => item) };
 
-  const exact = eligible.filter((item) => normalize(item.name) === needle);
-  const narrowed = exact.length > 0 ? exact : eligible;
-  return narrowed.length === 1 ? { kind: "one", item: narrowed[0] } : { kind: "many", items: narrowed };
+  const exact = eligible.filter(({ tier }) => tier === EXACT_NAME);
+  // sort is stable, so items of the same closeness keep the order they're stored in.
+  const narrowed = exact.length > 0 ? exact : [...eligible].sort((a, b) => a.tier - b.tier);
+  const matched = narrowed.map(({ item }) => item);
+  return matched.length === 1 ? { kind: "one", item: matched[0] } : { kind: "many", items: matched };
 }
 
 export function selectOne<T extends BaseItem>(

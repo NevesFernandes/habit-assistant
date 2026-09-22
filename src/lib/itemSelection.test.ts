@@ -92,6 +92,43 @@ const isLoggable = (h: Habit) => h.completionType === "value" || h.completionTyp
   assert.equal(selectOne(waterHabits, { name: "my water habit" }).kind, "many");
 }
 
+// §35: word forms of the name ("my reading habit" for habits called "Read").
+{
+  const reads = [habit("r1", "Read"), habit("r2", "Read"), habit("tech", "Technical Reading")];
+  const named = (result: ReturnType<typeof selectOne<Habit>>) =>
+    result.kind === "many" ? result.items.map((h) => h.name).join(" | ") : result.kind === "one" ? result.item.name : result.kind;
+
+  // The bug §35 exists for: "reading" used to match only "Technical Reading" and edit it
+  // silently. Now every match is offered, closest first.
+  assert.equal(named(selectOne(reads, { name: "reading" })), "Read | Read | Technical Reading");
+  assert.equal(named(selectOne(reads, { name: "my reading habit" })), "Read | Read | Technical Reading");
+
+  // An exact name still wins outright, dropping weaker matches (§34's guardrail).
+  assert.equal(named(selectOne(reads, { name: "Read" })), "Read | Read");
+  assert.equal(named(selectOne(reads, { name: "Technical Reading" })), "Technical Reading");
+
+  // Other word forms: -ion/-e, -ing with an undoubled consonant, plurals.
+  assert.equal(named(selectOne([habit("m", "Meditate")], { name: "meditation" })), "Meditate");
+  assert.equal(named(selectOne([habit("r", "Run")], { name: "running" })), "Run");
+  assert.equal(named(selectOne([habit("j", "Journal")], { name: "journaling" })), "Journal");
+  assert.equal(named(selectOne([habit("g", "Drink a glass")], { name: "glasses" })), "Drink a glass");
+
+  // Guardrails against over-matching: token-based, so a longer word that merely starts
+  // with the stem is not a match, and "l/s/z" doublings are left alone.
+  assert.equal(selectOne([habit("b", "Ready for bed")], { name: "reading" }).kind, "none");
+  assert.equal(selectOne(reads, { name: "ready" }).kind, "none");
+  assert.equal(named(selectOne([habit("c", "Call mum")], { name: "calling" })), "Call mum");
+
+  // Word-form matches still respect the category and action filters.
+  const timers = [
+    habit("mt", "Meditate", { completionType: "timer", target: 10 }),
+    habit("my", "Meditate", { categoryId: "study" }),
+  ];
+  assert.equal(named(selectOne(timers, { name: "meditation" }, isLoggable)), "Meditate");
+  assert.equal(selectOne(timers, { name: "meditation", categoryId: "finance" }).kind, "none");
+  assert.equal(selectOne([timers[1]], { name: "meditation" }, isLoggable).kind, "ineligible");
+}
+
 // findSameName: exact names only, ignoring archived habits and finished one-off tasks.
 {
   const archived = habit("a", "Drink water", { endDate: "2026-09-10" });
