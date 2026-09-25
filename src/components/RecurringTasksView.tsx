@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { Category, RecurringTask } from "../types/models";
-import { describeRecurrence, isArchived } from "../lib/recurrence";
+import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 
@@ -56,6 +56,9 @@ export default function RecurringTasksView({
                 <div>
                   {task.name}
                   {isArchived(task) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
+                  {!isArchived(task) && currentPause(task, todayISO()) && (
+                    <span className="ml-2 text-xs text-sky-400">Paused</span>
+                  )}
                 </div>
                 {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
                 <div className="text-xs text-slate-500">{describeRecurrence(task.recurrence)}</div>
@@ -83,6 +86,7 @@ function RecurringTaskDetail({
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
   const archived = isArchived(task);
+  const pause = currentPause(task, todayISO()) ?? upcomingPause(task, todayISO());
 
   return (
     <div className="flex flex-col gap-3">
@@ -120,6 +124,16 @@ function RecurringTaskDetail({
         {task.endDate && (
           <DetailRow label={archived ? "Archived since" : "End date"}>
             <span>{task.endDate}</span>
+          </DetailRow>
+        )}
+
+        {/* §28: a pause is distinct from archiving — it ends by itself, or when asked. */}
+        {pause && (
+          <DetailRow label={pause.from > todayISO() ? "Pausing on" : "Paused since"}>
+            <span>
+              {pause.from}
+              {pause.resumeOn ? ` — back on ${pause.resumeOn}` : " — until you resume it"}
+            </span>
           </DetailRow>
         )}
 

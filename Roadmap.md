@@ -17,14 +17,14 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-_Nothing queued — pick the top of Next._
+_Nothing queued._
 
 ## Next
 
-_Nothing queued — pick the top of Later._
+_Nothing queued._
 
 ## Later
 
-### §28 — Pause a Habit/Recurring Task, with or without a known resume date
-Today the only way to stop a Habit or Recurring Task from generating future occurrences is archiving (sets `endDate` to today, permanent — see `CLAUDE.md`'s "Recurring Task" section). There's no way to temporarily suspend one — e.g. "pause my gym habit while I'm traveling" — without losing it from the active list for good. Needs two modes: (1) **pause within a known time window** — user gives both a start and an end/resume date, no occurrences are generated in between, and the item automatically resumes generating occurrences on the given date; (2) **open-ended pause** — user gives only a pause-start date with no forecast resume date, the item stays paused indefinitely, and the user must explicitly ask the agent to resume it later (no auto-resume, since there's nothing to auto-resume on). Needs a paused state distinct from both "active" and "archived" (streak/stats handling across a pause gap is an open sub-question — likely wants pauses excluded from streak-breaking, similar to how archiving preserves history). Agent tool schemas (`handleAgentRequest.ts`) need pause/resume actions with the two date-shapes above.
+_Nothing queued._
 
+The backlog is empty as of 2026-09-22 — every numbered item so far has shipped. New items go in on request, at whichever position and tier they deserve, taking the next free ID above. `CLAUDE.md`'s "Open questions / to refine later" still lists undecided design questions, and its Status section names work that was never queued here: real tracking for Numeric-value and Checklist habits, one shared interactive checklist component, closing the §24 classifier-fallback payload gap before `TRIAL_FALLBACK_PROVIDER` goes back to `groq`, and logging un-completions as their own events instead of deleting the entry.

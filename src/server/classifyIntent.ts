@@ -43,6 +43,10 @@ const RECURRENCE_PATTERNS: RegExp[] = [
 
 const DELETE_VERBS = ["delete", "remove", "get rid of", "erase", "clear out", "wipe", "cancel", "toss", "scrap"];
 const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
+// §28: pausing/resuming. Both directions live in "modify"; pausing also joins "delete"
+// (below) because "stop my gym habit for two weeks" is a soft-stop phrasing that must
+// not be left with only the destructive tools in its payload.
+const PAUSE_VERBS = ["pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
 
 const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal", "shift", "swap", "tweak", "revise", "move"];
 // "mark my dentist task as done" / "mark it not done" — a whole-item
@@ -58,6 +62,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const text = rawText.toLowerCase();
 
   const hasCheckVerb = matchesAny(text, CHECK_VERBS);
+  const hasPauseVerb = matchesAny(text, PAUSE_VERBS);
   const hasListNoun = matchesAny(text, LIST_NOUNS);
   const hasCreateVerb = matchesAny(text, CREATE_VERBS);
   const hasCreateNoun = matchesAny(text, CREATE_NOUNS);
@@ -84,13 +89,13 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // (see handleAgentRequest.ts's BUCKET_TOOL_NAMES) so a soft-delete phrasing
   // ("remove my old gym habit" meaning "stop tracking it") still has the
   // non-destructive tool available even though only "delete" fired here.
-  if (hasDeleteVerb || hasArchiveVerb) buckets.add("delete");
+  if (hasDeleteVerb || hasArchiveVerb || hasPauseVerb) buckets.add("delete");
 
   // Modify: update/archive/log-with-amount all live in one merged bucket
   // (see Roadmap.md §24) because the system prompt cross-references them
   // pairwise — splitting them would require conditionally rewriting that
   // prose, which is exactly the kind of routing-induced fragility to avoid.
-  if (hasModifyVerb || hasArchiveVerb || (hasLogVerb && hasNumberOrDuration)) buckets.add("modify");
+  if (hasModifyVerb || hasArchiveVerb || hasPauseVerb || (hasLogVerb && hasNumberOrDuration)) buckets.add("modify");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous

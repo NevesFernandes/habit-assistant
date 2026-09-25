@@ -27,6 +27,8 @@ import {
   setRecurringTaskChecklistItemChecked,
   setSingleTaskChecklistItemChecked,
   updateHabit,
+  pauseItem,
+  resumeItem,
   updateRecurringTask,
   updateSingleTask,
   type DeleteCriteria,
@@ -41,11 +43,13 @@ import {
   describeDuplicateQuestion,
   describeFutureTaskQuestion,
   describeItemList,
+  describePause,
+  describeResume,
   describeUpdate,
   formatDate,
   formatGoalMinutes,
 } from "./confirmations";
-import { isFutureDate } from "./recurrence";
+import { currentPause, isFutureDate, isPaused, upcomingPause } from "./recurrence";
 import type { AppData, Category, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -328,6 +332,14 @@ export class ChatSession {
         toolCall,
         "Archived",
       );
+    } else if (toolCall.name === "pauseHabit") {
+      await this.handlePauseRequest("habit", toolCall.input, toolCall);
+    } else if (toolCall.name === "pauseRecurringTask") {
+      await this.handlePauseRequest("recurringTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "resumeHabit") {
+      await this.handleResumeRequest("habit", toolCall.input, toolCall);
+    } else if (toolCall.name === "resumeRecurringTask") {
+      await this.handleResumeRequest("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "logHabitProgress") {
       await this.handleLogHabitProgress(toolCall.input, toolCall);
     } else if (toolCall.name === "addRecurringTaskChecklistItem") {
@@ -604,6 +616,64 @@ export class ChatSession {
         );
       }
     }
+  }
+
+  // §28: pausing stops occurrences without archiving. The model can guess the wrong item
+  // type, so the same resolveKind/pickItem path as update and archive applies.
+  private async handlePauseRequest(
+    requestedKind: "habit" | "recurringTask",
+    input: ItemSelector & { from?: string; resumeOn?: string },
+    toolCall: ToolCallRef,
+  ) {
+    const today = this.todayISO;
+    const kind = this.resolveKind(requestedKind, ["habit", "recurringTask"], input) as "habit" | "recurringTask";
+    const target = this.pickItem(kind, input, toolCall);
+    if (!target) return;
+
+    const from = input.from ?? today;
+    // §29's rule, for the same reason: a backdated pause would retroactively turn already
+    // missed days into days that were never due, inflating the streak.
+    if (isFutureDate(today, from)) {
+      this.pushAssistantMessage(
+        `I can only pause from today onwards — ${formatDate(from, today)} has already happened.`,
+        toolCall,
+      );
+      return;
+    }
+    if (input.resumeOn && input.resumeOn <= from) {
+      this.pushAssistantMessage(
+        `That pause would end before it starts — ${formatDate(input.resumeOn, today)} isn't after ${formatDate(from, today)}.`,
+        toolCall,
+      );
+      return;
+    }
+
+    const pause = { from, resumeOn: input.resumeOn };
+    const saved = await this.deps.persist((current) => pauseItem(current, kind, target.id, pause, today));
+    if (saved) this.pushAssistantMessage(describePause(target.name, pause, today), toolCall);
+  }
+
+  private async handleResumeRequest(
+    requestedKind: "habit" | "recurringTask",
+    input: ItemSelector,
+    toolCall: ToolCallRef,
+  ) {
+    const today = this.todayISO;
+    const kind = this.resolveKind(requestedKind, ["habit", "recurringTask"], input) as "habit" | "recurringTask";
+    const target = this.pickItem(kind, input, toolCall);
+    if (!target) return;
+
+    if (!isPaused(target, today) && !upcomingPause(target, today)) {
+      this.pushAssistantMessage(`"${target.name}" isn't paused — it's already running.`, toolCall);
+      return;
+    }
+    const wasUpcoming = !currentPause(target, today);
+    const saved = await this.deps.persist((current) => resumeItem(current, kind, target.id, today));
+    if (!saved) return;
+    this.pushAssistantMessage(
+      wasUpcoming ? `Cancelled the upcoming pause on "${target.name}" — it stays due as normal.` : describeResume(target.name),
+      toolCall,
+    );
   }
 
   private async handleLogHabitProgress(

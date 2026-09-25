@@ -66,6 +66,27 @@ export interface ArchiveRecurringTaskToolCall {
   input: { name: string; categoryId?: string };
 }
 
+// §28: `from` defaults to today, `resumeOn` is the first day back (omitted = open-ended).
+export interface PauseHabitToolCall {
+  name: "pauseHabit";
+  input: { name: string; categoryId?: string; from?: string; resumeOn?: string };
+}
+
+export interface PauseRecurringTaskToolCall {
+  name: "pauseRecurringTask";
+  input: { name: string; categoryId?: string; from?: string; resumeOn?: string };
+}
+
+export interface ResumeHabitToolCall {
+  name: "resumeHabit";
+  input: { name: string; categoryId?: string };
+}
+
+export interface ResumeRecurringTaskToolCall {
+  name: "resumeRecurringTask";
+  input: { name: string; categoryId?: string };
+}
+
 export interface ConfirmPendingActionToolCall {
   name: "confirmPendingAction";
   input: { confirmed: boolean };
@@ -113,6 +134,10 @@ export type AgentToolCall =
   | UpdateRecurringTaskToolCall
   | ArchiveHabitToolCall
   | ArchiveRecurringTaskToolCall
+  | PauseHabitToolCall
+  | PauseRecurringTaskToolCall
+  | ResumeHabitToolCall
+  | ResumeRecurringTaskToolCall
   | ConfirmPendingActionToolCall
   | LogHabitProgressToolCall
   | AddRecurringTaskChecklistItemToolCall

@@ -2,12 +2,22 @@
 // shape. Pure date-string arithmetic, no date library: the project has none,
 // and ISO ("YYYY-MM-DD") strings compare/sort lexically so most of this
 // doesn't need a Date object at all.
-import type { BaseItem, CompletionLogEntry, Habit, RecurrenceRule, RecurringTask } from "../types/models";
+import type {
+  BaseItem,
+  CompletionLogEntry,
+  Habit,
+  PausePeriod,
+  RecurrenceRule,
+  RecurringTask,
+} from "../types/models";
 
 // occursOn only ever reads startDate/endDate/recurrence — fields Habit and
 // RecurringTask both carry — so it's typed structurally rather than to Habit
 // specifically, letting both item kinds satisfy it without a cast.
-type RecurringItem = Pick<BaseItem, "startDate" | "endDate"> & { recurrence: RecurrenceRule };
+type RecurringItem = Pick<BaseItem, "startDate" | "endDate"> & {
+  recurrence: RecurrenceRule;
+  pauses?: PausePeriod[]; // §28
+};
 
 function parseISODate(dateISO: string): Date {
   const [year, month, day] = dateISO.split("-").map(Number);
@@ -113,9 +123,37 @@ function addMonthsISO(dateISO: string, months: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
+/** §28: whether one pause covers this date. `resumeOn` is exclusive — the first day back. */
+function pauseCovers(pause: PausePeriod, dateISO: string): boolean {
+  if (dateISO < pause.from) return false;
+  return !pause.resumeOn || dateISO < pause.resumeOn;
+}
+
+export function isPausedOn(item: { pauses?: PausePeriod[] }, dateISO: string): boolean {
+  return (item.pauses ?? []).some((pause) => pauseCovers(pause, dateISO));
+}
+
+/** The pause in force today, if any — what the UI labels and the chat reply describe. */
+export function currentPause(item: { pauses?: PausePeriod[] }, todayISO: string): PausePeriod | undefined {
+  return (item.pauses ?? []).find((pause) => pauseCovers(pause, todayISO));
+}
+
+/** A pause that hasn't started yet — resuming cancels it outright, there's nothing to keep. */
+export function upcomingPause(item: { pauses?: PausePeriod[] }, todayISO: string): PausePeriod | undefined {
+  return (item.pauses ?? []).find((pause) => pause.from > todayISO);
+}
+
+export function isPaused(item: { pauses?: PausePeriod[] }, todayISO: string): boolean {
+  return currentPause(item, todayISO) !== undefined;
+}
+
 export function occursOn(item: RecurringItem, dateISO: string): boolean {
   if (dateISO < item.startDate) return false;
   if (item.endDate && dateISO > item.endDate) return false;
+  // §28: a paused day isn't a scheduled day, so it counts as neither done nor missed —
+  // every view and statistic reads this through occursOn, which is why the check lives
+  // here and nowhere else.
+  if (isPausedOn(item, dateISO)) return false;
 
   switch (item.recurrence.type) {
     case "daily":

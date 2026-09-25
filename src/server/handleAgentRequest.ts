@@ -95,6 +95,10 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "updateRecurringTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing recurring task." },
   { name: "archiveHabit", buckets: ["delete", "modify"], listBlurb: "archive an existing habit." },
   { name: "archiveRecurringTask", buckets: ["delete", "modify"], listBlurb: "archive an existing recurring task." },
+  { name: "pauseHabit", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing habit, with or without a known resume date." },
+  { name: "pauseRecurringTask", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing recurring task, with or without a known resume date." },
+  { name: "resumeHabit", buckets: ["modify"], listBlurb: "resume a paused habit from today." },
+  { name: "resumeRecurringTask", buckets: ["modify"], listBlurb: "resume a paused recurring task from today." },
   { name: "logHabitProgress", buckets: ["modify"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
   { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing recurring task's checklist." },
   { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing one-off task's checklist." },
@@ -146,6 +150,14 @@ function buildDeleteProse(categoryList: string, todayISO: string): string {
 
 const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.`;
 
+// §28: pausing sits between "leave it running" and archiving — the user gets the habit
+// back. Kept in both the delete and modify buckets for the same reason archiving is:
+// "stop my gym habit for a couple of weeks" is a soft-stop phrasing.
+const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resumeRecurringTask: name selects the single item, the same text fragment used by update/archive. Use pause (not archive, and never delete) whenever the user wants to stop something *temporarily* — "pause my gym habit while I'm travelling", "suspend my reading habit for two weeks", "put my Spanish practice on hold". A paused item generates no occurrences for those days, and crucially those days count as neither done nor missed, so a pause protects the streak instead of breaking it.
+- from: ISO date (YYYY-MM-DD) of the first paused day. Omit for "starting now"; set it when the user names a later start ("pause it from next Monday"). It can never be in the past — the app refuses a backdated pause, so don't try to cover days that have already happened.
+- resumeOn: ISO date of the first day the item is due *again* — the day they're back, not the last day off. "Pause it until the 10th" and "pause for two weeks from today" both mean: work out that first-day-back date yourself and pass it. Omit resumeOn entirely for an open-ended pause ("pause it indefinitely", "until I say so"), which only ends when the user asks to resume.
+Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
+
 function buildModifyProse(categoryList: string): string {
   return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
@@ -195,7 +207,10 @@ function buildSystemPrompt(categories: Category[], todayISO: string, activeBucke
   ];
 
   if (isBucketActive(activeBuckets, "delete")) chunks.push(buildDeleteProse(categoryList, todayISO));
-  if (isBucketActive(activeBuckets, "delete") || isBucketActive(activeBuckets, "modify")) chunks.push(ARCHIVE_PROSE);
+  if (isBucketActive(activeBuckets, "delete") || isBucketActive(activeBuckets, "modify")) {
+    chunks.push(ARCHIVE_PROSE);
+    chunks.push(PAUSE_PROSE);
+  }
   if (isBucketActive(activeBuckets, "modify")) chunks.push(buildModifyProse(categoryList));
   if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
@@ -223,6 +238,19 @@ const CATEGORY_SELECTOR_FIELD = {
   type: "string",
   description:
     "Optional. Only to pick between same-named items the app listed for the user: that item's category id. Never a new value.",
+} as const;
+
+// §28: shared by pauseHabit and pauseRecurringTask.
+const PAUSE_FROM_FIELD = {
+  type: "string",
+  description:
+    "Optional ISO date (YYYY-MM-DD) of the first paused day. Omit for a pause starting today. Never a past date — the app refuses those.",
+} as const;
+
+const PAUSE_RESUME_FIELD = {
+  type: "string",
+  description:
+    "Optional ISO date (YYYY-MM-DD) of the first day the item is due again — the day they're back, not the last day off. Work it out yourself from phrases like 'for two weeks' or 'until the 10th'. Omit entirely for an open-ended pause that only ends when the user asks.",
 } as const;
 
 // activeBuckets narrows the schemas sent to only what classifyIntent is
@@ -638,6 +666,62 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's current name, to find which recurring task to archive." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "pauseHabit",
+      description:
+        "Pause a habit temporarily, with or without a known resume date: it generates no occurrences while paused, and those days count as neither completed nor missed, so the streak is protected rather than broken. Use for 'pause', 'suspend', 'put on hold', 'take a break from', 'while I'm travelling' intents — unlike archiving, the habit comes back.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's name, to find which habit to pause." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          from: PAUSE_FROM_FIELD,
+          resumeOn: PAUSE_RESUME_FIELD,
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "pauseRecurringTask",
+      description:
+        "Pause a recurring task temporarily, with or without a known resume date: it generates no occurrences while paused, and those days count as neither completed nor missed. Use for 'pause', 'suspend', 'put on hold', 'take a break from' intents — unlike archiving, the task comes back.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's name, to find which recurring task to pause." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          from: PAUSE_FROM_FIELD,
+          resumeOn: PAUSE_RESUME_FIELD,
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "resumeHabit",
+      description:
+        "Resume a paused habit from today, or cancel a pause that hasn't started yet. Use for 'resume', 'unpause', 'start tracking it again', 'I'm back' intents.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's name, to find which habit to resume." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "resumeRecurringTask",
+      description:
+        "Resume a paused recurring task from today, or cancel a pause that hasn't started yet. Use for 'resume', 'unpause', 'start it again' intents.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's name, to find which recurring task to resume." },
           categoryId: CATEGORY_SELECTOR_FIELD,
         },
         required: ["name"],
