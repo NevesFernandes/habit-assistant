@@ -5,7 +5,7 @@ import { sendOpenAiCompatible } from "./openaiCompatible.ts";
 // rather than the native `AI` binding (`env.AI.run(...)`) — see §26 in
 // Roadmap.md for why: this codebase can't exercise a binding-based call in
 // this sandboxed dev environment (`wrangler dev` doesn't run here — see
-// README.md's "Local dev note"), and handleAgentRequest.ts is deliberately
+// CONTRIBUTING.md's "Running locally"), and handleAgentRequest.ts is deliberately
 // runtime-agnostic (plain data in, plain data out) so the same code path
 // works in both the real Worker and the local Vite dev middleware. REST
 // keeps this adapter the same shape as the other three. The tradeoff:

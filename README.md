@@ -1,120 +1,48 @@
 # Habit Assistant
 
-See `CLAUDE.md` for the product vision and architecture decisions. This README is just the "how do I run it" instructions.
+**Track your habits and tasks by just saying what you did.**
 
-**Status**: core loop built, depth still filling in. Sign in, chat (typed or spoken — press-and-hold the mic button) with the assistant on a shared free trial by default or your own key via the Settings panel, and create/update/delete/archive Single Tasks, Habits, Recurring Tasks, and Categories. The full recurrence engine, per-habit/per-category stats, and a stats dashboard tab with a calendar-heatmap chart already work; Timer habits also have a real start/pause/stop tracking UI. Still filling in: real tracking for Numeric-value and Checklist Habit completion types, and a genuinely shared/interactive checklist component — see `CLAUDE.md`'s Status line for the full current/next breakdown.
+Most habit trackers make you work for them: open the app, find the right screen, tap through a form, tick a box. Habit Assistant replaces that with a chat. Type or say what you want in plain English, and the assistant does it.
 
-## One-time setup (things only you can do)
+> "Add a habit to read every night"
+> "Mark gym done today"
+> "I meditated for 12 minutes"
+> "Add milk to my shopping list"
+> "Pause running until I'm back from holiday on the 14th"
 
-### 1. Google OAuth client (for Drive sign-in)
+If it needs more information to act, it asks one short question. It doesn't guess.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → create a new project (any name).
-2. **APIs & Services → OAuth consent screen**: choose *External*, fill in the required fields (app name, your email), and leave it in *Testing* mode — that's fine since only you will use it. Add your own Google account under "Test users".
-3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**: type *Web application*. Under "Authorized JavaScript origins" add `http://localhost:5173`.
-4. Copy the resulting **Client ID** (looks like `123...apps.googleusercontent.com`) — it's not secret.
-5. Copy `.env.example` to `.env.local` and set `VITE_GOOGLE_CLIENT_ID` to that value.
-6. **APIs & Services → Library**, search **Google Drive API**, open it, click **Enable**. (Easy to miss — the OAuth client alone doesn't turn the API on. Without this step, sign-in works but loading/creating the data file fails with a 403 `accessNotConfigured` error.)
+## What it does
 
-### 2. A key for the shared "free trial" provider (for the chat assistant)
+- **Talk, don't tap.** Everything can be created, changed, completed, paused, archived or deleted from the chat.
+- **Voice input.** Hold the mic button, speak, let go. What you said is transcribed and sent right away.
+- **Habits, measured your way.** Yes/no, a number ("8 glasses of water"), a timer ("meditate 10 min"), or a checklist ("morning routine").
+- **Tasks too.** One-off to-dos, and recurring tasks with a running checklist, like a weekly shopping list that fills up during the week.
+- **Schedules that fit real life.** Every day, certain weekdays, every N days, N times a week or month, "the third Monday of the month," yearly dates like birthdays, or on/off cycles like "5 days on, 2 off."
+- **Pause without losing your streak.** Going on holiday or recovering from an injury? Pause a habit, and the paused days count as neither done nor missed.
+- **Stats that motivate.** Current and best streaks, completion rates, weekly/monthly/yearly counts, and a calendar heatmap of your history.
+- **A built-in timer.** Start, pause and stop a timer for timed habits, then save the result.
+- **Your data stays yours.** Everything is stored in one file in a visible folder in *your own* Google Drive. There's no company database and no account to create. Sign in with Google and you're done.
+- **Works on phone and desktop.** Install it to your home screen like an app on Android, or use it in any desktop browser.
 
-The app defaults to **Gemini**, which has a genuinely free, no-credit-card API tier — this funds the experience anyone gets before they add their own key in the app's Settings panel. See CLAUDE.md's "Cost model / provider strategy" for why.
+## Cost
 
-1. Create a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-2. Create a file named `.dev.vars` in the project root (gitignored) with:
-   ```
-   TRIAL_PROVIDER=gemini
-   TRIAL_API_KEY=...
-   ```
+A free shared allowance lets you try the assistant right away. For unlimited use, paste your own AI provider key into Settings. Google Gemini and Groq both offer a free key that takes a couple of minutes to get, and Anthropic works too. The app has no subscription and no ads.
 
-The shared trial also supports an automatic failover to a second provider if the primary one has a transient failure (rate limit, 5xx) — see §23 in `Roadmap.md`. It's optional; skip it and the app runs fine on a single trial provider. **Groq is not currently a working choice for this** (verified 2026-09-04: every Groq model with tool-calling support is below this app's real tool-schema payload size on the free tier — see the comment above `groqAdapter.defaultModel` in `src/server/providers/groq.ts`) — use Anthropic as the fallback tier instead if you want to test the chain for real:
-```
-TRIAL_FALLBACK_PROVIDER=anthropic
-TRIAL_FALLBACK_API_KEY=sk-ant-...
-```
+## Status
 
-Prefer a different default, or want to test without spending anything at all?
-- Swap `TRIAL_PROVIDER` to `groq` or `anthropic` ([console.anthropic.com](https://console.anthropic.com/) — separate billing from a Claude.ai subscription).
-- Set `TRIAL_PROVIDER=mock` and skip `TRIAL_API_KEY` entirely — a zero-cost, keyword-matching stand-in for iterating on anything that isn't agent reasoning itself.
+Habit Assistant is a working personal project and is still growing. Everything listed above works today. [Roadmap.md](Roadmap.md) lists what's planned next.
 
-Anthropic, Groq, and Gemini are also the three choices in the app's own Settings panel, for anyone who wants to bring their own key instead of using the shared trial.
+The app is currently set up to be self-hosted: you deploy your own copy (free) and sign in with your own Google account. [CONTRIBUTING.md](CONTRIBUTING.md) explains how.
 
-### 3. A key for the shared voice-transcription trial
+## More
 
-Voice input (press-and-hold the mic button in chat) always uses Groq's Whisper API — it's the only viable free speech-to-text option, so unlike chat there's no provider choice here. This is a **separate** trial key from step 2's, even though it's likely the same physical Groq key.
+| Document | For |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Developers: running it locally, testing, deploying your own copy, and contributing |
+| [CLAUDE.md](CLAUDE.md) | The design decisions and architecture behind the app (also the brief for the AI coding assistant that helps build it) |
+| [Roadmap.md](Roadmap.md) | The prioritized backlog of planned work |
 
-Add to the same `.dev.vars` file:
-```
-STT_TRIAL_API_KEY=gsk_...
-```
+## License
 
-(You can reuse the same Groq key from step 2, or create a second one — either works.) Anyone can also switch to their *own* Groq key for voice specifically in the Settings panel, independent of whichever provider they're chatting with.
-
-## Running locally
-
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`. This runs the frontend *and* a local stand-in for `/api/agent` and `/api/transcribe` (a small Vite dev-server plugin, `vite.config.ts`, that calls the same shared code as the real deployment's Worker entry point, `src/server/worker.ts`). It reads the trial keys straight from `.dev.vars`. Microphone access requires HTTPS or `localhost` — both `http://localhost:5173` here and the real Cloudflare Workers deployment already satisfy that, nothing extra to configure.
-
-There's also `npm run workers:dev`, which builds the site and then uses Cloudflare's own `wrangler dev` against `wrangler.jsonc` — a more faithful emulation of the real deployment. It should work on a normal machine, but the Workers runtime it uses (`workerd`) needs to reserve large aligned memory regions that some sandboxed/restricted environments block, so if it crashes with an `mmap`/`tcmalloc` error, use plain `npm run dev` instead — that's what this project was actually verified against.
-
-## Chat scenario tests (real models, no browser, no Google login)
-
-`npm run test:chat` plays scripted conversations against the **real** model and checks each turn. It checks which action the model chose, the reply text, what ended up stored, and which provider answered. It runs the app's own chat logic (`src/lib/chatEngine.ts`, the same code `App.tsx` uses), with test habits and tasks loaded from `tests/chat/fixtures/*.json` instead of Google Drive. It reads the keys from `.dev.vars`, like `npm run dev`.
-
-```bash
-npm run test:chat -- s32-identical       # scenarios whose name contains this (a filter is required)
-npm run test:chat -- --all               # every scenario — rarely worth it, see below
-npm run test:chat -- s32-identical --repeat 5   # 5x, with a pass rate per scenario
-npm run test:chat -- s32-identical --provider groq   # gemini (default) | groq | workersAI | chain (the full failover chain)
-npm run test:chat -- s32-identical --delay 3000     # ms between model calls, for tight free-tier rate limits
-npm run test:chat -- s32-identical --verbose        # also show the server's own logging
-```
-
-- **One provider at a time by default.** A failing model shows up as a failure, and isn't hidden by the failover chain.
-- **Full report:** every message, reply, tool call and debug entry goes to `test-results/chat-<timestamp>.json`. That folder is gitignored.
-- **Run only what you need.** Scenarios are meant to be written for the specific thing being changed or investigated, and run on their own. With no filter, the runner lists the scenarios instead of running them all.
-- **Cost:** each turn that reaches the model is one real API call on the free tier. A number pick like "2" is resolved in the app and costs nothing.
-- **Separate test key (optional):** put `TEST_GEMINI_API_KEY=...` in `.dev.vars` to keep test runs off the quota the dev app and shared trial use.
-- **Adding a scenario:** add an entry to a file in `tests/chat/scenarios/` (register a new file in `tests/chat/run.ts`). Each turn is `{ user, expect }`. See `tests/chat/types.ts` for what `expect` can check.
-
-## Testing on your Android phone
-
-Since most real usage will be on a phone, it's worth testing there directly during development — without deploying anywhere public. `adb reverse` (standard Android developer tooling) forwards the phone's own `http://localhost:5173` to your laptop's dev server over the USB cable, so the phone's browser sees the exact same origin your laptop already uses. That means **no new Google OAuth origin, no HTTPS cert, no Vite config changes, and no traffic ever leaves the USB cable** — the cleanest way to avoid a public deployment just for testing.
-
-One-time setup:
-1. On the phone: **Settings → About phone** → tap "Build number" 7 times to unlock **Developer Options** → enable **USB debugging**.
-2. On the laptop: install `adb` (Debian/Ubuntu: `sudo apt install adb`).
-3. Connect via USB cable, and accept the "Allow USB debugging?" prompt that appears on the phone.
-4. Verify: `adb devices` should list the phone as `device` (not `unauthorized`).
-
-Day to day:
-```bash
-npm run dev:phone
-```
-This is just `adb reverse tcp:5173 tcp:5173 && vite` — then open `http://localhost:5173` in Chrome **on the phone**. It behaves identically to the laptop: same OAuth origin, same secure-context treatment for microphone access, live-reload included. For remote debugging (console, network, elements), open `chrome://inspect/#devices` in desktop Chrome to inspect the phone's tab directly.
-
-One caveat: this only covers the app itself, not the PWA install layer. `npm run dev` never enables the service worker (`vite-plugin-pwa` only turns it on for production builds), so no "Add to Home Screen" prompt and no offline caching will show up this way — that's true on the laptop too, not phone-specific. To test the actual installed-app experience, build first instead:
-```bash
-npm run build
-npm run preview
-```
-Note the port `vite preview` prints (`4173` by default), forward that one instead (`adb reverse tcp:4173 tcp:4173`), and open it on the phone — that's the build where the service worker, install prompt, and offline caching are all actually active.
-
-Prefer no cable? Android 11+ supports wireless `adb` (`adb pair`/`adb connect`, paired over the same Wi-Fi network) — same `adb reverse` command afterward, still fully local, nothing internet-facing.
-
-## Deploying (when you're ready)
-
-As of 2026-09, Cloudflare's dashboard provisions new projects through a unified "Create app" flow (Workers Builds, deploying via `wrangler deploy`) rather than the older, separately-branded "Pages" product this README originally assumed — see the git history around 2026-09-02 for the `wrangler.jsonc` + `src/server/worker.ts` this required. Steps:
-
-1. Create a free [Cloudflare](https://dash.cloudflare.com/) account.
-2. **Create app → Connect to Git**, pick this GitHub repo, branch `main`.
-3. On the "set up your application" screen: build command is pre-filled `npm run build` (correct, leave it) and deploy command is pre-filled `npx wrangler deploy` (correct — reads `wrangler.jsonc` at the repo root, which already specifies the `dist` assets directory and the Worker entry point). Leave "Path" at its default (the app lives at the repo root). Leave the auto-created API token and the non-production-branch-builds checkbox as-is.
-4. **Check the project name Cloudflare assigns matches `wrangler.jsonc`'s `"name"` field (`habit-assistant`)** — if the dashboard let you pick a different name, either rename it to match or update `wrangler.jsonc` accordingly before deploying, so the CI-driven `wrangler deploy` doesn't fight the dashboard-created project.
-5. **`TRIAL_PROVIDER` (and, if used, `TRIAL_FALLBACK_PROVIDER`) is already set via `wrangler.jsonc`'s `vars` — don't also add either as a dashboard variable.** A plain-text dashboard-only variable does *not* survive the next Git-triggered `wrangler deploy` (confirmed the hard way 2026-09-03 — it silently reverted to the code's `"gemini"` fallback, sending whatever key was configured to the wrong provider's API). To change the trial provider(s), edit `wrangler.jsonc` and push, not the dashboard. In the project's **Settings → Variables and Secrets** (under the Bindings-adjacent runtime section, exact label may vary), add only the real secrets — `TRIAL_API_KEY`, `TRIAL_FALLBACK_API_KEY` (if using the §23 failover chain), `STT_TRIAL_API_KEY` (and optionally `TRIAL_MODEL`/`TRIAL_FALLBACK_MODEL` as plain vars if you need non-default models) — these persist fine as Secrets.
-6. **Also add `VITE_GOOGLE_CLIENT_ID`** (the same value as in `.env.local`, step 1's Client ID — not secret) as a plain environment variable. This one is different from the others: it's read at *build* time by Vite and baked into the frontend bundle (`src/App.tsx`'s `CLIENT_ID`, no fallback) — without it, the deployed site's Google Sign-In silently breaks.
-7. Add the deployed `*.workers.dev` (or custom domain, if set up) URL as another "Authorized JavaScript origin" on the Google OAuth client from step 1.
-
-I'll walk through each of these with you when we get there.
+[MIT](LICENSE): free to use, modify and share.

@@ -18,7 +18,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
  * src/server/worker.ts (the real deployment's entry point). This exists
  * because the Cloudflare Workers emulator (workerd, via `wrangler dev`)
  * can't run in this sandboxed environment (it needs large aligned mmap
- * regions the sandbox blocks) — see README.md's "Local dev note".
+ * regions the sandbox blocks) — see CONTRIBUTING.md's "Running locally".
  * `wrangler dev` remains the more faithful emulation and should work on a
  * normal machine.
  */
