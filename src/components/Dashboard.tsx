@@ -1,12 +1,11 @@
 import { useState } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
-import { aggregateCategoryStats, habitCalendar, heatmapWindow } from "../lib/habitStats";
+import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
-import { formatDate } from "../lib/confirmations";
 import CategoryIcon from "./CategoryIcon";
 import StatTile from "./StatTile";
 import Meter from "./Meter";
-import CalendarHeatmap from "./CalendarHeatmap";
+import HabitHeatmap from "./HabitHeatmap";
 
 // §17 in Roadmap.md: an overview of the numbers HabitsView/CategoriesView already compute
 // per-item, plus the one real chart (a calendar heatmap). Habits + Categories only — no
@@ -89,16 +88,8 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
             ))}
           </select>
         </div>
-        {selectedHabit && <HabitHeatmap habit={selectedHabit} completionLog={completionLog} today={today} />}
+        {selectedHabit && <HabitHeatmap habit={selectedHabit} completionLog={completionLog} todayISO={today} />}
       </div>
     </div>
   );
-}
-
-function HabitHeatmap({ habit, completionLog, today }: { habit: Habit; completionLog: CompletionLogEntry[]; today: string }) {
-  const range = heatmapWindow(habit, today);
-  if (!range) {
-    return <p className="text-sm text-slate-500">Starts {formatDate(habit.startDate, today)} — history shows up from then.</p>;
-  }
-  return <CalendarHeatmap days={habitCalendar(habit, completionLog, range.from, range.to)} todayISO={today} />;
 }

@@ -21,9 +21,6 @@ _Nothing queued._
 
 ## Next
 
-### §37 — Show the completion-history heatmap in a habit's expanded card
-In the Habits view, expanding a habit already shows its details and stats (`HabitsView`). Add that habit's heatmap there, below the stats, reusing `CalendarHeatmap` and `habitStats.ts`'s `habitCalendar` exactly as the stats tab does. Do not build a second implementation. **Do §36 first:** the fixes there (window trimmed to the habit's start, scroll opening on recent entries, legend, weekday labels) matter even more in a narrow card inside a list than on the dashboard. Also decide whether the dashboard's habit picker is still worth keeping once every habit shows its own heatmap. A reasonable answer is to keep it, since the dashboard gives one place to compare habits, but settle it here.
-
 ### §38 — In-app reference manual
 A short help page, written for users rather than developers, that answers "what can I say?" and "how does this work?" without anyone having to read the repo. The app doesn't need to explain itself to its builder; this is for everyone else who uses it.
 
