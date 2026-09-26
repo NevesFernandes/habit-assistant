@@ -21,23 +21,7 @@ _Nothing queued._
 
 ## Next
 
-### §38 — In-app reference manual
-A short help page, written for users rather than developers, that answers "what can I say?" and "how does this work?" without anyone having to read the repo. The app doesn't need to explain itself to its builder; this is for everyone else who uses it.
-
-**Format:** a static page in `public/` (e.g. `public/help.html`), following the existing precedent of `public/api-key-setup.html`: plain HTML that loads instantly, is precached by the service worker so it works offline, and can be updated without touching app code. Keep the app's dark/violet look.
-
-**Where the link goes:** a small `?` help icon in the top bar, next to the settings gear (`SettingsIcon` in `App.tsx`), so it's one tap from anywhere, plus a "Help" link inside Settings for people who look there. It also becomes the natural link for the chat's empty state and the first-run experience.
-
-**Content:**
-- **Talking to the assistant:** example phrasings for each action (create, complete, log a number or time, edit, pause/resume, archive, delete); how it asks when something is missing or ambiguous (including picking from a list by number); voice input (hold to speak, sent on release).
-- **The item types, from the user's side:** Habit vs Recurring Task vs Single Task, and when to use which; a Habit's four completion types; checklists (a habit's resets each day, a task's is a running list).
-- **Schedules:** each recurrence type, with a sample sentence that sets it up.
-- **Archive vs pause vs delete:** what each keeps and what it erases. Paused days count as neither done nor missed.
-- **Rules that surprise people:** you can't complete a habit on a future date; an unfinished single task rolls forward to today; the timer is per-device and reopens paused after closing the app.
-- **Stats:** what streak, best streak and completion % mean, and how to read the heatmap (link or reuse §36's legend).
-- **Your data:** where it lives (the "Habit Assistant" folder in your Google Drive), that you can open or back it up, and what the shared free trial vs your own key means, linking to `api-key-setup.html`.
-
-**Keep it accurate:** the manual restates behavior that's defined in code, so any later roadmap item that changes user-visible behavior should update it in the same `Close §N` commit. Add a line saying so to `CLAUDE.md` when this ships.
+_Nothing queued._
 
 ## Later
 

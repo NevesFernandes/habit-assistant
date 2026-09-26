@@ -31,7 +31,10 @@ export default function Chat({ messages, onSend, sending, sttApiKey, byokProvide
       <div className="flex-1 space-y-2 overflow-y-auto rounded-md bg-slate-900 p-3">
         {messages.length === 0 && (
           <p className="text-sm text-slate-500">
-            Try: "add a task to buy milk" — or something vague, to see it ask a follow-up.
+            Try: "add a task to buy milk" — or something vague, to see it ask a follow-up.{" "}
+            <a href="/help.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
+              More things you can say
+            </a>
           </p>
         )}
         {toDisplayMessages(messages).map((message, index) => (

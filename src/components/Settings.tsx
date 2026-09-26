@@ -108,9 +108,14 @@ export default function Settings({
     <div className="rounded-md bg-slate-800 p-4 text-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-medium">API keys</h2>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
-          ✕
-        </button>
+        <div className="flex items-center gap-3">
+          <a href="/help.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
+            Help
+          </a>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+            ✕
+          </button>
+        </div>
       </div>
       <p className="mb-3 text-slate-400">
         You're on the free shared trial by default. Save a key per provider below, then switch

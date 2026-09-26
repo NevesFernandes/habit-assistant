@@ -11,11 +11,12 @@ Related docs: `README.md` (user-facing pitch), `CONTRIBUTING.md` (setup, running
 - **Chat-first.** A text box is the primary interface, and the agent acts directly rather than routing the user to forms. Creating and editing recurrence rules is chat-only by design; there is no form for them.
 - **Ask, don't guess.** When information is missing, the agent asks. When a name matches several items, the app lists them and the user picks, by number or name. Confirmations are built from the item as it was actually saved, including any defaults the agent assumed, so the user can spot a misunderstanding.
 - **Voice input.** Hold the mic button to record; on release, the clip is transcribed and **sent immediately**, with no review step. This is a deliberate trade of the usual caution for a voice-native feel. The transcript still shows up as the sent message. A user message is just text wherever it came from, so voice feeds the same pipeline as typing.
+- **User manual: `public/help.html`**, linked from the `?` button in the top bar, from Settings and from the chat's empty state. It restates user-visible behaviour that's defined in code, so **any change to user-visible behaviour updates it in the same `Close §N` commit**.
 - **No push notifications or reminders.** The app is pull-based. Don't build toward notifications, but don't design anything that would make adding them painful later.
 
 ## Item model (`src/types/models.ts`)
 
-Three item types share a base: `name` (required), `description`, `category` (optional), `priority` (numeric; sets display order), `startDate` (defaults to today), `endDate`.
+Three item types share a base: `name` (required), `description`, `category` (optional, but required on Habits), `priority` (numeric; sets display order), `startDate` (defaults to today), `endDate`.
 
 - **Habit.** Recurring, with a completion type:
   - **Yes/No**: a toggle.
@@ -33,7 +34,7 @@ Three item types share a base: `name` (required), `description`, `category` (opt
 
 ## Categories
 
-A default starter set with icons ships out of the box: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other. Users can add their own. **Category is optional**, which keeps agent-created items low-friction.
+A default starter set with icons ships out of the box: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other. Users can add their own. **Category is required on Habits only** (the agent picks the best fit, falling back to Other, so it never has to ask); it's optional on Recurring and Single Tasks. This keeps agent-created items low-friction.
 
 ## Recurrence (`src/lib/recurrence.ts`)
 

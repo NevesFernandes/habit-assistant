@@ -19,6 +19,10 @@ export default function SignIn({ onClick, loading, error }: SignInProps) {
         {loading ? "Signing in…" : "Sign in with Google"}
       </button>
       {error && <p className="max-w-sm text-sm text-red-400">{error}</p>}
+      {/* §38: readable before signing in — it explains where data and chat messages go. */}
+      <a href="/help.html" target="_blank" rel="noreferrer" className="text-sm text-violet-400 underline">
+        How it works, and where your data goes
+      </a>
     </div>
   );
 }
