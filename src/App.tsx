@@ -116,7 +116,25 @@ export default function App() {
   // Saves waiting on the Reconnect banner: each resolves true once reconnected, false on cancel.
   const reconnectWaitersRef = useRef<((reconnected: boolean) => void)[]>([]);
   const [reconnectNeeded, setReconnectNeeded] = useState(false);
+  const [savesWaiting, setSavesWaiting] = useState(0);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
+
+  // Issue #7: the banner shows as soon as the token is about to expire — checked every 30s and
+  // whenever the app comes back to the foreground — so the user can reconnect before a save
+  // needs it. The Google popup only ever opens from the banner's own Reconnect tap.
+  useEffect(() => {
+    if (!session) return;
+    const check = () => {
+      if (sessionRef.current && tokenNeedsRefresh(sessionRef.current)) setReconnectNeeded(true);
+    };
+    check();
+    const interval = window.setInterval(check, 30_000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [session]);
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -253,7 +271,7 @@ export default function App() {
     }
   }
 
-  /** One refresh at a time: a chat send and its save share the same popup. */
+  /** One refresh at a time, even if Reconnect is tapped twice. */
   function refreshToken(): Promise<DriveSession> {
     if (!refreshPromiseRef.current) {
       refreshPromiseRef.current = refreshSession(CLIENT_ID)
@@ -268,24 +286,10 @@ export default function App() {
     return refreshPromiseRef.current;
   }
 
-  /**
-   * Issue #7: the session, renewed first if its token is about to expire. Called at the start
-   * of a tap (send, checkbox, timer save) so the refresh popup counts as tap-started and isn't
-   * blocked. If the refresh fails, returns the old session; a 401 then leads to the banner.
-   */
-  async function freshSession(): Promise<DriveSession | null> {
-    const current = sessionRef.current;
-    if (!current || !tokenNeedsRefresh(current)) return current;
-    try {
-      return await refreshToken();
-    } catch {
-      return sessionRef.current;
-    }
-  }
-
   /** Shows the Reconnect banner and waits for the user's answer. */
   function waitForReconnect(): Promise<boolean> {
     setReconnectNeeded(true);
+    setSavesWaiting((count) => count + 1);
     return new Promise((resolve) => reconnectWaitersRef.current.push(resolve));
   }
 
@@ -293,6 +297,7 @@ export default function App() {
     const waiters = reconnectWaitersRef.current;
     reconnectWaitersRef.current = [];
     setReconnectNeeded(false);
+    setSavesWaiting(0);
     setReconnectError(null);
     waiters.forEach((resolve) => resolve(reconnected));
   }
@@ -317,7 +322,11 @@ export default function App() {
   async function persist(mutate: (data: AppData) => AppData): Promise<boolean> {
     attemptedWriteRef.current = true;
     if (!sessionRef.current || !fileRef || !data) return false;
-    await freshSession();
+    // Issue #7: a token known to be expiring isn't even tried — the save waits on the banner.
+    if (tokenNeedsRefresh(sessionRef.current) && !(await waitForReconnect())) {
+      pushAssistantMessage("That wasn't saved, because your Google sign-in expired. Reconnect, then try it again.");
+      return false;
+    }
 
     let baseData = data;
     let ref = fileRef;
@@ -427,9 +436,6 @@ export default function App() {
   async function handleSend(userText: string) {
     if (!data || !chatRef.current) return;
     attemptedWriteRef.current = false;
-    // Issue #7: renew an expiring token now, while the tap still counts — the save only
-    // happens after the model replies, too late for a popup.
-    void freshSession();
     setSending(true);
     try {
       await chatRef.current.send(userText);
@@ -557,16 +563,23 @@ export default function App() {
 
       {reconnectNeeded && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-400/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
-          <span className="flex-1">Your Google sign-in expired, so this hasn't been saved yet.</span>
+          <span className="flex-1">
+            {savesWaiting > 0
+              ? "Your Google sign-in expired, so your last change is waiting to be saved."
+              : "Your Google sign-in has expired."}{" "}
+            Tap Reconnect — a small Google window will open and close.
+          </span>
           <button
             onClick={handleReconnect}
             className="rounded-md bg-violet-500 px-3 py-1 text-white hover:bg-violet-400"
           >
             Reconnect
           </button>
-          <button onClick={() => settleReconnect(false)} className="rounded-md bg-slate-700 px-3 py-1 hover:bg-slate-600">
-            Cancel
-          </button>
+          {savesWaiting > 0 && (
+            <button onClick={() => settleReconnect(false)} className="rounded-md bg-slate-700 px-3 py-1 hover:bg-slate-600">
+              Cancel
+            </button>
+          )}
           {reconnectError && <p className="w-full text-xs text-red-300">{reconnectError}</p>}
         </div>
       )}
