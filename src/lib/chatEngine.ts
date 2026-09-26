@@ -122,6 +122,12 @@ function resolveChecklistItemMatches(checklist: ChecklistItem[] | undefined, fra
   return (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
 }
 
+/** "milk" / "milk" and "bread" / "milk", "eggs" and "bread" */
+function formatQuotedAnd(texts: string[]): string {
+  const quoted = texts.map((text) => `"${text}"`);
+  return quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+}
+
 const ITEM_NOUNS: Record<ItemKind, string> = {
   singleTask: "task",
   habit: "habit",
@@ -731,18 +737,22 @@ export class ChatSession {
   // Recurring and one-off tasks share these: the model may guess the wrong task type (§32).
   private async handleAddTaskChecklistItem(
     requestedKind: "recurringTask" | "singleTask",
-    input: ItemSelector & { text: string },
+    input: ItemSelector & { items?: string[]; text?: string },
     toolCall: ToolCallRef,
   ) {
+    const texts = [...(input.items ?? []), ...(input.text ? [input.text] : [])]
+      .map((text) => text.trim())
+      .filter((text) => text.length > 0);
+    if (texts.length === 0) {
+      this.pushAssistantMessage("What should I add to the list?", toolCall);
+      return;
+    }
     const kind = this.resolveKind(requestedKind, ["recurringTask", "singleTask"], input) as "recurringTask" | "singleTask";
     const task = this.pickItem(kind, input, toolCall);
     if (!task) return;
-    const saved = await this.deps.persist((current) =>
-      kind === "recurringTask"
-        ? addRecurringTaskChecklistItem(current, task.id, input.text)
-        : addSingleTaskChecklistItem(current, task.id, input.text),
-    );
-    if (saved) this.pushAssistantMessage(`Added "${input.text}" to "${task.name}".`, toolCall);
+    const addOne = kind === "recurringTask" ? addRecurringTaskChecklistItem : addSingleTaskChecklistItem;
+    const saved = await this.deps.persist((current) => texts.reduce((data, text) => addOne(data, task.id, text), current));
+    if (saved) this.pushAssistantMessage(`Added ${formatQuotedAnd(texts)} to "${task.name}".`, toolCall);
   }
 
   private async handleCheckHabitChecklistItem(
