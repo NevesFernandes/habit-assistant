@@ -16,7 +16,7 @@ Related docs: `README.md` (user-facing pitch), `CONTRIBUTING.md` (setup, running
 
 ## Item model (`src/types/models.ts`)
 
-Three item types share a base: `name` (required), `description`, `category` (optional), `priority` (numeric; sets display order), `startDate` (defaults to today), `endDate`.
+Three item types share a base: `name` (required), `description`, `category` (optional, but required on Habits), `priority` (numeric; sets display order), `startDate` (defaults to today), `endDate`.
 
 - **Habit.** Recurring, with a completion type:
   - **Yes/No**: a toggle.
@@ -34,7 +34,7 @@ Three item types share a base: `name` (required), `description`, `category` (opt
 
 ## Categories
 
-A default starter set with icons ships out of the box: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other. Users can add their own. **Category is optional**, which keeps agent-created items low-friction.
+A default starter set with icons ships out of the box: Quit a bad habit, Study, Sports, Social, Finance, Health, Work, Nutrition, Home, Outdoor, Other. Users can add their own. **Category is required on Habits only** (the agent picks the best fit, falling back to Other, so it never has to ask); it's optional on Recurring and Single Tasks. This keeps agent-created items low-friction.
 
 ## Recurrence (`src/lib/recurrence.ts`)
 

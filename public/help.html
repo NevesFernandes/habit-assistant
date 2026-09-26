@@ -219,7 +219,7 @@
         <li><strong>Recurring task:</strong> a chore that repeats, like taking out the trash. It's just done or not done each time, with no stats.</li>
         <li><strong>Task:</strong> a one-off to-do, like calling the dentist.</li>
       </ul>
-      <p>Every item has a name, and can have a description, a category, a priority (higher shows first), a start date (today unless you say otherwise) and an end date.</p>
+      <p>Every item has a name, and can have a description, a priority (a number where higher shows first), a start date (today unless you say otherwise) and an end date. Habits always have a category: if you don't name one, the assistant picks the best fit, or <strong>Other</strong>. Tasks can have a category or none.</p>
 
       <h3>How a habit is tracked</h3>
       <table>
@@ -280,7 +280,7 @@
       <ul>
         <li><strong>You can't complete a day that hasn't happened yet.</strong> Habits and recurring tasks refuse it. For a one-off task set in the future, you're asked whether to mark it done and move it to today.</li>
         <li><strong>You can only mark days an item is due.</strong> If gym is Mondays only, the assistant won't mark it done on a Tuesday, and tells you why.</li>
-        <li><strong>An unfinished task moves to today</strong> instead of piling up on old days. Say <span class="say">just for today</span> when you add one if you'd rather it disappear at the end of the day.</li>
+        <li><strong>Unfinished tasks carry over.</strong> By default, a one-off task that isn't done moves on to the next day, and keeps moving until you do it. If you want a task that simply disappears when its day ends, say so when you add it: <span class="say">add a task to call Ana, just for today</span>.</li>
         <li><strong>Un-marking erases.</strong> Undoing a day removes what was logged for it, including an amount.</li>
         <li><strong>The timer is per device.</strong> If you close the app while it runs, it reopens paused, not with the missed time added. Save the result to a habit when you're done; nothing is logged until you do.</li>
       </ul>
@@ -290,12 +290,12 @@
       <ul>
         <li><strong>Chat</strong> (speech bubble): talk to the assistant.</li>
         <li><strong>Today</strong> (calendar): what's due on a day, with checkboxes. Pick another day from the strip of days (or its arrows); <strong>Today</strong> jumps back.</li>
-        <li><strong>Categories</strong> (tag): add, rename or remove categories, and see stats per category. Category is optional on every item.</li>
+        <li><strong>Categories</strong> (tag): add, rename or remove categories, and see stats per category. Every habit has a category (Other if nothing fits); tasks don't need one.</li>
         <li><strong>View</strong> (list): all habits, recurring tasks and tasks. Tap a habit for its details, stats and history.</li>
         <li><strong>Stats</strong> (bar chart): overall progress, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
         <li><strong>Timer</strong> (stopwatch): a stopwatch or countdown you can save to a Timer habit.</li>
       </ul>
-      <p>Next to the title, the <strong>?</strong> button opens this page and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies.</p>
+      <p>Next to the title, the <strong>?</strong> button opens this page (also linked from the sign-in screen) and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies.</p>
 
       <h2 id="stats">7. Stats and the heatmap</h2>
       <ul>
