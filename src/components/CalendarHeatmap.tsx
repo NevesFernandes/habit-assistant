@@ -74,7 +74,7 @@ export default function CalendarHeatmap({ days, todayISO }: CalendarHeatmapProps
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-start gap-1">
+      <div className="flex items-start justify-end gap-1">
         <div ref={scrollRef} className="min-w-0 overflow-x-auto">
           <svg width={width} height={height} className="block">
             {weeks.map((week, weekIdx) =>
