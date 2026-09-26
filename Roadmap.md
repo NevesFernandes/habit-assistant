@@ -17,10 +17,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §39 — Reach a task's checklist from the day view
-In the day view (`DayView.tsx`), a Single or Recurring Task with an attached checklist shows no sign of it, and there's no way to open it there. Today the list can only be seen by going to the View tab (Single Tasks / Recurring Tasks) and expanding the task. The shopping-list case is exactly where this hurts: the list is needed on the day, from the day view. (Checklist-*type* habits aren't affected: `DayView` already renders their checklist inline.)
-
-**Before implementing, ask the user first.** They have specific ideas for how this should work (e.g. inline vs expand-on-tap vs a separate panel, and whether items can be checked or added from there). Don't pick a design on your own. Whatever is chosen should reuse the shared `Checklist.tsx` component, as the rest of the app does.
+_Nothing queued._
 
 ## Next
 

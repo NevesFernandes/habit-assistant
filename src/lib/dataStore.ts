@@ -23,6 +23,17 @@ export interface CreateSingleTaskInput {
   priority?: number;
   startDate?: string;
   persistency?: boolean;
+  withChecklist?: boolean;
+  checklistItems?: string[];
+}
+
+// §39: a task either has a checklist (an array, possibly empty) or doesn't
+// (undefined) — the day view shows a checklist badge only for the former.
+// Items alone also imply a checklist, whatever withChecklist says.
+function initialTaskChecklist(input: { withChecklist?: boolean; checklistItems?: string[] }): ChecklistItem[] | undefined {
+  const items = (input.checklistItems ?? []).map((text) => text.trim()).filter((text) => text.length > 0);
+  if (!input.withChecklist && items.length === 0) return undefined;
+  return items.map((text) => ({ id: crypto.randomUUID(), text, checked: false }));
 }
 
 export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppData {
@@ -38,6 +49,7 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
     originalStartDate: startDate,
     done: false,
     persistency: input.persistency ?? true,
+    checklist: initialTaskChecklist(input),
   };
   return { ...data, singleTasks: [...data.singleTasks, task] };
 }
@@ -193,6 +205,8 @@ export interface CreateRecurringTaskInput {
   startWeekdayMode?: "closest" | "next";
   endDate?: string;
   recurrence: RecurrenceRule;
+  withChecklist?: boolean;
+  checklistItems?: string[];
 }
 
 export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
@@ -206,6 +220,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     startDate: resolveStartDate(input),
     endDate: input.endDate,
     recurrence: input.recurrence,
+    checklist: initialTaskChecklist(input),
   };
   return { ...data, recurringTasks: [...data.recurringTasks, task] };
 }

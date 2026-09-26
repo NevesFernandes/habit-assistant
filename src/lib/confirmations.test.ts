@@ -126,6 +126,15 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
   assert.match(text, /Date: today/);
   assert.match(text, /carries over/);
   assert.match(text, /Assumed: due today\./);
+  assert.doesNotMatch(text, /Checklist/);
+}
+
+// §39: a task created with a checklist says so, empty or not.
+{
+  const base: SingleTask = { kind: "singleTask", id: "s1", name: "Go shopping", priority: 0, startDate: TODAY, done: false, persistency: true };
+  assert.match(describeCreatedSingleTask({ ...base, checklist: [] }, { name: "Go shopping" }, TODAY), /• Checklist: empty for now/);
+  const withItems = { ...base, checklist: [{ id: "a", text: "milk", checked: false }, { id: "b", text: "eggs", checked: false }] };
+  assert.match(describeCreatedSingleTask(withItems, { name: "Go shopping" }, TODAY), /• Checklist: milk, eggs/);
 }
 
 // Updates list only changed fields.
