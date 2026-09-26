@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Help — Habit Assistant</title>
+    <!--
+      §38: the user manual. It restates behaviour defined in code, so any change to
+      user-visible behaviour should update this page in the same Close §N commit.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      main {
+        max-width: 620px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 0.5rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin: 2.5rem 0 1rem;
+        padding-top: 2rem;
+        border-top: 1px solid #1e293b;
+      }
+      h3 {
+        font-size: 0.95rem;
+        margin: 1.5rem 0 0.5rem;
+        color: #cbd5e1;
+      }
+      p.lead {
+        color: #94a3b8;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+      }
+      ul,
+      ol {
+        padding-left: 1.25rem;
+        margin: 0 0 1rem;
+      }
+      li {
+        margin-bottom: 0.4rem;
+      }
+      code {
+        background: #1e293b;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      a {
+        color: #a78bfa;
+      }
+      .say {
+        color: #c4b5fd;
+      }
+      .say::before {
+        content: "“";
+      }
+      .say::after {
+        content: "”";
+      }
+      nav.toc {
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1rem;
+      }
+      nav.toc ol {
+        margin: 0;
+      }
+      nav.toc li {
+        margin-bottom: 0.15rem;
+      }
+      .note {
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 0.9rem 1.1rem;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin: 1rem 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 1rem;
+        font-size: 0.92rem;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.45rem 0.5rem;
+        border-bottom: 1px solid #1e293b;
+      }
+      th {
+        color: #94a3b8;
+        font-weight: 600;
+      }
+      .legend {
+        list-style: none;
+        padding: 0;
+      }
+      .legend li {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .swatch {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 2px;
+        flex-shrink: 0;
+      }
+      .back {
+        display: inline-block;
+        margin-top: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>How Habit Assistant works</h1>
+      <p class="lead">
+        Instead of menus and forms, you tell the assistant what you want in plain words, typed or spoken. It does
+        it, and only asks a question when it really can't act without one.
+      </p>
+
+      <nav class="toc" aria-label="Contents">
+        <ol>
+          <li><a href="#talking">Talking to the assistant</a></li>
+          <li><a href="#types">Habits, recurring tasks and tasks</a></li>
+          <li><a href="#schedules">Schedules</a></li>
+          <li><a href="#stop">Pause, archive or delete</a></li>
+          <li><a href="#rules">Rules that can surprise you</a></li>
+          <li><a href="#app">Around the app</a></li>
+          <li><a href="#stats">Stats and the heatmap</a></li>
+          <li><a href="#data">Your data and the AI provider</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="talking">1. Talking to the assistant</h2>
+      <p>Use the chat tab. Some things you can say:</p>
+      <table>
+        <tr><th>To…</th><th>Say something like</th></tr>
+        <tr>
+          <td>Add a habit</td>
+          <td><span class="say">add a habit to read every night</span>, <span class="say">drink 8 glasses of water every day</span>, <span class="say">meditate 10 minutes on weekdays</span></td>
+        </tr>
+        <tr>
+          <td>Add a recurring task</td>
+          <td><span class="say">add a recurring task to take out the trash every Monday and Thursday</span></td>
+        </tr>
+        <tr>
+          <td>Add a one-off task</td>
+          <td><span class="say">add a task to call the dentist tomorrow</span>, <span class="say">add a task for Friday called Go shopping, with a checklist inside</span></td>
+        </tr>
+        <tr>
+          <td>Mark something done</td>
+          <td><span class="say">mark gym done</span>, <span class="say">I went for a run yesterday</span>, <span class="say">I watered the plants</span></td>
+        </tr>
+        <tr>
+          <td>Undo it</td>
+          <td><span class="say">actually I didn't go to the gym</span></td>
+        </tr>
+        <tr>
+          <td>Log an amount</td>
+          <td><span class="say">I drank 6 glasses of water</span>, <span class="say">add 10 minutes to my reading today</span>, <span class="say">log 30 minutes of meditation for yesterday</span></td>
+        </tr>
+        <tr>
+          <td>Use a list</td>
+          <td><span class="say">add milk and bread to my shopping list</span>, <span class="say">check off milk</span></td>
+        </tr>
+        <tr>
+          <td>Change something</td>
+          <td><span class="say">move gym to Mondays and Thursdays</span>, <span class="say">rename reading to evening reading</span>, <span class="say">change my water goal to 10 glasses</span></td>
+        </tr>
+        <tr>
+          <td>Take a break</td>
+          <td><span class="say">pause gym for two weeks</span>, <span class="say">resume gym</span></td>
+        </tr>
+        <tr>
+          <td>Stop or remove</td>
+          <td><span class="say">archive the guitar habit</span>, <span class="say">delete the dentist task</span></td>
+        </tr>
+      </table>
+
+      <h3>When it needs more from you</h3>
+      <ul>
+        <li>If something is missing (say, how many glasses a day), the assistant asks. Just answer in the chat.</li>
+        <li>If a name matches several items, it lists them with numbers. Reply with the number, or say which one (<span class="say">the one in Health</span>).</li>
+        <li>After adding something, it shows what was saved, including anything it assumed for you (like <em>every day</em> or <em>starting today</em>). If it got something wrong, tell it: <span class="say">no, only on weekdays</span>.</li>
+        <li>Deleting always asks for a yes first. So does adding something with a name you already use.</li>
+      </ul>
+
+      <h3>Speaking instead of typing</h3>
+      <p>
+        Press and <strong>hold</strong> the microphone button, speak, and let go. What you said is turned into text
+        and sent straight away, with no review step, and shows up in the chat like a typed message. A very short tap
+        or a recording with no speech in it is ignored. Replies can also be read aloud: turn on
+        <strong>Spoken responses</strong> in Settings.
+      </p>
+
+      <h2 id="types">2. Habits, recurring tasks and tasks</h2>
+      <ul>
+        <li><strong>Habit:</strong> something you want to build and track over time, like reading, exercise or drinking water. Habits get streaks and stats.</li>
+        <li><strong>Recurring task:</strong> a chore that repeats, like taking out the trash. It's just done or not done each time, with no stats.</li>
+        <li><strong>Task:</strong> a one-off to-do, like calling the dentist.</li>
+      </ul>
+      <p>Every item has a name, and can have a description, a category, a priority (higher shows first), a start date (today unless you say otherwise) and an end date.</p>
+
+      <h3>How a habit is tracked</h3>
+      <table>
+        <tr><th>Type</th><th>How it works</th><th>Saying “done”</th></tr>
+        <tr><td>Yes/No</td><td>Done or not done.</td><td>Marks it done.</td></tr>
+        <tr><td>Number</td><td>A goal with a unit, like 8 glasses. Log amounts through chat.</td><td>Logs the full goal (keeps a bigger amount if you logged more).</td></tr>
+        <tr><td>Timer</td><td>A goal in minutes. Log through chat, or use the timer tab.</td><td>Logs the full goal in minutes.</td></tr>
+        <tr><td>Checklist</td><td>A list of steps, fresh each day it's due.</td><td>Ticks every step.</td></tr>
+      </table>
+      <p>
+        A habit is Yes/No unless you describe an amount, a duration or a list of steps. Number and Timer habits
+        always need a goal; if you don't give one, the assistant asks.
+      </p>
+
+      <h3>Checklists on tasks</h3>
+      <p>
+        Any task can carry a checklist, like a shopping list. On a recurring task it's one running list that doesn't
+        reset. In the Today tab, a task with a checklist shows a small <code>3/7</code> badge: tap it to open the list,
+        tick items and add new ones. When you tick the last item, it offers to mark the task itself done.
+      </p>
+
+      <h2 id="schedules">3. Schedules</h2>
+      <p>Habits and recurring tasks repeat on a schedule. If you don't say one, it's every day.</p>
+      <table>
+        <tr><th>Schedule</th><th>Example</th></tr>
+        <tr><td>Every day</td><td><span class="say">read every day</span></td></tr>
+        <tr><td>Certain weekdays</td><td><span class="say">gym on Monday, Wednesday and Friday</span>, <span class="say">on weekends</span></td></tr>
+        <tr><td>Every few days</td><td><span class="say">water the plants every 3 days</span></td></tr>
+        <tr><td>A number of times per week or month, any days</td><td><span class="say">run 3 times a week</span>, <span class="say">call grandma twice a month</span></td></tr>
+        <tr><td>A weekday of the month</td><td><span class="say">pay rent on the first Monday of the month</span>, <span class="say">on the last Friday</span></td></tr>
+        <tr><td>Dates every year</td><td><span class="say">Mum's birthday on March 15</span></td></tr>
+        <tr><td>On and off days</td><td><span class="say">5 days on, 2 days off</span></td></tr>
+      </table>
+      <p>Change a schedule the same way: <span class="say">change reading to weekdays only</span>. Weeks start on Sunday.</p>
+
+      <h2 id="stop">4. Pause, archive or delete</h2>
+      <table>
+        <tr><th></th><th>What happens</th><th>History</th></tr>
+        <tr>
+          <td><strong>Pause</strong></td>
+          <td>Stops it for a while, with or without an end date. Paused days count as neither done nor missed, so your streak survives. A pause can't start in the past.</td>
+          <td>Kept</td>
+        </tr>
+        <tr>
+          <td><strong>Archive</strong></td>
+          <td>Stops it for good from today. It stays in your lists, marked Archived.</td>
+          <td>Kept</td>
+        </tr>
+        <tr>
+          <td><strong>Delete</strong></td>
+          <td>Removes it completely. The assistant asks first.</td>
+          <td>Erased</td>
+        </tr>
+      </table>
+      <p>Pause and archive are for habits and recurring tasks; a one-off task can only be deleted.</p>
+
+      <h2 id="rules">5. Rules that can surprise you</h2>
+      <ul>
+        <li><strong>You can't complete a day that hasn't happened yet.</strong> Habits and recurring tasks refuse it. For a one-off task set in the future, you're asked whether to mark it done and move it to today.</li>
+        <li><strong>You can only mark days an item is due.</strong> If gym is Mondays only, the assistant won't mark it done on a Tuesday, and tells you why.</li>
+        <li><strong>An unfinished task moves to today</strong> instead of piling up on old days. Say <span class="say">just for today</span> when you add one if you'd rather it disappear at the end of the day.</li>
+        <li><strong>Un-marking erases.</strong> Undoing a day removes what was logged for it, including an amount.</li>
+        <li><strong>The timer is per device.</strong> If you close the app while it runs, it reopens paused, not with the missed time added. Save the result to a habit when you're done; nothing is logged until you do.</li>
+      </ul>
+
+      <h2 id="app">6. Around the app</h2>
+      <p>The row of buttons under the title, from left to right:</p>
+      <ul>
+        <li><strong>Chat</strong> (speech bubble): talk to the assistant.</li>
+        <li><strong>Today</strong> (calendar): what's due on a day, with checkboxes. Pick another day from the strip of days (or its arrows); <strong>Today</strong> jumps back.</li>
+        <li><strong>Categories</strong> (tag): add, rename or remove categories, and see stats per category. Category is optional on every item.</li>
+        <li><strong>View</strong> (list): all habits, recurring tasks and tasks. Tap a habit for its details, stats and history.</li>
+        <li><strong>Stats</strong> (bar chart): overall progress, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
+        <li><strong>Timer</strong> (stopwatch): a stopwatch or countdown you can save to a Timer habit.</li>
+      </ul>
+      <p>Next to the title, the <strong>?</strong> button opens this page and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies.</p>
+
+      <h2 id="stats">7. Stats and the heatmap</h2>
+      <ul>
+        <li><strong>Current streak:</strong> how many due days in a row you've completed, up to today. Today doesn't break it until the day is over.</li>
+        <li><strong>Best streak:</strong> the longest streak so far.</li>
+        <li><strong>Completion rate:</strong> the share of due days you completed.</li>
+      </ul>
+      <p>
+        For a <em>times per week or month</em> habit, a period counts once you reach its number, the streak counts
+        completions across periods that hit it, and the completion rate is the share of periods that did.
+        A Number, Timer or Checklist habit counts as done for a day only once its goal is reached or all its steps are ticked.
+      </p>
+
+      <h3>Reading the heatmap</h3>
+      <p>One square per day, newest on the right, with the weekday letters on the side.</p>
+      <ul class="legend">
+        <li><span class="swatch" style="background: #334155"></span> Not due (not scheduled, or paused)</li>
+        <li><span class="swatch" style="background: #9f1239"></span> Missed</li>
+        <li>
+          <span class="swatch" style="background: #4c1d95"></span><span class="swatch" style="background: #6d28d9"></span><span class="swatch" style="background: #8b5cf6"></span>
+          Partly done (a bit, about half, most)
+        </li>
+        <li><span class="swatch" style="background: #a78bfa"></span> Done</li>
+        <li><span class="swatch" style="border: 1px solid #a78bfa"></span> Today, not done yet</li>
+      </ul>
+
+      <h2 id="data">8. Your data and the AI provider</h2>
+      <ul>
+        <li>
+          <strong>Your data is in your own Google Drive,</strong> in a folder called <strong>Habit Assistant</strong>,
+          as one file, <code>habit-assistant-data.json</code>. You can open it, download it or back it up whenever you
+          like. The app can only see files it created itself, not the rest of your Drive.
+        </li>
+        <li><strong>Several devices:</strong> sign in with the same Google account and they share the same data.</li>
+        <li>
+          <strong>Chat messages</strong> go to an AI provider to be understood. By default that's the free shared
+          trial (Google Gemini). Free tiers can use messages to improve the provider's models.
+        </li>
+        <li><strong>Voice recordings</strong> go to Groq to be turned into text, then are thrown away. They are never stored.</li>
+        <li>
+          <strong>Your own key:</strong> if the shared trial is slow or runs out, you can plug in your own free
+          Groq or Gemini key (or an Anthropic key) in Settings. Your keys are saved in your Drive file, in plain text,
+          so every device you sign in on can use them.
+          <a href="/api-key-setup.html">How to get a free key</a>.
+        </li>
+      </ul>
+
+      <a class="back" href="/">← Back to Habit Assistant</a>
+    </main>
+  </body>
+</html>

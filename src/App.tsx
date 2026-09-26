@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Settings as SettingsIcon, MessageCircle, Calendar, Tags, List, ChartColumn, Timer as TimerIcon } from "lucide-react";
+import { Settings as SettingsIcon, CircleHelp, MessageCircle, Calendar, Tags, List, ChartColumn, Timer as TimerIcon } from "lucide-react";
 import SignIn from "./components/SignIn";
 import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
@@ -429,13 +429,26 @@ export default function App() {
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Habit Assistant</h1>
-        <button
-          onClick={() => setSettingsOpen((open) => !open)}
-          className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
-          aria-label="Settings"
-        >
-          <SettingsIcon className="h-4 w-4" />
-        </button>
+        <div className="flex gap-2">
+          {/* §38: the user manual, a static page precached like api-key-setup.html. */}
+          <a
+            href="/help.html"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
+            aria-label="Help"
+            title="Help"
+          >
+            <CircleHelp className="h-4 w-4" />
+          </a>
+          <button
+            onClick={() => setSettingsOpen((open) => !open)}
+            className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
+            aria-label="Settings"
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {settingsOpen && (
