@@ -6,6 +6,7 @@ import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 import StatTile from "./StatTile";
+import HabitHeatmap from "./HabitHeatmap";
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -197,6 +198,12 @@ function HabitDetail({
             <StatTile value={stats.completionsThisMonth} label="This month" />
             <StatTile value={stats.completionsThisYear} label="This year" />
             <StatTile value={stats.completionsAllTime} label="All-time" />
+          </div>
+        </DetailRow>
+
+        <DetailRow label="Completion history">
+          <div className="pt-1">
+            <HabitHeatmap habit={habit} completionLog={completionLog} todayISO={todayISO()} />
           </div>
         </DetailRow>
       </div>

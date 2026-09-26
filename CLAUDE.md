@@ -42,7 +42,7 @@ Supported rules: daily, specific weekdays, every N days, N times per week/month 
 
 ## Stats (`src/lib/habitStats.ts`)
 
-Streak, best streak, completion %, and this week/month/year/all-time counts, per habit (`HabitsView`) and per category (`CategoriesView`). The "stats" tab (`Dashboard.tsx`) adds an overall meter, KPI tiles, a per-category breakdown, and a hand-rolled SVG calendar heatmap (`CalendarHeatmap.tsx`). There's deliberately no charting library.
+Streak, best streak, completion %, and this week/month/year/all-time counts, per habit (`HabitsView`) and per category (`CategoriesView`). The "stats" tab (`Dashboard.tsx`) adds an overall meter, KPI tiles, a per-category breakdown, and a hand-rolled SVG calendar heatmap (`CalendarHeatmap.tsx`). The same heatmap, via `HabitHeatmap.tsx`, also sits on each habit's own page in `HabitsView`. There's deliberately no charting library.
 
 ## Architecture
 
