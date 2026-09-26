@@ -97,14 +97,23 @@ export interface LogHabitProgressToolCall {
   input: { name: string; categoryId?: string; date?: string; value?: number; delta?: number };
 }
 
+// Several items in one call ("add milk and bread"); `text` is the older one-item
+// form, still accepted in case the model copies it from earlier chat history.
+export interface ChecklistAddInput {
+  name: string;
+  categoryId?: string;
+  items?: string[];
+  text?: string;
+}
+
 export interface AddRecurringTaskChecklistItemToolCall {
   name: "addRecurringTaskChecklistItem";
-  input: { name: string; categoryId?: string; text: string };
+  input: ChecklistAddInput;
 }
 
 export interface AddSingleTaskChecklistItemToolCall {
   name: "addSingleTaskChecklistItem";
-  input: { name: string; categoryId?: string; text: string };
+  input: ChecklistAddInput;
 }
 
 export interface CheckHabitChecklistItemToolCall {

@@ -100,8 +100,8 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "resumeHabit", buckets: ["modify"], listBlurb: "resume a paused habit from today." },
   { name: "resumeRecurringTask", buckets: ["modify"], listBlurb: "resume a paused recurring task from today." },
   { name: "logHabitProgress", buckets: ["modify"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
-  { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing recurring task's checklist." },
-  { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one item to an existing one-off task's checklist." },
+  { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing recurring task's checklist." },
+  { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing one-off task's checklist." },
   { name: "checkHabitChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a checklist-type habit's checklist." },
   { name: "checkRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a recurring task's checklist." },
   { name: "checkSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a one-off task's checklist." },
@@ -168,7 +168,7 @@ For logHabitProgress: name is the same kind of text fragment used elsewhere to s
 
 const PICK_FROM_LIST_PROSE = `If the app answered with a numbered "which one did you mean?" list and the user picks one (e.g. "the one in Nutrition"), call the same tool again with the same name plus categoryId set to that item's category id. categoryId only ever selects — to move an item to another category, use newCategoryId.`;
 
-const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
+const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, items is every item the user named, one entry each (e.g. "add milk to my shopping list" → name: "shopping", items: ["milk"]; "add milk, eggs and bread to the shopping list" → items: ["milk", "eggs", "bread"]). Never drop items: one call adds them all. These always *add* — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
 
 For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
 
@@ -776,29 +776,37 @@ function buildTools(
     {
       name: "addRecurringTaskChecklistItem",
       description:
-        "Add one item to an existing recurring task's checklist. Use for phrases like 'add milk to my shopping list'. Always adds — never replaces or clears the existing items.",
+        "Add one or more items to an existing recurring task's checklist. Use for phrases like 'add milk and bread to my shopping list'. Always adds — never replaces or clears the existing items.",
       parameters: {
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the recurring task's name." },
           categoryId: CATEGORY_SELECTOR_FIELD,
-          text: { type: "string", description: "The item to add." },
+          items: {
+            type: "array",
+            description: "Every item to add, one entry per item the user named (e.g. [\"milk\", \"bread\"]).",
+            items: { type: "string" },
+          },
         },
-        required: ["name", "text"],
+        required: ["name", "items"],
       },
     },
     {
       name: "addSingleTaskChecklistItem",
       description:
-        "Add one item to an existing one-off task's checklist. Use for phrases like 'add milk to my shopping list'. Always adds — never replaces or clears the existing items.",
+        "Add one or more items to an existing one-off task's checklist. Use for phrases like 'add milk and bread to my shopping list'. Always adds — never replaces or clears the existing items.",
       parameters: {
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment to match against the task's name." },
           categoryId: CATEGORY_SELECTOR_FIELD,
-          text: { type: "string", description: "The item to add." },
+          items: {
+            type: "array",
+            description: "Every item to add, one entry per item the user named (e.g. [\"milk\", \"bread\"]).",
+            items: { type: "string" },
+          },
         },
-        required: ["name", "text"],
+        required: ["name", "items"],
       },
     },
     {
