@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
-import { aggregateCategoryStats, habitCalendar } from "../lib/habitStats";
-import { addDays, todayISO } from "../lib/recurrence";
+import { aggregateCategoryStats, habitCalendar, heatmapWindow } from "../lib/habitStats";
+import { todayISO } from "../lib/recurrence";
+import { formatDate } from "../lib/confirmations";
 import CategoryIcon from "./CategoryIcon";
 import StatTile from "./StatTile";
 import Meter from "./Meter";
@@ -16,8 +17,6 @@ interface DashboardProps {
   completionLog: CompletionLogEntry[];
   onViewCategories: () => void;
 }
-
-const HEATMAP_WINDOW_DAYS = 364;
 
 export default function Dashboard({ habits, categories, completionLog, onViewCategories }: DashboardProps) {
   const today = todayISO();
@@ -90,10 +89,16 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
             ))}
           </select>
         </div>
-        {selectedHabit && (
-          <CalendarHeatmap days={habitCalendar(selectedHabit, completionLog, addDays(today, -HEATMAP_WINDOW_DAYS), today)} />
-        )}
+        {selectedHabit && <HabitHeatmap habit={selectedHabit} completionLog={completionLog} today={today} />}
       </div>
     </div>
   );
+}
+
+function HabitHeatmap({ habit, completionLog, today }: { habit: Habit; completionLog: CompletionLogEntry[]; today: string }) {
+  const range = heatmapWindow(habit, today);
+  if (!range) {
+    return <p className="text-sm text-slate-500">Starts {formatDate(habit.startDate, today)} — history shows up from then.</p>;
+  }
+  return <CalendarHeatmap days={habitCalendar(habit, completionLog, range.from, range.to)} todayISO={today} />;
 }
