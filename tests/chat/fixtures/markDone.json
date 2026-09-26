@@ -1,0 +1,23 @@
+{
+  "_comment": "§41: one item per completion type, plus a recurring task, a one-off task and a habit with fixed weekdays for the not-due case.",
+  "habits": [
+    { "kind": "habit", "id": "gym", "name": "Gym", "categoryId": "sports", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "yesno" },
+    { "kind": "habit", "id": "water", "name": "Drink water", "categoryId": "nutrition", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "value", "target": 8, "unit": "glasses" },
+    { "kind": "habit", "id": "meditate", "name": "Meditate", "categoryId": "health", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "timer", "target": 10 },
+    {
+      "kind": "habit", "id": "routine", "name": "Morning routine", "categoryId": "health", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" }, "completionType": "checklist",
+      "checklist": [
+        { "id": "stretch", "text": "Stretch", "checked": false },
+        { "id": "journal", "text": "Journal", "checked": false }
+      ]
+    },
+    { "kind": "habit", "id": "run", "name": "Run", "categoryId": "sports", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daysOfWeek", "days": [0, 2, 4, 6] }, "completionType": "yesno" }
+  ],
+  "recurringTasks": [
+    { "kind": "recurringTask", "id": "plants", "name": "Water the plants", "priority": 1, "startDate": "2026-09-01", "recurrence": { "type": "daily" } }
+  ],
+  "singleTasks": [
+    { "kind": "singleTask", "id": "milk", "name": "Buy milk", "priority": 0, "startDate": "2026-09-01", "done": false, "persistency": true }
+  ],
+  "completionLog": []
+}

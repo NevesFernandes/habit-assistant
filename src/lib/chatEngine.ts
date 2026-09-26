@@ -23,7 +23,9 @@ import {
   resolveRecurringTasks,
   resolveSingleTasks,
   setHabitChecklistItemChecked,
+  setHabitDone,
   setHabitValue,
+  setRecurringTaskDone,
   setRecurringTaskChecklistItemChecked,
   setSingleTaskChecklistItemChecked,
   updateHabit,
@@ -42,14 +44,19 @@ import {
   describeCreatedSingleTask,
   describeDuplicateQuestion,
   describeFutureTaskQuestion,
+  describeHabitMarkedDone,
+  describeHabitMarkedNotDone,
   describeItemList,
+  describeNotDue,
   describePause,
+  describeRecurringTaskMarked,
   describeResume,
   describeUpdate,
   formatDate,
   formatGoalMinutes,
 } from "./confirmations";
-import { currentPause, isFutureDate, isPaused, upcomingPause } from "./recurrence";
+import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
+import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import type { AppData, Category, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -348,6 +355,10 @@ export class ChatSession {
       await this.handleResumeRequest("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "logHabitProgress") {
       await this.handleLogHabitProgress(toolCall.input, toolCall);
+    } else if (toolCall.name === "setHabitDone") {
+      await this.handleSetDone("habit", toolCall.input, toolCall);
+    } else if (toolCall.name === "setRecurringTaskDone") {
+      await this.handleSetDone("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "addRecurringTaskChecklistItem") {
       await this.handleAddTaskChecklistItem("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "addSingleTaskChecklistItem") {
@@ -732,6 +743,93 @@ export class ChatSession {
       const dateText = dateISO === today ? "today" : `on ${formatDate(dateISO, today)}`;
       this.pushAssistantMessage(`Logged ${loggedText} for "${habit.name}" ${dateText}${goalText}.`, toolCall);
     }
+  }
+
+  // §41: mark a habit or recurring task done / not done for one day. The model may guess
+  // the wrong type (§32); a one-off task goes through the normal update path, so §29's
+  // confirm-and-move-to-today still applies to it.
+  private async handleSetDone(
+    requestedKind: "habit" | "recurringTask",
+    input: ItemSelector & { date?: string; done?: boolean },
+    toolCall: ToolCallRef,
+  ) {
+    const done = input.done ?? true;
+    const selector = { name: input.name, categoryId: input.categoryId };
+    const kind = this.resolveKind(requestedKind, ["habit", "recurringTask", "singleTask"], selector);
+    if (kind === "singleTask") {
+      await this.handleUpdateRequest("singleTask", { ...selector, newDone: done }, toolCall);
+      return;
+    }
+    const item = kind === "habit" ? this.pickItem("habit", selector, toolCall) : this.pickItem("recurringTask", selector, toolCall);
+    if (!item) return;
+
+    const today = this.todayISO;
+    const dateISO = input.date ?? today;
+    // §29: completion can't be changed for a day that hasn't happened yet.
+    if (isFutureDate(dateISO, today)) {
+      this.pushAssistantMessage(
+        `I can't change "${item.name}" for ${formatDate(dateISO, today)} — that day hasn't happened yet.`,
+        toolCall,
+      );
+      return;
+    }
+    if (!occursOn(item, dateISO)) {
+      this.pushAssistantMessage(describeNotDue(item, dateISO, today), toolCall);
+      return;
+    }
+
+    const data = this.deps.getData();
+    if (!data) return;
+    const before = data.completionLog.find((entry) => entry.itemId === item.id && entry.date === dateISO);
+
+    if (item.kind === "recurringTask") {
+      const wasDone = !!before;
+      if (wasDone !== done) {
+        const saved = await this.deps.persist((current) => setRecurringTaskDone(current, item.id, dateISO, done));
+        if (!saved) return;
+      }
+      this.pushAssistantMessage(describeRecurringTaskMarked(item, wasDone, done, dateISO, today), toolCall);
+      return;
+    }
+
+    const habit = item;
+    if (done && (habit.completionType === "value" || habit.completionType === "timer") && !(habit.target && habit.target > 0)) {
+      this.pushAssistantMessage(
+        `"${habit.name}" has no goal set, so I can't tell what complete means — tell me the amount instead (e.g. "log 20 minutes").`,
+        toolCall,
+      );
+      return;
+    }
+    if (done && habit.completionType === "checklist" && (habit.checklist ?? []).length === 0) {
+      this.pushAssistantMessage(`"${habit.name}" has no checklist items yet, so there's nothing to mark done.`, toolCall);
+      return;
+    }
+
+    if (!done) {
+      if (before) {
+        const saved = await this.deps.persist((current) => setHabitDone(current, habit.id, dateISO, false));
+        if (!saved) return;
+      }
+      this.pushAssistantMessage(describeHabitMarkedNotDone(habit, before, dateISO, today), toolCall);
+      return;
+    }
+
+    const wasComplete = isHabitEntryComplete(habit, before);
+    let streak = computeHabitStats(habit, data.completionLog, today).currentStreak;
+    if (!wasComplete) {
+      // Streak read inside the mutator, so a §21 conflict replay reports what was written.
+      const saved = await this.deps.persist((current) => {
+        const next = setHabitDone(current, habit.id, dateISO, true);
+        streak = computeHabitStats(habit, next.completionLog, today).currentStreak;
+        return next;
+      });
+      if (!saved) return;
+    }
+    const unit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
+    this.pushAssistantMessage(
+      describeHabitMarkedDone(habit, before, wasComplete, dateISO, today, `${streak} ${unit}${streak === 1 ? "" : "s"}`),
+      toolCall,
+    );
   }
 
   // Recurring and one-off tasks share these: the model may guess the wrong task type (§32).

@@ -720,3 +720,31 @@ export const SHARED_KEY_MESSAGE_CAP = Infinity;
 export function bumpSharedKeyMessageCount(data: AppData): AppData {
   return { ...data, sharedKeyMessageCount: (data.sharedKeyMessageCount ?? 0) + 1 };
 }
+
+// §41: chat sets completion rather than toggling it, so "mark gym done" said twice leaves
+// it done. "Done" means the day's goal is met: a number/timer habit gets its full target
+// (a bigger amount already logged is kept), a checklist habit gets every item ticked.
+// Not done deletes the day's entry, as un-completing does everywhere else.
+export function setHabitDone(data: AppData, habitId: string, dateISO: string, done: boolean): AppData {
+  const habit = data.habits.find((h) => h.id === habitId);
+  if (!habit) return data;
+  const existing = data.completionLog.find((entry) => entry.itemId === habitId && entry.date === dateISO);
+  if (!done) {
+    return existing ? { ...data, completionLog: data.completionLog.filter((entry) => entry.id !== existing.id) } : data;
+  }
+  switch (habit.completionType) {
+    case "value":
+    case "timer":
+      return setHabitValue(data, habitId, dateISO, Math.max(existing?.value ?? 0, habit.target ?? 0));
+    case "checklist":
+      return withHabitChecklistEntry(data, habit, dateISO, (items) => items.map((item) => ({ ...item, checked: true })));
+    case "yesno":
+      return existing ? data : toggleHabitCompletion(data, habitId, dateISO);
+  }
+}
+
+export function setRecurringTaskDone(data: AppData, taskId: string, dateISO: string, done: boolean): AppData {
+  const existing = data.completionLog.find((entry) => entry.itemId === taskId && entry.date === dateISO);
+  if (done === !!existing) return data;
+  return toggleRecurringTaskCompletion(data, taskId, dateISO);
+}

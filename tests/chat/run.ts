@@ -34,8 +34,9 @@ import { scenarios as s34 } from "./scenarios/s34-name-matching.ts";
 import { scenarios as s35 } from "./scenarios/s35-word-forms.ts";
 import { scenarios as s39 } from "./scenarios/s39-task-checklist.ts";
 import { scenarios as checklistAdd } from "./scenarios/checklist-add-multiple.ts";
+import { scenarios as s41 } from "./scenarios/s41-mark-done.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

@@ -16,6 +16,7 @@
     "test:futureCompletion": "tsx src/lib/futureCompletion.test.ts",
     "test:pause": "tsx src/lib/pause.test.ts",
     "test:heatmap": "tsx src/lib/heatmapWindow.test.ts",
+    "test:markDone": "tsx src/lib/markDone.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
