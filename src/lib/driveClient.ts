@@ -10,8 +10,18 @@ const FILE_NAME = "habit-assistant-data.json";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 
+// Google's access tokens last an hour (expires_in); nothing renews them on their own, so
+// the app tracks expiresAt and refreshes before it passes — see GitHub issue #7.
 export interface DriveSession {
   accessToken: string;
+  expiresAt: number; // epoch ms
+}
+
+/** Refresh this long before the real expiry, so a token can't lapse between a tap and its save. */
+export const REFRESH_MARGIN_MS = 5 * 60_000;
+
+export function tokenNeedsRefresh(session: DriveSession, now = Date.now()): boolean {
+  return now >= session.expiresAt - REFRESH_MARGIN_MS;
 }
 
 export interface DriveFileRef {
@@ -23,6 +33,14 @@ export class DriveConflictError extends Error {
   constructor(public readonly currentModifiedTime: string) {
     super("The data file changed on another device since it was last loaded.");
     this.name = "DriveConflictError";
+  }
+}
+
+/** Drive answered 401: the access token expired or was revoked. Recoverable by getting a new one. */
+export class DriveAuthError extends Error {
+  constructor() {
+    super("Your Google sign-in has expired.");
+    this.name = "DriveAuthError";
   }
 }
 
@@ -51,7 +69,20 @@ function loadGisScript(): Promise<void> {
   return gisScriptPromise;
 }
 
-export async function signIn(clientId: string): Promise<DriveSession> {
+export function signIn(clientId: string): Promise<DriveSession> {
+  return requestToken(clientId);
+}
+
+/**
+ * A new token for someone who already granted access: prompt "" makes Google skip the
+ * consent screen, so at most a popup opens and closes by itself. Browsers block popups not
+ * started by a tap, so call this from one (or within a few seconds of it).
+ */
+export function refreshSession(clientId: string): Promise<DriveSession> {
+  return requestToken(clientId, "");
+}
+
+async function requestToken(clientId: string, prompt?: string): Promise<DriveSession> {
   await loadGisScript();
   if (!window.google) throw new Error("Google Identity Services did not load.");
 
@@ -64,11 +95,11 @@ export async function signIn(clientId: string): Promise<DriveSession> {
           reject(new Error(response.error_description ?? response.error));
           return;
         }
-        resolve({ accessToken: response.access_token });
+        resolve({ accessToken: response.access_token, expiresAt: Date.now() + response.expires_in * 1000 });
       },
       error_callback: (error) => reject(new Error(error.message ?? error.type)),
     });
-    client.requestAccessToken();
+    client.requestAccessToken(prompt === undefined ? undefined : { prompt });
   });
 }
 
@@ -102,14 +133,25 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
   return second;
 }
 
+/** A 401 becomes DriveAuthError; anything else keeps its status and Google's short message, not the raw JSON. */
+async function driveError(res: Response): Promise<Error> {
+  if (res.status === 401) return new DriveAuthError();
+  const text = await res.text();
+  let message = text;
+  try {
+    message = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text;
+  } catch {
+    // not JSON — keep the text as it is
+  }
+  return new Error(`Drive API error ${res.status}: ${message}`);
+}
+
 async function driveFetch(session: DriveSession, path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetchWithRetry(`${DRIVE_API}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${session.accessToken}` },
   });
-  if (!res.ok) {
-    throw new Error(`Drive API error ${res.status}: ${await res.text()}`);
-  }
+  if (!res.ok) throw await driveError(res);
   return res;
 }
 
@@ -158,7 +200,7 @@ export async function createDataFile(
     },
     body,
   });
-  if (!res.ok) throw new Error(`Drive API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw await driveError(res);
   const file = (await res.json()) as { id: string; modifiedTime: string };
   return { fileId: file.id, modifiedTime: file.modifiedTime };
 }
@@ -194,7 +236,7 @@ export async function writeDataFile(
     },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Drive API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw await driveError(res);
   const file = (await res.json()) as { id: string; modifiedTime: string };
   return { fileId: file.id, modifiedTime: file.modifiedTime };
 }

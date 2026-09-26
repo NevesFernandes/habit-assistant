@@ -14,6 +14,9 @@ import TimerView from "./components/TimerView";
 import { useTimerSession } from "./lib/useTimerSession";
 import {
   signIn,
+  refreshSession,
+  tokenNeedsRefresh,
+  DriveAuthError,
   findOrCreateFolder,
   findDataFile,
   createDataFile,
@@ -84,8 +87,59 @@ function todayISO(): string {
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+// Issue #7, a dev-server-only test switch, so testing doesn't mean waiting an hour:
+// ?tokenTest=expire:60 — the token runs out 60s after sign-in (tests the refresh on tap);
+// ?tokenTest=break:60 — it stops working without the app knowing (tests the Reconnect banner).
+// Only the first session is affected, so the renewed token works normally.
+let tokenTestApplied = false;
+function simulateTokenExpiryForTesting(session: DriveSession) {
+  if (!import.meta.env.DEV || tokenTestApplied) return;
+  const match = new URLSearchParams(window.location.search).get("tokenTest")?.match(/^(expire|break):(\d+)$/);
+  if (!match) return;
+  tokenTestApplied = true;
+  setTimeout(() => {
+    session.accessToken = "expired-for-testing";
+    if (match[1] === "expire") session.expiresAt = Date.now();
+  }, Number(match[2]) * 1000);
+}
+
 export default function App() {
-  const [session, setSession] = useState<DriveSession | null>(null);
+  const [session, setSessionState] = useState<DriveSession | null>(null);
+  // Issue #7: persist() can run long after the render that created it (a chat turn awaits
+  // the model first), and the token may be refreshed in between — so it reads the ref.
+  const sessionRef = useRef<DriveSession | null>(null);
+  function setSession(next: DriveSession) {
+    sessionRef.current = next;
+    setSessionState(next);
+  }
+  const refreshPromiseRef = useRef<Promise<DriveSession> | null>(null);
+  // Saves waiting on the Reconnect banner: each resolves true once reconnected, false on cancel.
+  const reconnectWaitersRef = useRef<((reconnected: boolean) => void)[]>([]);
+  const [reconnectNeeded, setReconnectNeeded] = useState(false);
+  const [savesWaiting, setSavesWaiting] = useState(0);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
+
+  // Issue #7: the banner shows as soon as the token is about to expire, so the user can
+  // reconnect before a save needs it. Checked every 10s, but browsers slow timers down in
+  // background tabs, so also on focus, on returning to the tab, and on any tap. The Google
+  // popup only ever opens from the banner's own Reconnect tap.
+  useEffect(() => {
+    if (!session) return;
+    const check = () => {
+      if (sessionRef.current && tokenNeedsRefresh(sessionRef.current)) setReconnectNeeded(true);
+    };
+    check();
+    const interval = window.setInterval(check, 10_000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pointerdown", check, true);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("pointerdown", check, true);
+    };
+  }, [session]);
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -175,6 +229,7 @@ export default function App() {
     try {
       const newSession = await signIn(CLIENT_ID);
       setSession(newSession);
+      simulateTokenExpiryForTesting(newSession);
 
       const folderId = await findOrCreateFolder(newSession);
       const existing = await findDataFile(newSession, folderId);
@@ -221,6 +276,47 @@ export default function App() {
     }
   }
 
+  /** One refresh at a time, even if Reconnect is tapped twice. */
+  function refreshToken(): Promise<DriveSession> {
+    if (!refreshPromiseRef.current) {
+      refreshPromiseRef.current = refreshSession(CLIENT_ID)
+        .then((next) => {
+          setSession(next);
+          return next;
+        })
+        .finally(() => {
+          refreshPromiseRef.current = null;
+        });
+    }
+    return refreshPromiseRef.current;
+  }
+
+  /** Shows the Reconnect banner and waits for the user's answer. */
+  function waitForReconnect(): Promise<boolean> {
+    setReconnectNeeded(true);
+    setSavesWaiting((count) => count + 1);
+    return new Promise((resolve) => reconnectWaitersRef.current.push(resolve));
+  }
+
+  function settleReconnect(reconnected: boolean) {
+    const waiters = reconnectWaitersRef.current;
+    reconnectWaitersRef.current = [];
+    setReconnectNeeded(false);
+    setSavesWaiting(0);
+    setReconnectError(null);
+    waiters.forEach((resolve) => resolve(reconnected));
+  }
+
+  async function handleReconnect() {
+    setReconnectError(null);
+    try {
+      await refreshToken();
+      settleReconnect(true);
+    } catch (err) {
+      setReconnectError(err instanceof Error ? err.message : "Couldn't reconnect.");
+    }
+  }
+
   /**
    * Takes the mutation itself (not a precomputed AppData) so that on a write conflict it can
    * be replayed against freshly reloaded remote data — see §21 in Roadmap.md. Two attempts
@@ -230,27 +326,46 @@ export default function App() {
    */
   async function persist(mutate: (data: AppData) => AppData): Promise<boolean> {
     attemptedWriteRef.current = true;
-    if (!session || !fileRef || !data) return false;
+    if (!sessionRef.current || !fileRef || !data) return false;
+    // Issue #7: a token known to be expiring isn't even tried — the save waits on the banner.
+    if (tokenNeedsRefresh(sessionRef.current) && !(await waitForReconnect())) {
+      pushAssistantMessage("That wasn't saved, because your Google sign-in expired. Reconnect, then try it again.");
+      return false;
+    }
 
     let baseData = data;
     let ref = fileRef;
+    let reconnects = 0;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const toWrite = pendingSharedKeyBumpRef.current ? bumpSharedKeyMessageCount(mutate(baseData)) : mutate(baseData);
       try {
-        const newRef = await writeDataFile(session, ref, toWrite);
+        const newRef = await writeDataFile(sessionRef.current!, ref, toWrite);
         setFileRef(newRef);
         setData(toWrite);
         pendingSharedKeyBumpRef.current = false;
         return true;
       } catch (err) {
+        // Issue #7: the sign-in expired. Wait for Reconnect, then retry this same attempt; the
+        // mutation is replayed, so what the user asked for isn't lost.
+        if (err instanceof DriveAuthError) {
+          if (reconnects < 2 && (await waitForReconnect())) {
+            reconnects += 1;
+            attempt -= 1;
+            continue;
+          }
+          pushAssistantMessage("That wasn't saved, because your Google sign-in expired. Reconnect, then try it again.");
+          return false;
+        }
         if (err instanceof DriveConflictError && attempt === 1) {
           try {
-            baseData = await readDataFile(session, ref.fileId);
+            baseData = await readDataFile(sessionRef.current!, ref.fileId);
             ref = { fileId: ref.fileId, modifiedTime: err.currentModifiedTime };
           } catch (reloadErr) {
             pushAssistantMessage(
-              reloadErr instanceof DriveOfflineError
+              reloadErr instanceof DriveAuthError
+                ? "That wasn't saved, because your Google sign-in expired. Reconnect, then try it again."
+                : reloadErr instanceof DriveOfflineError
                 ? "You're offline — this didn't save. Try again once you're back online."
                 : `Sorry, I couldn't save that: ${reloadErr instanceof Error ? reloadErr.message : "unknown error"}.`,
             );
@@ -450,6 +565,29 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {reconnectNeeded && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-md border border-amber-400/60 bg-amber-950 px-3 py-2 text-sm text-amber-100 shadow-lg">
+          <span className="flex-1">
+            {savesWaiting > 0
+              ? "Your Google sign-in expired, so your last change is waiting to be saved."
+              : "Your Google sign-in has expired."}{" "}
+            Tap Reconnect — a small Google window will open and close.
+          </span>
+          <button
+            onClick={handleReconnect}
+            className="rounded-md bg-violet-500 px-3 py-1 text-white hover:bg-violet-400"
+          >
+            Reconnect
+          </button>
+          {savesWaiting > 0 && (
+            <button onClick={() => settleReconnect(false)} className="rounded-md bg-slate-700 px-3 py-1 hover:bg-slate-600">
+              Cancel
+            </button>
+          )}
+          {reconnectError && <p className="w-full text-xs text-red-300">{reconnectError}</p>}
+        </div>
+      )}
 
       {settingsOpen && (
         <SettingsPanel
