@@ -99,6 +99,8 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "pauseRecurringTask", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing recurring task, with or without a known resume date." },
   { name: "resumeHabit", buckets: ["modify"], listBlurb: "resume a paused habit from today." },
   { name: "resumeRecurringTask", buckets: ["modify"], listBlurb: "resume a paused recurring task from today." },
+  { name: "setHabitDone", buckets: ["modify", "checklist"], listBlurb: "mark a habit done (or not done) for a day." },
+  { name: "setRecurringTaskDone", buckets: ["modify", "checklist"], listBlurb: "mark a recurring task done (or not done) for a day." },
   { name: "logHabitProgress", buckets: ["modify"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
   { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing recurring task's checklist." },
   { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing one-off task's checklist." },
@@ -168,9 +170,13 @@ For logHabitProgress: name is the same kind of text fragment used elsewhere to s
 
 const PICK_FROM_LIST_PROSE = `If the app answered with a numbered "which one did you mean?" list and the user picks one (e.g. "the one in Nutrition"), call the same tool again with the same name plus categoryId set to that item's category id. categoryId only ever selects — to move an item to another category, use newCategoryId.`;
 
+// §41: shared by the modify and checklist buckets — "mark gym done" reads as a modify, "I did
+// my morning routine" as either.
+const SET_DONE_PROSE = `For setHabitDone and setRecurringTaskDone: mark one habit or recurring task done or not done for one day — "mark gym done", "I went to the gym today", "I did my stretching yesterday", "I took out the trash". name selects the item (same fragment-matching as elsewhere). date is optional and defaults to today; resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first. done defaults to true; set it to false for "mark it not done", "actually I didn't go", "undo that". Use these whatever the habit's completion type: for a Numeric or Timer habit the app logs its full goal, and for a Checklist habit it ticks every item. But when the user states an amount ("I read for 20 minutes", "drank 6 glasses"), use logHabitProgress instead, and when they name one checklist item, use checkHabitChecklistItem. For a one-off task, use updateSingleTask's newDone. The app refuses days that haven't happened yet and days the item isn't due, and says why.`;
+
 const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, items is every item the user named, one entry each (e.g. "add milk to my shopping list" → name: "shopping", items: ["milk"]; "add milk, eggs and bread to the shopping list" → items: ["milk", "eggs", "bread"]). Never drop items: one call adds them all. These always *add* — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
 
-For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from setHabitDone (which marks a whole checklist habit done, e.g. "I did my morning routine" — use checkHabitChecklistItem only when the user names one item of it). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
 
 ${PICK_FROM_LIST_PROSE}`;
 
@@ -214,6 +220,7 @@ function buildSystemPrompt(categories: Category[], todayISO: string, activeBucke
     chunks.push(PAUSE_PROSE);
   }
   if (isBucketActive(activeBuckets, "modify")) chunks.push(buildModifyProse(categoryList));
+  if (isBucketActive(activeBuckets, "modify") || isBucketActive(activeBuckets, "checklist")) chunks.push(SET_DONE_PROSE);
   if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
 
@@ -745,6 +752,36 @@ function buildTools(
         properties: {
           name: { type: "string", description: "Fragment to match against the task's name, to find which recurring task to resume." },
           categoryId: CATEGORY_SELECTOR_FIELD,
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "setHabitDone",
+      description:
+        "Mark a habit done or not done for one day (defaults to today). Use for 'mark gym done', 'I went for a run today', 'I did my morning routine yesterday', 'actually I didn't meditate'. Works for every completion type: a Numeric/Timer habit gets its full goal logged, a Checklist habit gets every item ticked. If the user states an amount, use logHabitProgress instead.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
+          done: { type: "boolean", description: "true (the default) = done; false = not done (undo)." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "setRecurringTaskDone",
+      description:
+        "Mark a recurring task done or not done for one day (defaults to today). Use for 'mark take out the trash done', 'I watered the plants', 'undo the laundry for yesterday'.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the recurring task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
+          done: { type: "boolean", description: "true (the default) = done; false = not done (undo)." },
         },
         required: ["name"],
       },

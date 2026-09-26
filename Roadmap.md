@@ -17,10 +17,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §41 — Mark a habit or recurring task done through chat
-The chat can't mark a Yes/No habit or a Recurring Task done (or not done) today: there's no tool for it. Only one-off tasks have a done/not-done action (`updateSingleTask.newDone`); habits and recurring tasks can only be ticked in the day view, and the agent's own instructions say the toggle "can't be reached via chat at all". That breaks the app's headline example, "mark gym done today". Found while planning §38 (the help page), which should describe this working, so it goes first.
-
-Must follow the rules already in place: no completion changes on future dates (§29), a day the item isn't due on (not scheduled, paused, before its start or after its archive date) can't be marked, and un-marking deletes the log entry as elsewhere.
+_Nothing queued._
 
 ## Next
 

@@ -28,6 +28,7 @@ Three item types share a base: `name` (required), `description`, `category` (opt
 - **Archive** (Habits and Recurring Tasks) sets `endDate` to today, keeping history and stopping future occurrences. **Delete** erases the item and its history. Single Tasks have no archive.
 - **Pause** (Habits and Recurring Tasks) is a list of `{from, resumeOn?}` periods; `resumeOn` is the first day back and is optional for an open-ended pause. Paused days are not scheduled days, so they count as neither done nor missed and don't break streaks. Finished pauses are kept forever; dropping one would turn its days back into misses. A pause can't start in the past.
 - **No completion changes on future dates.** Habits and Recurring Tasks block it outright. For a Single Task, the agent confirms and then moves the task to today. Editing an item's other fields from a future day is still allowed.
+- **Marking done through chat** (`setHabitDone`, `setRecurringTaskDone`) sets rather than toggles, for any past or current day the item is due. For a Numeric or Timer habit, "done" logs the full goal (a bigger logged amount is kept); for a Checklist habit it ticks every item. Replies spell out what was recorded ("with 8 glasses", "by marking all checklist items done"). A stated amount still goes through `logHabitProgress`.
 - **Completion log.** Un-completing deletes the log entry instead of recording an event, so the log reflects current state, not a full history.
 
 ## Categories

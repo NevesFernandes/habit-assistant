@@ -8,9 +8,9 @@
 //
 // The same text is also fed back to the LLM as the tool result (App.tsx's
 // pushAssistantMessage), so follow-up corrections have real context.
-import type { Category, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
+import type { Category, CompletionLogEntry, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
-import { describeRecurrence, isPaused } from "./recurrence.ts";
+import { describeRecurrence, isPaused, isPausedOn } from "./recurrence.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -312,4 +312,103 @@ export function describeDuplicateQuestion(
       ? `You already have a ${noun} called "${existing[0].name}" (${itemDetails(existing[0], categories, todayISO)}).`
       : `You already have ${existing.length} ${noun}s called "${name}":\n${describeItemList(existing, categories, todayISO)}\n`;
   return `${already}${existing.length === 1 ? " " : ""}Are you sure you want to create a new one with the same name?`;
+}
+
+// §41: marking a habit or recurring task done (or not done) through chat. Every reply says
+// exactly what was recorded — the amount logged, or that every checklist item was ticked —
+// so a misunderstanding is visible straight away.
+
+/** "for today (Fri 26 Sep)" / "for Mon 22 Sep" */
+function forDay(dateISO: string, todayISO: string): string {
+  return `for ${formatDate(dateISO, todayISO)}`;
+}
+
+/** "today (Fri 26 Sep)" / "on Mon 22 Sep" */
+function onDay(dateISO: string, todayISO: string): string {
+  const date = formatDate(dateISO, todayISO);
+  return /^(today|tomorrow)\b/.test(date) ? date : `on ${date}`;
+}
+
+function amountText(habit: Habit, value: number): string {
+  if (habit.completionType === "timer") return formatGoalMinutes(value);
+  return `${value}${habit.unit ? ` ${habit.unit}` : ""}`;
+}
+
+/** Why a day can't be marked: the item wasn't due on it. */
+export function describeNotDue(item: Habit | RecurringTask, dateISO: string, todayISO: string): string {
+  const name = `"${item.name}"`;
+  if (dateISO < item.startDate) {
+    return `${name} only starts ${onDay(item.startDate, todayISO)}, so there's nothing to mark ${onDay(dateISO, todayISO)}.`;
+  }
+  if (item.endDate && dateISO > item.endDate) {
+    return `${name} was archived — its last day was ${formatDate(item.endDate, todayISO)} — so there's nothing to mark ${onDay(dateISO, todayISO)}.`;
+  }
+  if (isPausedOn(item, dateISO)) {
+    return `${name} is paused ${onDay(dateISO, todayISO)}, so there's nothing to mark. Paused days count as neither done nor missed.`;
+  }
+  return `${name} isn't due ${onDay(dateISO, todayISO)} — it repeats ${recurrenceText(item)}.`;
+}
+
+export function describeHabitMarkedDone(
+  habit: Habit,
+  before: CompletionLogEntry | undefined,
+  wasComplete: boolean,
+  dateISO: string,
+  todayISO: string,
+  streakText: string,
+): string {
+  const name = `"${habit.name}"`;
+  const day = forDay(dateISO, todayISO);
+  if (wasComplete) {
+    switch (habit.completionType) {
+      case "value":
+      case "timer":
+        return `${name} was already complete ${day}: ${amountText(habit, before?.value ?? 0)} logged, goal ${amountText(habit, habit.target ?? 0)}. Nothing changed.`;
+      case "checklist":
+        return `${name} was already complete ${day}: all checklist items were done. Nothing changed.`;
+      case "yesno":
+        return `${name} was already marked complete ${day}. Nothing changed.`;
+    }
+  }
+  let body: string;
+  switch (habit.completionType) {
+    case "value":
+    case "timer":
+      body = `Marked ${name} complete ${day} with ${amountText(habit, habit.target ?? 0)}, its full goal.`;
+      break;
+    case "checklist":
+      body = `Marked ${name} complete ${day} by marking all checklist items done: ${(habit.checklist ?? []).map((item) => item.text).join(", ")}.`;
+      break;
+    case "yesno":
+      body = `Marked ${name} complete ${day}.`;
+      break;
+  }
+  return `${body}\nCurrent streak: ${streakText}.`;
+}
+
+export function describeHabitMarkedNotDone(
+  habit: Habit,
+  before: CompletionLogEntry | undefined,
+  dateISO: string,
+  todayISO: string,
+): string {
+  const name = `"${habit.name}"`;
+  const day = forDay(dateISO, todayISO);
+  if (!before) return `${name} wasn't marked complete ${day}, so nothing changed.`;
+  switch (habit.completionType) {
+    case "value":
+    case "timer":
+      return `Marked ${name} not done ${day} by removing the ${amountText(habit, before.value ?? 0)} logged.`;
+    case "checklist":
+      return `Marked ${name} not done ${day} by unticking all its checklist items.`;
+    case "yesno":
+      return `Marked ${name} not done ${day}.`;
+  }
+}
+
+export function describeRecurringTaskMarked(task: RecurringTask, wasDone: boolean, done: boolean, dateISO: string, todayISO: string): string {
+  const name = `"${task.name}"`;
+  const day = forDay(dateISO, todayISO);
+  if (done) return wasDone ? `${name} was already marked done ${day}. Nothing changed.` : `Marked ${name} done ${day}.`;
+  return wasDone ? `Marked ${name} not done ${day}.` : `${name} wasn't marked done ${day}, so nothing changed.`;
 }

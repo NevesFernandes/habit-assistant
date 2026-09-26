@@ -131,6 +131,24 @@ export interface CheckSingleTaskChecklistItemToolCall {
   input: { name: string; categoryId?: string; item: string; checked?: boolean };
 }
 
+// §41: set (not toggle) whether an occurrence is done; done defaults to true.
+export interface SetDoneInput {
+  name: string;
+  categoryId?: string;
+  date?: string;
+  done?: boolean;
+}
+
+export interface SetHabitDoneToolCall {
+  name: "setHabitDone";
+  input: SetDoneInput;
+}
+
+export interface SetRecurringTaskDoneToolCall {
+  name: "setRecurringTaskDone";
+  input: SetDoneInput;
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -153,7 +171,9 @@ export type AgentToolCall =
   | AddSingleTaskChecklistItemToolCall
   | CheckHabitChecklistItemToolCall
   | CheckRecurringTaskChecklistItemToolCall
-  | CheckSingleTaskChecklistItemToolCall;
+  | CheckSingleTaskChecklistItemToolCall
+  | SetHabitDoneToolCall
+  | SetRecurringTaskDoneToolCall;
 
 export interface AgentResponse {
   reply?: string;
