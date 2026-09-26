@@ -310,6 +310,21 @@ export function aggregateCategoryStats(
   };
 }
 
+/** The longest stretch a heatmap shows, counted back from its last day. */
+export const HEATMAP_MAX_DAYS = 364;
+
+/**
+ * §36: which dates a habit's heatmap covers — from its start date (at most
+ * HEATMAP_MAX_DAYS back) to today, or to its last day if it's archived — so a young habit
+ * isn't drawn as a year of empty cells. Null when the habit hasn't started yet.
+ */
+export function heatmapWindow(habit: Habit, todayISO: string): { from: string; to: string } | null {
+  const to = habit.endDate && habit.endDate < todayISO ? habit.endDate : todayISO;
+  const earliest = addDays(to, -HEATMAP_MAX_DAYS);
+  const from = habit.startDate > earliest ? habit.startDate : earliest;
+  return from <= to ? { from, to } : null;
+}
+
 export interface HabitCalendarDay {
   date: string; // ISO date
   scheduled: boolean; // whether this habit was due at all on this date (occursOn)
