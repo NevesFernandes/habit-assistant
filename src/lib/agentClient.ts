@@ -4,7 +4,7 @@
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
 import type { Category } from "../types/models";
-import type { CreateHabitInput, CreateRecurringTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
+import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
 import type { AgentHistoryMessage } from "../server/agentHistory";
 import type { AgentDebugEntry } from "../server/handleAgentRequest";
@@ -13,7 +13,7 @@ export type { AgentHistoryMessage } from "../server/agentHistory";
 
 export interface CreateSingleTaskToolCall {
   name: "createSingleTask";
-  input: { name: string; description?: string; priority?: number };
+  input: CreateSingleTaskInput;
 }
 
 export interface CreateHabitToolCall {

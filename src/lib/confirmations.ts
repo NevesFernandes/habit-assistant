@@ -123,6 +123,13 @@ function datesLines(item: { startDate: string; endDate?: string }, todayISO: str
   return lines;
 }
 
+// §39: only for a task that has a checklist; a plain task gets no line.
+function taskChecklistLines(task: RecurringTask | SingleTask): string[] {
+  if (!task.checklist) return [];
+  const items = task.checklist.map((item) => item.text);
+  return [items.length > 0 ? `Checklist: ${items.join(", ")}` : "Checklist: empty for now"];
+}
+
 function startDateGiven(input: { startDate?: string; startWeekday?: number }): boolean {
   return input.startDate !== undefined || input.startWeekday !== undefined;
 }
@@ -161,7 +168,12 @@ export function describeCreatedRecurringTask(
   todayISO: string,
 ): string {
   const category = categoryName(task.categoryId, categories);
-  const lines = [`Repeats: ${recurrenceText(task)}`, `Category: ${category}`, ...datesLines(task, todayISO)];
+  const lines = [
+    `Repeats: ${recurrenceText(task)}`,
+    `Category: ${category}`,
+    ...datesLines(task, todayISO),
+    ...taskChecklistLines(task),
+  ];
   if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
 
@@ -177,6 +189,7 @@ export function describeCreatedSingleTask(task: SingleTask, input: CreateSingleT
   const lines = [
     `Date: ${formatDate(task.startDate, todayISO)}`,
     task.persistency ? "If not done: carries over to the next day" : "If not done: dropped at the end of the day",
+    ...taskChecklistLines(task),
   ];
   if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);

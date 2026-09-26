@@ -508,6 +508,10 @@ export default function App() {
               onToggleRecurringTask={handleRecurringTaskToggle}
               onToggleHabitChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, selectedDate)}
               onCompleteFutureTask={handleFutureTaskComplete}
+              onToggleTaskChecklistItem={handleSingleTaskChecklistToggle}
+              onAddTaskChecklistItem={handleSingleTaskChecklistAdd}
+              onToggleRecurringTaskChecklistItem={handleRecurringTaskChecklistToggle}
+              onAddRecurringTaskChecklistItem={handleRecurringTaskChecklistAdd}
             />
           </div>
         )}

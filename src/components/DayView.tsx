@@ -1,5 +1,6 @@
-import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
+import type { Category, ChecklistItem, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
 import { useState } from "react";
+import { ChevronDown, ChevronRight, ListChecks } from "lucide-react";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate, isFutureDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
 import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
@@ -27,6 +28,11 @@ interface DayViewProps {
   onToggleHabitChecklistItem: (habitId: string, itemId: string) => void;
   /** §29: completing a future-dated one-off task, which also moves it to today. */
   onCompleteFutureTask: (taskId: string) => void;
+  /** §39: a task's attached checklist, editable from any day — it isn't completion status. */
+  onToggleTaskChecklistItem: (taskId: string, itemId: string) => void;
+  onAddTaskChecklistItem: (taskId: string, text: string) => void;
+  onToggleRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
+  onAddRecurringTaskChecklistItem: (taskId: string, text: string) => void;
 }
 
 function getItemsForDate(
@@ -61,6 +67,10 @@ export default function DayView({
   onToggleRecurringTask,
   onToggleHabitChecklistItem,
   onCompleteFutureTask,
+  onToggleTaskChecklistItem,
+  onAddTaskChecklistItem,
+  onToggleRecurringTaskChecklistItem,
+  onAddRecurringTaskChecklistItem,
 }: DayViewProps) {
   const items = getItemsForDate(habits, singleTasks, recurringTasks, selectedDate);
   // §29: a day that hasn't happened yet is read-only for completion. One-off tasks are the
@@ -109,6 +119,8 @@ export default function DayView({
               categories={categories}
               readOnly={isFuture}
               onToggle={onToggleRecurringTask}
+              onToggleChecklistItem={onToggleRecurringTaskChecklistItem}
+              onAddChecklistItem={onAddRecurringTaskChecklistItem}
             />
           );
         }
@@ -120,6 +132,8 @@ export default function DayView({
             isFuture={isFuture}
             confirming={confirmingTaskId === entry.item.id}
             onToggle={onToggleTask}
+            onToggleChecklistItem={onToggleTaskChecklistItem}
+            onAddChecklistItem={onAddTaskChecklistItem}
             onAskConfirm={() => setConfirmingTaskId(entry.item.id)}
             onCancelConfirm={() => setConfirmingTaskId(null)}
             onConfirm={() => {
@@ -227,6 +241,8 @@ function RecurringTaskRow({
   categories,
   readOnly,
   onToggle,
+  onToggleChecklistItem,
+  onAddChecklistItem,
 }: {
   task: RecurringTask;
   selectedDate: string;
@@ -234,28 +250,52 @@ function RecurringTaskRow({
   categories: Category[];
   readOnly: boolean;
   onToggle: (taskId: string) => void;
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
   const isDone = completionLog.some((entry) => entry.itemId === task.id && entry.date === selectedDate);
+  const checklist = useTaskChecklist(task.checklist, selectedDate, isDone, !readOnly);
   return (
-    <li className="flex items-center gap-3 rounded-md bg-slate-800 px-3 py-2">
-      <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
-      <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
-        <div>{task.name}</div>
-        {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
-        {task.recurrence.type === "timesPerPeriod" && (
-          <div className="text-xs text-violet-300">
-            {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period)}/
-            {task.recurrence.count} this {task.recurrence.period}
-          </div>
+    <li className="flex flex-col gap-2 rounded-md bg-slate-800 px-3 py-2">
+      <div className="flex w-full items-center gap-3">
+        <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
+        <div
+          className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""} ${task.checklist ? "cursor-pointer" : ""}`}
+          onClick={checklist.toggleExpanded}
+        >
+          <div>{task.name}</div>
+          {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
+          {task.recurrence.type === "timesPerPeriod" && (
+            <div className="text-xs text-violet-300">
+              {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period)}/
+              {task.recurrence.count} this {task.recurrence.period}
+            </div>
+          )}
+        </div>
+        {task.checklist && (
+          <ChecklistBadge items={task.checklist} expanded={checklist.expanded} onClick={checklist.toggleExpanded} />
         )}
+        <YesNoCheckbox
+          checked={isDone}
+          onChange={() => onToggle(task.id)}
+          disabled={readOnly}
+          title={readOnly ? FUTURE_TITLE : undefined}
+        />
       </div>
-      <YesNoCheckbox
-        checked={isDone}
-        onChange={() => onToggle(task.id)}
-        disabled={readOnly}
-        title={readOnly ? FUTURE_TITLE : undefined}
-      />
+      {task.checklist && checklist.expanded && (
+        <TaskChecklistPanel
+          items={task.checklist}
+          showDonePrompt={checklist.showDonePrompt}
+          onToggleItem={(itemId) => checklist.onToggleItem(itemId, () => onToggleChecklistItem(task.id, itemId))}
+          onAddItem={(text) => onAddChecklistItem(task.id, text)}
+          onMarkDone={() => {
+            checklist.dismissDonePrompt();
+            onToggle(task.id);
+          }}
+          onDismissDonePrompt={checklist.dismissDonePrompt}
+        />
+      )}
     </li>
   );
 }
@@ -269,6 +309,8 @@ function TaskRow({
   isFuture,
   confirming,
   onToggle,
+  onToggleChecklistItem,
+  onAddChecklistItem,
   onAskConfirm,
   onCancelConfirm,
   onConfirm,
@@ -278,25 +320,47 @@ function TaskRow({
   isFuture: boolean;
   confirming: boolean;
   onToggle: (taskId: string) => void;
+  onToggleChecklistItem: (taskId: string, itemId: string) => void;
+  onAddChecklistItem: (taskId: string, text: string) => void;
   onAskConfirm: () => void;
   onCancelConfirm: () => void;
   onConfirm: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
   const askFirst = isFuture && !task.done;
+  const checklist = useTaskChecklist(task.checklist, task.startDate, task.done, !isFuture);
   return (
     <li className="flex flex-col gap-2 rounded-md bg-slate-800 px-3 py-2">
       <div className="flex w-full items-center gap-3">
         <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
-        <div className={`flex-1 ${task.done ? "text-slate-500 line-through" : ""}`}>
+        <div
+          className={`flex-1 ${task.done ? "text-slate-500 line-through" : ""} ${task.checklist ? "cursor-pointer" : ""}`}
+          onClick={checklist.toggleExpanded}
+        >
           <div>{task.name}</div>
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
         </div>
+        {task.checklist && (
+          <ChecklistBadge items={task.checklist} expanded={checklist.expanded} onClick={checklist.toggleExpanded} />
+        )}
         <YesNoCheckbox
           checked={task.done}
           onChange={() => (askFirst ? onAskConfirm() : onToggle(task.id))}
         />
       </div>
+      {task.checklist && checklist.expanded && (
+        <TaskChecklistPanel
+          items={task.checklist}
+          showDonePrompt={checklist.showDonePrompt}
+          onToggleItem={(itemId) => checklist.onToggleItem(itemId, () => onToggleChecklistItem(task.id, itemId))}
+          onAddItem={(text) => onAddChecklistItem(task.id, text)}
+          onMarkDone={() => {
+            checklist.dismissDonePrompt();
+            onToggle(task.id);
+          }}
+          onDismissDonePrompt={checklist.dismissDonePrompt}
+        />
+      )}
       {confirming && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-700 pt-2 text-xs text-slate-300">
           <span>This task is in the future. Mark it complete and move it to today?</span>
@@ -312,5 +376,87 @@ function TaskRow({
         </div>
       )}
     </li>
+  );
+}
+
+// §39: a task's attached checklist in the day view — closed by default behind a progress
+// badge. Ticking the last open item offers (never forces) marking the task itself done;
+// the offer only appears when the task can be completed from this day (not a future one).
+function useTaskChecklist(
+  items: ChecklistItem[] | undefined,
+  selectedDate: string,
+  isDone: boolean,
+  canOfferDone: boolean,
+) {
+  const [expanded, setExpanded] = useState(false);
+  // The day the offer was made for: the same row is reused when a recurring task also
+  // shows on the next day viewed, and the offer mustn't follow it there.
+  const [donePromptDate, setDonePromptDate] = useState<string | null>(null);
+  const allChecked = !!items && items.length > 0 && items.every((item) => item.checked);
+  return {
+    expanded,
+    toggleExpanded: () => {
+      if (items) setExpanded((open) => !open);
+    },
+    // Derived, so unticking an item, adding one, or completing the task hides it again.
+    showDonePrompt: donePromptDate === selectedDate && allChecked && !isDone && canOfferDone,
+    dismissDonePrompt: () => setDonePromptDate(null),
+    onToggleItem: (itemId: string, toggle: () => void) => {
+      const target = items?.find((item) => item.id === itemId);
+      const ticksLastOpenItem =
+        !!target && !target.checked && items!.every((item) => item.checked || item.id === itemId);
+      toggle();
+      setDonePromptDate(ticksLastOpenItem ? selectedDate : null);
+    },
+  };
+}
+
+function ChecklistBadge({ items, expanded, onClick }: { items: ChecklistItem[]; expanded: boolean; onClick: () => void }) {
+  const checked = items.filter((item) => item.checked).length;
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+  return (
+    <button
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-label={`Checklist, ${checked} of ${items.length} checked`}
+      className="flex shrink-0 items-center gap-1 rounded-md bg-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-600"
+    >
+      <ListChecks className="h-3.5 w-3.5" aria-hidden />
+      {checked}/{items.length}
+      <Chevron className="h-3.5 w-3.5" aria-hidden />
+    </button>
+  );
+}
+
+function TaskChecklistPanel({
+  items,
+  showDonePrompt,
+  onToggleItem,
+  onAddItem,
+  onMarkDone,
+  onDismissDonePrompt,
+}: {
+  items: ChecklistItem[];
+  showDonePrompt: boolean;
+  onToggleItem: (itemId: string) => void;
+  onAddItem: (text: string) => void;
+  onMarkDone: () => void;
+  onDismissDonePrompt: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-slate-700 pt-2 pl-7 text-sm">
+      <Checklist items={items} onToggle={onToggleItem} onAdd={onAddItem} />
+      {showDonePrompt && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+          <span>All items checked. Mark the task done?</span>
+          <button onClick={onMarkDone} className="rounded-md bg-violet-500 px-2 py-1 text-white hover:bg-violet-400">
+            Yes
+          </button>
+          <button onClick={onDismissDonePrompt} className="rounded-md bg-slate-700 px-2 py-1 hover:bg-slate-600">
+            No
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

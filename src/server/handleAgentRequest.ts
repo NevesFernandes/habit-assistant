@@ -168,7 +168,7 @@ For logHabitProgress: name is the same kind of text fragment used elsewhere to s
 
 const PICK_FROM_LIST_PROSE = `If the app answered with a numbered "which one did you mean?" list and the user picks one (e.g. "the one in Nutrition"), call the same tool again with the same name plus categoryId set to that item's category id. categoryId only ever selects — to move an item to another category, use newCategoryId.`;
 
-const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. A task's checklist starts empty — there's no way to seed several items at task-creation time, only one at a time via these tools.
+const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, text is the one item to add (e.g. "add milk to my shopping list" → name: "shopping", text: "milk"). These always *add* one item — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
 
 For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from the plain done/not-done toggle (which the user can't reach via chat at all — only through the app's UI). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
 
@@ -189,7 +189,9 @@ For createHabit specifically:
 For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
 - priority, startDate/startWeekday/startWeekdayMode, and recurrence all work exactly as they do for createHabit — see above.
-- There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.`;
+- There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
+
+For both task tools: a task can carry a checklist inside it (e.g. a shopping list). Set withChecklist to true when the user asks for one ("with a checklist", "a shopping list for Friday"), and put any items they name in checklistItems. Otherwise leave both out. The checklist never affects whether the task itself is done.`;
 }
 
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
@@ -306,6 +308,16 @@ function buildTools(
             description:
               "Whether an incomplete task keeps carrying forward until done (true, the default) or dies uncompleted at the end of its start date (false). Only set explicitly when the user's phrasing signals a one-shot/same-day intent (e.g. 'just for today', 'don't need this tomorrow') or explicitly asks it to persist — otherwise omit.",
           },
+          withChecklist: {
+            type: "boolean",
+            description:
+              "Set true when the user wants this task to have a checklist inside it (e.g. 'with a checklist', a shopping list task), even with no items yet. Omit for a plain task.",
+          },
+          checklistItems: {
+            type: "array",
+            description: "Optional starting checklist items, when the user names some (e.g. 'milk, eggs and bread'). Implies withChecklist.",
+            items: { type: "string" },
+          },
         },
         required: ["name"],
       },
@@ -410,6 +422,16 @@ function buildTools(
             description: "Optional ISO date (YYYY-MM-DD) after which the task stops recurring.",
           },
           recurrence: { type: "string", description: RECURRENCE_SPEC_GRAMMAR },
+          withChecklist: {
+            type: "boolean",
+            description:
+              "Set true when the user wants this task to have a checklist inside it (e.g. 'with a checklist', a shopping list task), even with no items yet. Omit for a plain task.",
+          },
+          checklistItems: {
+            type: "array",
+            description: "Optional starting checklist items, when the user names some (e.g. 'milk, eggs and bread'). Implies withChecklist.",
+            items: { type: "string" },
+          },
         },
         required: ["name", "recurrence"],
       },
