@@ -119,20 +119,25 @@ export default function App() {
   const [savesWaiting, setSavesWaiting] = useState(0);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
 
-  // Issue #7: the banner shows as soon as the token is about to expire — checked every 30s and
-  // whenever the app comes back to the foreground — so the user can reconnect before a save
-  // needs it. The Google popup only ever opens from the banner's own Reconnect tap.
+  // Issue #7: the banner shows as soon as the token is about to expire, so the user can
+  // reconnect before a save needs it. Checked every 10s, but browsers slow timers down in
+  // background tabs, so also on focus, on returning to the tab, and on any tap. The Google
+  // popup only ever opens from the banner's own Reconnect tap.
   useEffect(() => {
     if (!session) return;
     const check = () => {
       if (sessionRef.current && tokenNeedsRefresh(sessionRef.current)) setReconnectNeeded(true);
     };
     check();
-    const interval = window.setInterval(check, 30_000);
+    const interval = window.setInterval(check, 10_000);
     document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pointerdown", check, true);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("pointerdown", check, true);
     };
   }, [session]);
   const [signingIn, setSigningIn] = useState(false);
@@ -562,7 +567,7 @@ export default function App() {
       </div>
 
       {reconnectNeeded && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-400/40 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-md border border-amber-400/60 bg-amber-950 px-3 py-2 text-sm text-amber-100 shadow-lg">
           <span className="flex-1">
             {savesWaiting > 0
               ? "Your Google sign-in expired, so your last change is waiting to be saved."
