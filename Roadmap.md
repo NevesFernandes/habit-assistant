@@ -16,14 +16,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §42 — Recurring Task checklists that reset each occurrence
-Today a Recurring Task's attached checklist is one persistent list that never resets. That suits a running list (a weekly "go shopping" task you keep adding items to) but not a routine (a weekly "Sunday cleaning" task, where every item should start unticked each week).
-
-**Proposal:** a per-task choice between *persistent* (today's behaviour, stays the default so existing tasks don't change) and *resets each occurrence*. It's set through chat ("make the cleaning checklist reset every week"), and the confirmation says which mode the task is in. A resetting checklist stores its ticks per date, the same way Habit checklists already do in the completion log (`checklist` snapshot on the completion entry in `models.ts`), so past occurrences keep their own state.
-
-**Decide at kickoff:** whether unticked items on a resetting list should simply reset or carry forward as a reminder (e.g. shown as "left over from last time"). Recommendation: plain reset first; carry-forward only if it's missed in use.
-
-**Touches:** `models.ts`, the day-view checklist (`Checklist.tsx`), the chat engine + a targeted scenario, and `public/help.html`.
+_Nothing queued._
 
 ## Next
 

@@ -11,6 +11,7 @@
 import type { Category, CompletionLogEntry, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
 import { describeRecurrence, isPaused, isPausedOn } from "./recurrence.ts";
+import { checklistModeOf, recurringTaskChecklistOn } from "./recurringChecklist.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -72,7 +73,7 @@ function recurrenceText(item: Pick<Habit, "recurrence">): string {
 
 // Assumed-field detection. Only the user's own message is evidence of what
 // they asked for — the model filling in a field doesn't mean the user said it.
-type AssumedField = "recurrence" | "category" | "tracking" | "startDate";
+type AssumedField = "recurrence" | "category" | "tracking" | "startDate" | "checklistMode";
 
 // Deliberately no "say e.g. ..." examples — the bullet labels above the hint
 // already show which settings exist, so the hint just names what was assumed.
@@ -81,6 +82,7 @@ const ASSUMED_LABELS: Record<AssumedField, (value: string) => string> = {
   category: (v) => (v === "none" ? "no category" : v),
   tracking: (v) => v,
   startDate: () => "starting today",
+  checklistMode: () => "unticked checklist items carry over",
 };
 
 const ASSUMED_FOLLOW_UP = "Need any changes?";
@@ -123,11 +125,21 @@ function datesLines(item: { startDate: string; endDate?: string }, todayISO: str
   return lines;
 }
 
-// §39: only for a task that has a checklist; a plain task gets no line.
-function taskChecklistLines(task: RecurringTask | SingleTask): string[] {
+// §42: what a recurring task's checklist does from one occurrence to the next.
+function checklistModeText(task: RecurringTask): string {
+  if (!task.checklist) return "no checklist";
+  return checklistModeOf(task) === "sameList" ? "same list every time" : "unticked items carry over to the next time";
+}
+
+// §39: only for a task that has a checklist; a plain task gets no line. A recurring task
+// lists its items as of today (§42: items ticked on an earlier occurrence are gone).
+function taskChecklistLines(task: RecurringTask | SingleTask, todayISO: string): string[] {
   if (!task.checklist) return [];
-  const items = task.checklist.map((item) => item.text);
-  return [items.length > 0 ? `Checklist: ${items.join(", ")}` : "Checklist: empty for now"];
+  const current = task.kind === "recurringTask" ? (recurringTaskChecklistOn(task, todayISO) ?? []) : task.checklist;
+  const items = current.map((item) => item.text);
+  const lines = [items.length > 0 ? `Checklist: ${items.join(", ")}` : "Checklist: empty for now"];
+  if (task.kind === "recurringTask") lines.push(`Checklist mode: ${checklistModeText(task)}`);
+  return lines;
 }
 
 function startDateGiven(input: { startDate?: string; startWeekday?: number }): boolean {
@@ -172,7 +184,7 @@ export function describeCreatedRecurringTask(
     `Repeats: ${recurrenceText(task)}`,
     `Category: ${category}`,
     ...datesLines(task, todayISO),
-    ...taskChecklistLines(task),
+    ...taskChecklistLines(task, todayISO),
   ];
   if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
@@ -181,6 +193,7 @@ export function describeCreatedRecurringTask(
   if (isRecurrenceAssumed(task, userText)) assumed.push({ field: "recurrence", value: recurrenceText(task) });
   if (!mentionsCategory(task.categoryId, categories, userText)) assumed.push({ field: "category", value: category });
   if (!startDateGiven(input)) assumed.push({ field: "startDate", value: "" });
+  if (task.checklist && input.checklistMode === undefined) assumed.push({ field: "checklistMode", value: "" });
 
   return withHint(`Added recurring task "${task.name}":\n${bullets(lines)}`, buildHint(assumed));
 }
@@ -189,7 +202,7 @@ export function describeCreatedSingleTask(task: SingleTask, input: CreateSingleT
   const lines = [
     `Date: ${formatDate(task.startDate, todayISO)}`,
     task.persistency ? "If not done: carries over to the next day" : "If not done: dropped at the end of the day",
-    ...taskChecklistLines(task),
+    ...taskChecklistLines(task, todayISO),
   ];
   if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
@@ -220,6 +233,9 @@ export function describeChanges(before: AnyItem, after: AnyItem, categories: Cat
   }
   if (before.kind === "habit" && after.kind === "habit") {
     add("Tracking", describeTracking(before), describeTracking(after));
+  }
+  if (before.kind === "recurringTask" && after.kind === "recurringTask" && after.checklist) {
+    add("Checklist mode", checklistModeText(before), checklistModeText(after));
   }
   if (before.kind === "singleTask" && after.kind === "singleTask") {
     add("Status", before.done ? "done" : "not done", after.done ? "done" : "not done");

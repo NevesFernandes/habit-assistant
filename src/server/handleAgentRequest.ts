@@ -92,7 +92,8 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "deleteRecurringTasks", buckets: ["delete"], listBlurb: "delete recurring tasks matching filters you specify." },
   { name: "updateSingleTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing one-off task." },
   { name: "updateHabit", buckets: ["modify"], listBlurb: "change one or more fields on an existing habit." },
-  { name: "updateRecurringTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing recurring task." },
+  // Also "checklist": §42's newChecklistMode is asked for in list words ("make the cleaning checklist reset every time").
+  { name: "updateRecurringTask", buckets: ["modify", "checklist"], listBlurb: "change one or more fields on an existing recurring task." },
   { name: "archiveHabit", buckets: ["delete", "modify"], listBlurb: "archive an existing habit." },
   { name: "archiveRecurringTask", buckets: ["delete", "modify"], listBlurb: "archive an existing recurring task." },
   { name: "pauseHabit", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing habit, with or without a known resume date." },
@@ -176,7 +177,9 @@ const SET_DONE_PROSE = `For setHabitDone and setRecurringTaskDone: mark one habi
 
 const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, items is every item the user named, one entry each (e.g. "add milk to my shopping list" → name: "shopping", items: ["milk"]; "add milk, eggs and bread to the shopping list" → items: ["milk", "eggs", "bread"]). Never drop items: one call adds them all. These always *add* — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
 
-For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from setHabitDone (which marks a whole checklist habit done, e.g. "I did my morning routine" — use checkHabitChecklistItem only when the user names one item of it). checkHabitChecklistItem specifically also takes date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — a habit's checklist resets per occurrence, so checking an item off on one date has no effect on any other date's state. checkRecurringTaskChecklistItem and checkSingleTaskChecklistItem have no date — a task's checklist doesn't reset, it's one persistent list.
+For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from setHabitDone (which marks a whole checklist habit done, e.g. "I did my morning routine" — use checkHabitChecklistItem only when the user names one item of it). checkHabitChecklistItem and checkRecurringTaskChecklistItem also take date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — each occurrence of a habit or recurring task has its own checklist. checkSingleTaskChecklistItem has no date — a one-off task's checklist is one list.
+
+To change whether a recurring task's checklist is the same list every time or carries unticked items over, use updateRecurringTask's newChecklistMode — not the add/check tools.
 
 ${PICK_FROM_LIST_PROSE}`;
 
@@ -196,6 +199,7 @@ For createRecurringTask specifically:
 - categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
 - priority, startDate/startWeekday/startWeekdayMode, and recurrence all work exactly as they do for createHabit — see above.
 - There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
+- checklistMode (only with a checklist): each occurrence of a recurring task has its own checklist. Leave checklistMode out by default — unticked items then carry over to the next occurrence, which suits a running list like shopping. Set "sameList" only when the user says the list is the same every time or should reset each time (e.g. "a cleaning routine with the same checklist every week"). Never ask about this; the confirmation states it.
 
 For both task tools: a task can carry a checklist inside it (e.g. a shopping list). Set withChecklist to true when the user asks for one ("with a checklist", "a shopping list for Friday"), and put any items they name in checklistItems. Otherwise leave both out. The checklist never affects whether the task itself is done.`;
 }
@@ -439,6 +443,12 @@ function buildTools(
             description: "Optional starting checklist items, when the user names some (e.g. 'milk, eggs and bread'). Implies withChecklist.",
             items: { type: "string" },
           },
+          checklistMode: {
+            type: "string",
+            description:
+              "Only with a checklist. Omit (default: unticked items carry over to the next occurrence). 'sameList' only when the user says the checklist is the same every time / resets each occurrence.",
+            enum: ["carryOver", "sameList"],
+          },
         },
         required: ["name", "recurrence"],
       },
@@ -670,6 +680,12 @@ function buildTools(
             type: "string",
             description: `Replaces the entire existing recurrence rule. ${RECURRENCE_SPEC_GRAMMAR}`,
           },
+          newChecklistMode: {
+            type: "string",
+            description:
+              "What the task's checklist does between occurrences: 'sameList' = the same list every time, all items start unticked each occurrence ('make it reset every time'); 'carryOver' = unticked items carry over to the next occurrence, ticked ones go away ('keep what I didn't buy for next time').",
+            enum: ["carryOver", "sameList"],
+          },
         },
         required: ["name"],
       },
@@ -868,7 +884,7 @@ function buildTools(
     {
       name: "checkRecurringTaskChecklistItem",
       description:
-        "Check or uncheck one item on a recurring task's checklist. Use for phrases like 'check off milk on my shopping list' or 'I still need to buy milk, uncheck it'.",
+        "Check or uncheck one item on a recurring task's checklist, for a specific date (defaults to today) — each occurrence has its own checklist. Use for phrases like 'check off milk on my shopping list' or 'I still need to buy milk, uncheck it'.",
       parameters: {
         type: "object",
         properties: {
@@ -879,6 +895,7 @@ function buildTools(
             type: "boolean",
             description: "true (default) to check it off; false to uncheck it.",
           },
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
         },
         required: ["name", "item"],
       },
