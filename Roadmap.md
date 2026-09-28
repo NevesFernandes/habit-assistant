@@ -10,18 +10,29 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §42** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
-- See also `CLAUDE.md`'s "Open questions / to refine later" section for undecided design questions — those are a different kind of thing from the concrete, actionable items below.
+- **Next available ID: §47** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
 ## Now
 
-_Nothing queued._
+### §42 — Recurring Task checklists that reset each occurrence
+Today a Recurring Task's attached checklist is one persistent list that never resets. That suits a running list (a weekly "go shopping" task you keep adding items to) but not a routine (a weekly "Sunday cleaning" task, where every item should start unticked each week).
+
+**Proposal:** a per-task choice between *persistent* (today's behaviour, stays the default so existing tasks don't change) and *resets each occurrence*. It's set through chat ("make the cleaning checklist reset every week"), and the confirmation says which mode the task is in. A resetting checklist stores its ticks per date, the same way Habit checklists already do in the completion log (`checklist` snapshot on the completion entry in `models.ts`), so past occurrences keep their own state.
+
+**Decide at kickoff:** whether unticked items on a resetting list should simply reset or carry forward as a reminder (e.g. shown as "left over from last time"). Recommendation: plain reset first; carry-forward only if it's missed in use.
+
+**Touches:** `models.ts`, the day-view checklist (`Checklist.tsx`), the chat engine + a targeted scenario, and `public/help.html`.
 
 ## Next
 
-_Nothing queued._
+### §43 — Choose the first day of the week
+Weeks start on Sunday, hardcoded (`startOfWeek` in `recurrence.ts`). This decides what counts as "this week" for "N times per week" habits and the week stats, and the row order of the calendar heatmap (`CalendarHeatmap.tsx`). Much of Europe starts weeks on Monday.
+
+**Proposal:** a Settings option (Sunday / Monday), synced across devices in the Drive file, and threaded through `startOfWeek` and everything that uses it (`recurrence.ts`, `habitStats.ts`, `CalendarHeatmap.tsx`). The 0=Sunday numbering of weekdays in recurrence rules stays as is; only where a week *begins* changes.
+
+**Watch out:** switching moves the week boundary for past weeks too, so an "N times per week" habit's history can re-bucket (a week that was met may look missed, or vice versa). Accept that and mention it next to the setting; don't try to keep per-period history of the setting. Test the per-week rules around the switch explicitly. Update `public/help.html`.
 
 ## Later
 
@@ -38,4 +49,19 @@ Today the Google OAuth app is in *Testing* mode, so only listed test users (max 
 5. **Publish** in Google Cloud Console (OAuth consent screen → publishing status → In production), completing whatever verification it asks for.
 6. **Update docs:** README's "self-hosted" status wording, and `CONTRIBUTING.md`'s deploy section if steps changed.
 
-New items go in on request, at whichever position and tier they deserve, taking the next free ID above. `CLAUDE.md`'s "Open questions / to refine later" still lists undecided design questions, and its Status section names work that was never queued here: real tracking for Numeric-value and Checklist habits, one shared interactive checklist component, closing the §24 classifier-fallback payload gap before `TRIAL_FALLBACK_PROVIDER` goes back to `groq`, and logging un-completions as their own events instead of deleting the entry.
+### §44 — Research: reminders / push notifications
+The app is deliberately pull-based today (no notifications). Reminders are the most common habit-app feature, but real push needs something the app doesn't have: a scheduled server-side job that knows when each user's items are due and holds their push subscriptions. That cuts against "data in your own Drive, $0 by construction."
+
+**This item is research only, not a build:** find the cheapest honest design (e.g. Cloudflare Worker cron triggers + Web Push, with the minimum of per-user state held server-side), what it would cost and what data would have to leave Drive, and how well PWA push works on Android. Then decide whether to build it. Until then, keep the CLAUDE.md rule: don't build toward notifications, but don't make them hard to add.
+
+### §45 — Voice: slide-to-lock recording (trial on a branch)
+Today the mic button must be held for the whole message. Slide-to-lock (as in WhatsApp): while holding, slide the finger to a lock icon, then talk hands-free and tap to send (or cancel). Makes longer voice messages comfortable. UI-only; the transcription pipeline is unchanged.
+
+**Trial first:** build it on a branch for hands-on testing; adopting it isn't decided. If it's dropped, record that and remove the entry.
+
+### §46 — Voice: on-device Whisper (trial on a branch)
+Transcribe in the browser (Whisper via WASM/WebGPU) instead of sending audio to Groq: better privacy, works offline, no STT key needed. Costs to measure: model download size (tens to hundreds of MB, precached by the service worker like `public/ort/`), transcription speed on a mid-range Android phone, battery, and accuracy versus Groq Whisper. The Silero VAD silence guard stays in front of it either way.
+
+**Trial first:** a spike on a branch, measured on the user's real phone; adopting it isn't decided. If it's adopted, it's probably a Settings toggle alongside the Groq path rather than a replacement.
+
+New items go in on request, at whichever position and tier they deserve, taking the next free ID above.

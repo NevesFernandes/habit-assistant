@@ -12,7 +12,7 @@ Related docs: `README.md` (user-facing pitch), `CONTRIBUTING.md` (setup, running
 - **Ask, don't guess.** When information is missing, the agent asks. When a name matches several items, the app lists them and the user picks, by number or name. Confirmations are built from the item as it was actually saved, including any defaults the agent assumed, so the user can spot a misunderstanding.
 - **Voice input.** Hold the mic button to record; on release, the clip is transcribed and **sent immediately**, with no review step. This is a deliberate trade of the usual caution for a voice-native feel. The transcript still shows up as the sent message. A user message is just text wherever it came from, so voice feeds the same pipeline as typing.
 - **User manual: `public/help.html`**, linked from the `?` button in the top bar, from Settings and from the chat's empty state. It restates user-visible behaviour that's defined in code, so **any change to user-visible behaviour updates it in the same `Close §N` commit**.
-- **No push notifications or reminders.** The app is pull-based. Don't build toward notifications, but don't design anything that would make adding them painful later.
+- **No push notifications or reminders.** The app is pull-based. Don't build toward notifications, but don't design anything that would make adding them painful later. Whether to add them is a research item (Roadmap §44).
 
 ## Item model (`src/types/models.ts`)
 
@@ -25,12 +25,12 @@ Three item types share a base: `name` (required), `description`, `category` (opt
   - **Checklist**: resets per occurrence, with progress stored as a per-date snapshot in the completion log.
 - **Recurring Task.** Same shape as a Habit (category, priority, dates, recurrence), but tracking is only done/not-done per occurrence: no completion types and no stats.
 - **Single Task.** One-off, done/not-done. An undone task rolls forward to today rather than appearing on every future day.
-- **Checklists.** One shared component (`Checklist.tsx`) in two roles: a Habit's completion type, which resets each occurrence, and a freeform attachment on either Task type (e.g. a weekly "go shopping" task used as a running list). A Recurring Task's attached checklist is currently a single persistent list that never resets. A task has a checklist once it's created with one ("…with a checklist inside", possibly empty) or gets its first item. The day view shows it behind a progress badge (`3/7`, even `0/0`) that expands to the list, and ticking the last item offers, never forces, marking the task done.
+- **Checklists.** One shared component (`Checklist.tsx`) in two roles: a Habit's completion type, which resets each occurrence, and a freeform attachment on either Task type (e.g. a weekly "go shopping" task used as a running list). A Recurring Task's attached checklist is currently a single persistent list that never resets (an optional per-occurrence reset is Roadmap §42). A task has a checklist once it's created with one ("…with a checklist inside", possibly empty) or gets its first item. The day view shows it behind a progress badge (`3/7`, even `0/0`) that expands to the list, and ticking the last item offers, never forces, marking the task done.
 - **Archive** (Habits and Recurring Tasks) sets `endDate` to today, keeping history and stopping future occurrences. **Delete** erases the item and its history. Single Tasks have no archive.
 - **Pause** (Habits and Recurring Tasks) is a list of `{from, resumeOn?}` periods; `resumeOn` is the first day back and is optional for an open-ended pause. Paused days are not scheduled days, so they count as neither done nor missed and don't break streaks. Finished pauses are kept forever; dropping one would turn its days back into misses. A pause can't start in the past.
 - **No completion changes on future dates.** Habits and Recurring Tasks block it outright. For a Single Task, the agent confirms and then moves the task to today. Editing an item's other fields from a future day is still allowed.
 - **Marking done through chat** (`setHabitDone`, `setRecurringTaskDone`) sets rather than toggles, for any past or current day the item is due. For a Numeric or Timer habit, "done" logs the full goal (a bigger logged amount is kept); for a Checklist habit it ticks every item. Replies spell out what was recorded ("with 8 glasses", "by marking all checklist items done"). A stated amount still goes through `logHabitProgress`.
-- **Completion log.** Un-completing deletes the log entry instead of recording an event, so the log reflects current state, not a full history.
+- **Completion log.** Un-completing deletes the log entry instead of recording an event: the log mirrors what's ticked, not a history. This is settled; no event history is planned.
 
 ## Categories
 
@@ -40,7 +40,7 @@ A default starter set with icons ships out of the box: Quit a bad habit, Study, 
 
 Supported rules: daily, specific weekdays, every N days, N times per week/month (flexible, not pinned to days), nth weekday of month (first to fifth, or last), specific yearly dates (MM-DD), and on/off cycles.
 
-**`occursOn(item, date)` is the single source of truth for "is this due?"** Views, stats, streaks and the heatmap all ask it. That's why pausing needed no special cases elsewhere, so route new scheduling rules through it too. Weeks start on Sunday (0=Sunday), hardcoded.
+**`occursOn(item, date)` is the single source of truth for "is this due?"** Views, stats, streaks and the heatmap all ask it. That's why pausing needed no special cases elsewhere, so route new scheduling rules through it too. Weeks start on Sunday (0=Sunday), hardcoded; making it a setting is Roadmap §43.
 
 ## Stats (`src/lib/habitStats.ts`)
 
@@ -74,14 +74,4 @@ The agent layer is provider-agnostic: one `ProviderAdapter` per provider in `src
   - **Client-side:** Silero VAD (`voiceActivityDetection.ts`, `NonRealTimeVAD`) skips both API calls when a recording contains no speech. It **fails open**: if the model can't load, the recording goes through. The ~13MB `onnxruntime-web` WASM runtime is self-hosted in `public/ort/` and precached by the service worker. It doesn't need COOP/COEP headers, which could break Google Sign-in.
   - **Server-side:** a blocklist of known hallucination phrases in `handleTranscribeRequest.ts` acts as a backstop.
 - Agent replies can be read aloud (browser speech synthesis; toggle in Settings).
-- **Future work, not built:** slide-to-lock recording, and fully on-device Whisper (WASM/WebGPU) for privacy and offline use.
-
-## Open questions
-
-Deliberately undecided; raise them before they become load-bearing. (Concrete planned work lives in `Roadmap.md`.)
-
-- Should a Recurring Task's attached checklist reset each occurrence, or carry unfinished items forward? Today it's one persistent list.
-- Should the completion log record un-completions as events (a true history) instead of deleting entries?
-- Whether and when to revisit push notifications.
-- Whether and when to build slide-to-lock recording and/or on-device Whisper.
-- Should the first day of the week be a user setting? It's hardcoded to Sunday.
+- **Future work, not built:** slide-to-lock recording (Roadmap §45) and fully on-device Whisper (§46), both to be trialled on a branch before deciding to adopt.
