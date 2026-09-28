@@ -67,7 +67,8 @@ import {
 } from "./lib/ttsPreference";
 import { speak } from "./lib/textToSpeech";
 import { ChatSession } from "./lib/chatEngine";
-import { emptyAppData, type AppData } from "./types/models";
+import { WeekStartContext } from "./lib/weekStartContext";
+import { emptyAppData, weekStartOf, type AppData } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
 type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
@@ -407,8 +408,8 @@ export default function App() {
     const session = new ChatSession({
       getData: () => latestRef.current.data,
       persist: (mutate) => latestRef.current.persist(mutate),
-      callAgent: (history, categories, hasPendingConfirmation) =>
-        sendMessage(history, latestRef.current.byok, categories, hasPendingConfirmation),
+      callAgent: (history, categories, hasPendingConfirmation, weekStartsOn) =>
+        sendMessage(history, latestRef.current.byok, categories, hasPendingConfirmation, weekStartsOn),
       todayISO,
       onDebug: (entry) => recordDebugEntry(entry),
       onChange: () => setMessages(session.messages),
@@ -542,205 +543,209 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Habit Assistant</h1>
-        <div className="flex gap-2">
-          {/* §38: the user manual, a static page precached like api-key-setup.html. */}
-          <a
-            href="/help.html"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
-            aria-label="Help"
-            title="Help"
-          >
-            <CircleHelp className="h-4 w-4" />
-          </a>
-          <button
-            onClick={() => setSettingsOpen((open) => !open)}
-            className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
-            aria-label="Settings"
-          >
-            <SettingsIcon className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {reconnectNeeded && (
-        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-md border border-amber-400/60 bg-amber-950 px-3 py-2 text-sm text-amber-100 shadow-lg">
-          <span className="flex-1">
-            {savesWaiting > 0
-              ? "Your Google sign-in expired, so your last change is waiting to be saved."
-              : "Your Google sign-in has expired."}{" "}
-            Tap Reconnect — a small Google window will open and close.
-          </span>
-          <button
-            onClick={handleReconnect}
-            className="rounded-md bg-violet-500 px-3 py-1 text-white hover:bg-violet-400"
-          >
-            Reconnect
-          </button>
-          {savesWaiting > 0 && (
-            <button onClick={() => settleReconnect(false)} className="rounded-md bg-slate-700 px-3 py-1 hover:bg-slate-600">
-              Cancel
-            </button>
-          )}
-          {reconnectError && <p className="w-full text-xs text-red-300">{reconnectError}</p>}
-        </div>
-      )}
-
-      {settingsOpen && (
-        <SettingsPanel
-          activeProvider={byok?.provider ?? null}
-          sharedKeyExhausted={(data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP}
-          onChange={() => {
-            refreshSettings();
-            // §30 in Roadmap.md: push the whole BYOK blob to Drive on every
-            // Settings.tsx mutation (it already calls onChange after each one).
-            // ttsEnabledByDevice is a per-device map, not a whole-blob sync —
-            // merge in only this device's own key so a conflict-retry replay
-            // (current is the freshly-reloaded object then) never clobbers a
-            // different device's entry.
-            void persist((current) => ({
-              ...current,
-              byokSettings: exportByokState(),
-              ttsEnabledByDevice: { ...current.ttsEnabledByDevice, [getDeviceId()]: getTtsEnabled() },
-            }));
-          }}
-          onClose={() => setSettingsOpen(false)}
-          debugLog={debugLog}
-          onClearDebugLog={handleClearDebugLog}
-        />
-      )}
-
-      <div className="flex gap-2">
-        {(["chat", "today", "categories", "view", "stats", "timer"] as const).map((tab) => {
-          const Icon = TAB_ICONS[tab];
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              aria-label={tab}
-              title={tab}
-              className={`flex flex-1 items-center justify-center rounded-md p-2 ${
-                activeTab === tab ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-              }`}
+    <WeekStartContext.Provider value={weekStartOf(data)}>
+      <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Habit Assistant</h1>
+          <div className="flex gap-2">
+            {/* §38: the user manual, a static page precached like api-key-setup.html. */}
+            <a
+              href="/help.html"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
+              aria-label="Help"
+              title="Help"
             >
-              <Icon className="h-4 w-4" />
+              <CircleHelp className="h-4 w-4" />
+            </a>
+            <button
+              onClick={() => setSettingsOpen((open) => !open)}
+              className="rounded-md bg-slate-800 p-2 hover:bg-slate-700"
+              aria-label="Settings"
+            >
+              <SettingsIcon className="h-4 w-4" />
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </div>
 
-      <div className="min-h-[60vh] flex-1">
-        {activeTab === "chat" && (
-          <Chat
-            messages={messages}
-            onSend={handleSend}
-            sending={sending}
-            sttApiKey={sttApiKey}
-            byokProvider={byok?.provider ?? null}
+        {reconnectNeeded && (
+          <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-md border border-amber-400/60 bg-amber-950 px-3 py-2 text-sm text-amber-100 shadow-lg">
+            <span className="flex-1">
+              {savesWaiting > 0
+                ? "Your Google sign-in expired, so your last change is waiting to be saved."
+                : "Your Google sign-in has expired."}{" "}
+              Tap Reconnect — a small Google window will open and close.
+            </span>
+            <button
+              onClick={handleReconnect}
+              className="rounded-md bg-violet-500 px-3 py-1 text-white hover:bg-violet-400"
+            >
+              Reconnect
+            </button>
+            {savesWaiting > 0 && (
+              <button onClick={() => settleReconnect(false)} className="rounded-md bg-slate-700 px-3 py-1 hover:bg-slate-600">
+                Cancel
+              </button>
+            )}
+            {reconnectError && <p className="w-full text-xs text-red-300">{reconnectError}</p>}
+          </div>
+        )}
+
+        {settingsOpen && (
+          <SettingsPanel
+            activeProvider={byok?.provider ?? null}
+            sharedKeyExhausted={(data.sharedKeyMessageCount ?? 0) >= SHARED_KEY_MESSAGE_CAP}
+            onChange={() => {
+              refreshSettings();
+              // §30 in Roadmap.md: push the whole BYOK blob to Drive on every
+              // Settings.tsx mutation (it already calls onChange after each one).
+              // ttsEnabledByDevice is a per-device map, not a whole-blob sync —
+              // merge in only this device's own key so a conflict-retry replay
+              // (current is the freshly-reloaded object then) never clobbers a
+              // different device's entry.
+              void persist((current) => ({
+                ...current,
+                byokSettings: exportByokState(),
+                ttsEnabledByDevice: { ...current.ttsEnabledByDevice, [getDeviceId()]: getTtsEnabled() },
+              }));
+            }}
+            onClose={() => setSettingsOpen(false)}
+            weekStartsOn={weekStartOf(data)}
+            onChangeWeekStart={(weekStartsOn) => void persist((current) => ({ ...current, weekStartsOn }))}
+            debugLog={debugLog}
+            onClearDebugLog={handleClearDebugLog}
           />
         )}
 
-        {activeTab === "today" && (
-          <div className="flex flex-col gap-4">
-            <DayStrip selectedDate={selectedDate} onSelect={setSelectedDate} />
-            <DayView
-              selectedDate={selectedDate}
-              todayISO={todayISO()}
-              habits={data.habits}
-              singleTasks={data.singleTasks}
-              recurringTasks={data.recurringTasks}
-              completionLog={data.completionLog}
-              categories={data.categories}
-              onToggleHabit={handleHabitToggle}
-              onToggleTask={handleTaskToggle}
-              onToggleRecurringTask={handleRecurringTaskToggle}
-              onToggleHabitChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, selectedDate)}
-              onCompleteFutureTask={handleFutureTaskComplete}
-              onToggleTaskChecklistItem={handleSingleTaskChecklistToggle}
-              onAddTaskChecklistItem={handleSingleTaskChecklistAdd}
-              onToggleRecurringTaskChecklistItem={(taskId, itemId) =>
-                handleRecurringTaskChecklistToggle(taskId, itemId, selectedDate)
-              }
-              onAddRecurringTaskChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, selectedDate)}
+        <div className="flex gap-2">
+          {(["chat", "today", "categories", "view", "stats", "timer"] as const).map((tab) => {
+            const Icon = TAB_ICONS[tab];
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                aria-label={tab}
+                title={tab}
+                className={`flex flex-1 items-center justify-center rounded-md p-2 ${
+                  activeTab === tab ? "bg-violet-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="min-h-[60vh] flex-1">
+          {activeTab === "chat" && (
+            <Chat
+              messages={messages}
+              onSend={handleSend}
+              sending={sending}
+              sttApiKey={sttApiKey}
+              byokProvider={byok?.provider ?? null}
             />
-          </div>
-        )}
+          )}
 
-        {activeTab === "categories" && (
-          <CategoriesView
-            categories={data.categories}
-            habits={data.habits}
-            recurringTasks={data.recurringTasks}
-            singleTasks={data.singleTasks}
-            completionLog={data.completionLog}
-            onAdd={handleAddCategory}
-            onUpdate={handleUpdateCategory}
-            onDelete={handleDeleteCategory}
-          />
-        )}
-
-        {activeTab === "view" && (
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-4 border-b border-slate-700">
-              {(["habits", "single tasks", "recurring tasks"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setViewSubTab(tab)}
-                  className={`pb-1.5 text-xs capitalize ${
-                    viewSubTab === tab
-                      ? "border-b-2 border-violet-500 text-white"
-                      : "border-b-2 border-transparent text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            {viewSubTab === "habits" && (
-              <HabitsView
+          {activeTab === "today" && (
+            <div className="flex flex-col gap-4">
+              <DayStrip selectedDate={selectedDate} onSelect={setSelectedDate} />
+              <DayView
+                selectedDate={selectedDate}
+                todayISO={todayISO()}
                 habits={data.habits}
-                categories={data.categories}
-                completionLog={data.completionLog}
-                onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
-              />
-            )}
-
-            {viewSubTab === "single tasks" && (
-              <SingleTasksView
                 singleTasks={data.singleTasks}
-                categories={data.categories}
-                onToggleChecklistItem={handleSingleTaskChecklistToggle}
-                onAddChecklistItem={handleSingleTaskChecklistAdd}
-              />
-            )}
-
-            {viewSubTab === "recurring tasks" && (
-              <RecurringTasksView
                 recurringTasks={data.recurringTasks}
+                completionLog={data.completionLog}
                 categories={data.categories}
-                onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
-                onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
+                onToggleHabit={handleHabitToggle}
+                onToggleTask={handleTaskToggle}
+                onToggleRecurringTask={handleRecurringTaskToggle}
+                onToggleHabitChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, selectedDate)}
+                onCompleteFutureTask={handleFutureTaskComplete}
+                onToggleTaskChecklistItem={handleSingleTaskChecklistToggle}
+                onAddTaskChecklistItem={handleSingleTaskChecklistAdd}
+                onToggleRecurringTaskChecklistItem={(taskId, itemId) =>
+                  handleRecurringTaskChecklistToggle(taskId, itemId, selectedDate)
+                }
+                onAddRecurringTaskChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, selectedDate)}
               />
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {activeTab === "stats" && (
-          <Dashboard
-            habits={data.habits}
-            categories={data.categories}
-            completionLog={data.completionLog}
-            onViewCategories={() => setActiveTab("categories")}
-          />
-        )}
+          {activeTab === "categories" && (
+            <CategoriesView
+              categories={data.categories}
+              habits={data.habits}
+              recurringTasks={data.recurringTasks}
+              singleTasks={data.singleTasks}
+              completionLog={data.completionLog}
+              onAdd={handleAddCategory}
+              onUpdate={handleUpdateCategory}
+              onDelete={handleDeleteCategory}
+            />
+          )}
 
-        {activeTab === "timer" && <TimerView habits={data.habits} timer={timer} onSave={handleSaveTimer} />}
+          {activeTab === "view" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-4 border-b border-slate-700">
+                {(["habits", "single tasks", "recurring tasks"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setViewSubTab(tab)}
+                    className={`pb-1.5 text-xs capitalize ${
+                      viewSubTab === tab
+                        ? "border-b-2 border-violet-500 text-white"
+                        : "border-b-2 border-transparent text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {viewSubTab === "habits" && (
+                <HabitsView
+                  habits={data.habits}
+                  categories={data.categories}
+                  completionLog={data.completionLog}
+                  onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
+                />
+              )}
+
+              {viewSubTab === "single tasks" && (
+                <SingleTasksView
+                  singleTasks={data.singleTasks}
+                  categories={data.categories}
+                  onToggleChecklistItem={handleSingleTaskChecklistToggle}
+                  onAddChecklistItem={handleSingleTaskChecklistAdd}
+                />
+              )}
+
+              {viewSubTab === "recurring tasks" && (
+                <RecurringTasksView
+                  recurringTasks={data.recurringTasks}
+                  categories={data.categories}
+                  onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
+                  onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
+                />
+              )}
+            </div>
+          )}
+
+          {activeTab === "stats" && (
+            <Dashboard
+              habits={data.habits}
+              categories={data.categories}
+              completionLog={data.completionLog}
+              onViewCategories={() => setActiveTab("categories")}
+            />
+          )}
+
+          {activeTab === "timer" && <TimerView habits={data.habits} timer={timer} onSave={handleSaveTimer} />}
+        </div>
       </div>
-    </div>
+    </WeekStartContext.Provider>
   );
 }

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
+import { useWeekStart } from "../lib/weekStartContext";
 import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
@@ -93,7 +94,8 @@ function HabitDetail({
   const category = categories.find((c) => c.id === habit.categoryId);
   const archived = isArchived(habit);
   const pause = currentPause(habit, todayISO()) ?? upcomingPause(habit, todayISO());
-  const stats = computeHabitStats(habit, completionLog, todayISO());
+  const weekStartsOn = useWeekStart();
+  const stats = computeHabitStats(habit, completionLog, todayISO(), weekStartsOn);
   const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
   const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
   const todayEntry = completionLog.find((e) => e.itemId === habit.id && e.date === todayISO());

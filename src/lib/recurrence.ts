@@ -9,6 +9,7 @@ import type {
   PausePeriod,
   RecurrenceRule,
   RecurringTask,
+  WeekStart,
 } from "../types/models";
 
 // occursOn only ever reads startDate/endDate/recurrence — fields Habit and
@@ -44,8 +45,9 @@ export function dayOfWeek(dateISO: string): number {
   return parseISODate(dateISO).getUTCDay();
 }
 
-export function startOfWeek(dateISO: string): string {
-  return addDays(dateISO, -dayOfWeek(dateISO));
+/** §43: the first day of the week containing `dateISO`, for a week beginning on `weekStartsOn`. */
+export function startOfWeek(dateISO: string, weekStartsOn: WeekStart): string {
+  return addDays(dateISO, -((dayOfWeek(dateISO) - weekStartsOn + 7) % 7));
 }
 
 export function startOfMonth(dateISO: string): string {
@@ -252,8 +254,9 @@ export function completionsInPeriod(
   itemId: string,
   dateISO: string,
   period: "week" | "month",
+  weekStartsOn: WeekStart,
 ): number {
-  const periodStart = period === "week" ? startOfWeek(dateISO) : startOfMonth(dateISO);
+  const periodStart = period === "week" ? startOfWeek(dateISO, weekStartsOn) : startOfMonth(dateISO);
   return completionLog.filter(
     (entry) => entry.itemId === itemId && entry.date >= periodStart && entry.date <= dateISO,
   ).length;

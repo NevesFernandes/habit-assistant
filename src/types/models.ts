@@ -135,6 +135,16 @@ export interface AppData {
   // device remembers its own choice under this account, rather than one
   // toggle changing it everywhere.
   ttsEnabledByDevice?: Record<string, boolean>;
+  // §43: the day weeks begin on, synced across devices (Settings). Absent means Sunday.
+  // Only where a week *starts* — weekday numbers in recurrence rules stay 0 = Sunday.
+  weekStartsOn?: WeekStart;
+}
+
+/** 0 = Sunday, 1 = Monday — the same numbering as dayOfWeek. */
+export type WeekStart = 0 | 1;
+
+export function weekStartOf(data: Pick<AppData, "weekStartsOn">): WeekStart {
+  return data.weekStartsOn ?? 0;
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [

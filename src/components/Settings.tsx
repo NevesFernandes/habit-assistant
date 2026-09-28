@@ -11,12 +11,16 @@ import {
 import { getTtsEnabled, setTtsEnabled } from "../lib/ttsPreference";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
 import type { DebugLogEntry } from "../lib/debugLogStore";
+import type { WeekStart } from "../types/models";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
   sharedKeyExhausted: boolean;
   onChange: () => void;
   onClose: () => void;
+  // §43: synced in the Drive file, so App.tsx owns it rather than this panel.
+  weekStartsOn: WeekStart;
+  onChangeWeekStart: (weekStartsOn: WeekStart) => void;
   // §27 in Roadmap.md: owned by App.tsx (not loaded/cleared locally here) so
   // the list stays live while this panel is open during a chat turn, instead
   // of only reflecting a one-time snapshot taken when it was unlocked.
@@ -43,6 +47,8 @@ export default function Settings({
   sharedKeyExhausted,
   onChange,
   onClose,
+  weekStartsOn,
+  onChangeWeekStart,
   debugLog,
   onClearDebugLog,
 }: SettingsProps) {
@@ -191,6 +197,28 @@ export default function Settings({
             Forget this key
           </button>
         )}
+      </div>
+
+      <hr className="my-4 border-slate-700" />
+
+      <h2 className="mb-2 font-medium">First day of the week</h2>
+      <p className="mb-3 text-slate-400">
+        Decides what counts as "this week" for "N times a week" habits and the weekly stats, and
+        how the calendar heatmap lines up. Changing it also regroups past weeks, so a past week of
+        an "N times a week" habit may now count as met or missed differently.
+      </p>
+      <div className="flex gap-2">
+        {([0, 1] as const).map((day) => (
+          <button
+            key={day}
+            onClick={() => day !== weekStartsOn && onChangeWeekStart(day)}
+            className={`flex-1 rounded-md px-3 py-1.5 ${
+              day === weekStartsOn ? "bg-violet-500 font-medium text-white" : "bg-slate-900 hover:bg-slate-700"
+            }`}
+          >
+            {day === 0 ? "Sunday" : "Monday"}
+          </button>
+        ))}
       </div>
 
       <hr className="my-4 border-slate-700" />

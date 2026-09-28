@@ -58,7 +58,7 @@ import {
 import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import { recurringTaskChecklistOn } from "./recurringChecklist";
-import type { AppData, Category, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models";
+import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
 
@@ -195,6 +195,7 @@ export interface ChatEngineDeps {
     messages: AgentHistoryMessage[],
     categories: Category[],
     hasPendingConfirmation: boolean,
+    weekStartsOn: WeekStart,
   ): Promise<AgentResponse>;
   todayISO(): string;
   onDebug?(entry: AgentDebugEntry): void;
@@ -262,7 +263,7 @@ export class ChatSession {
 
     this.append({ role: "user", content: userText });
     try {
-      const response = await this.deps.callAgent(this.messages, data.categories, pendingConfirmation !== null);
+      const response = await this.deps.callAgent(this.messages, data.categories, pendingConfirmation !== null, weekStartOf(data));
       if (response.debug) this.deps.onDebug?.(response.debug);
 
       if (pendingConfirmation) {
@@ -817,12 +818,12 @@ export class ChatSession {
     }
 
     const wasComplete = isHabitEntryComplete(habit, before);
-    let streak = computeHabitStats(habit, data.completionLog, today).currentStreak;
+    let streak = computeHabitStats(habit, data.completionLog, today, weekStartOf(data)).currentStreak;
     if (!wasComplete) {
       // Streak read inside the mutator, so a §21 conflict replay reports what was written.
       const saved = await this.deps.persist((current) => {
         const next = setHabitDone(current, habit.id, dateISO, true);
-        streak = computeHabitStats(habit, next.completionLog, today).currentStreak;
+        streak = computeHabitStats(habit, next.completionLog, today, weekStartOf(next)).currentStreak;
         return next;
       });
       if (!saved) return;

@@ -6,7 +6,7 @@
 import { handleAgentRequest, type AgentEnv, type Byok } from "./handleAgentRequest.ts";
 import { handleTranscribeRequest, type TranscribeEnv } from "./handleTranscribeRequest.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
-import type { Category } from "../types/models.ts";
+import type { Category, WeekStart } from "../types/models.ts";
 
 interface Env extends AgentEnv, TranscribeEnv {
   ASSETS: Fetcher;
@@ -24,22 +24,25 @@ async function handleAgent(request: Request, env: Env): Promise<Response> {
   let byok: Byok | undefined;
   let categories: Category[] | undefined;
   let hasPendingConfirmation = false;
+  let weekStartsOn: WeekStart = 0;
   try {
     const body = (await request.json()) as {
       messages: AgentHistoryMessage[];
       byok?: Byok;
       categories?: Category[];
       hasPendingConfirmation?: boolean;
+      weekStartsOn?: WeekStart;
     };
     messages = body.messages;
     byok = body.byok;
     categories = body.categories;
     hasPendingConfirmation = body.hasPendingConfirmation ?? false;
+    weekStartsOn = body.weekStartsOn === 1 ? 1 : 0;
   } catch {
     return jsonResponse({ error: "Invalid JSON body." }, 400);
   }
 
-  const result = await handleAgentRequest(messages, env, byok, categories, hasPendingConfirmation);
+  const result = await handleAgentRequest(messages, env, byok, categories, hasPendingConfirmation, weekStartsOn);
   return jsonResponse(result.body, result.status);
 }
 

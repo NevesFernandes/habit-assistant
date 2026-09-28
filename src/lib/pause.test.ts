@@ -66,7 +66,7 @@ const daily = (pauses: Habit["pauses"], startDate = "2026-09-01"): Habit => ({
   }
   assert.equal(completionLog.length, 15, "10 before the pause + 5 after");
 
-  const stats = computeHabitStats(habit, completionLog, TODAY);
+  const stats = computeHabitStats(habit, completionLog, TODAY, 0);
   assert.equal(stats.currentStreak, 15, "the streak reads straight through the pause");
   assert.equal(stats.bestStreak, 15);
   assert.equal(stats.completionPercentage, 100, "paused days aren't counted as scheduled");
@@ -82,7 +82,7 @@ const daily = (pauses: Habit["pauses"], startDate = "2026-09-01"): Habit => ({
     const date = addDays(start, i);
     if (occursOn(habit, date)) completionLog.push({ id: `c${i}`, itemId: habit.id, date });
   }
-  const stats = computeHabitStats(habit, completionLog, TODAY);
+  const stats = computeHabitStats(habit, completionLog, TODAY, 0);
   assert.equal(stats.completionPercentage, 100);
   assert.equal(stats.currentStreak, completionLog.length, "no break where the pause was");
 }

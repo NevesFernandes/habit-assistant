@@ -3,7 +3,7 @@
 // per-request and never stored server-side). See CLAUDE.md's "Cost model /
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
-import type { Category } from "../types/models";
+import type { Category, WeekStart } from "../types/models";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
 import type { AgentHistoryMessage } from "../server/agentHistory";
@@ -236,12 +236,14 @@ export async function sendMessage(
   byok?: ByokSettings | null,
   categories?: Category[],
   hasPendingConfirmation?: boolean,
+  weekStartsOn?: WeekStart,
 ): Promise<AgentResponse> {
   const payload = JSON.stringify({
     messages: history,
     byok: byok ?? undefined,
     categories,
     hasPendingConfirmation: hasPendingConfirmation || undefined,
+    weekStartsOn: weekStartsOn || undefined,
   });
   const { ok, status, body } = await sendWithRetry(payload);
   if (!ok) {

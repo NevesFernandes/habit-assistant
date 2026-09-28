@@ -3,6 +3,7 @@ import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } f
 import type { CreateCategoryInput, UpdateCategoryPatch } from "../lib/dataStore";
 import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
+import { useWeekStart } from "../lib/weekStartContext";
 import CategoryIcon from "./CategoryIcon";
 import IconPicker from "./IconPicker";
 import StatTile from "./StatTile";
@@ -172,7 +173,8 @@ function CategoryStatsView({
   completionLog: CompletionLogEntry[];
   onBack: () => void;
 }) {
-  const stats = aggregateCategoryStats(habits, completionLog, todayISO());
+  const weekStartsOn = useWeekStart();
+  const stats = aggregateCategoryStats(habits, completionLog, todayISO(), weekStartsOn);
 
   return (
     <div className="flex flex-col gap-3">
