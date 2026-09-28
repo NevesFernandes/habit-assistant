@@ -36,8 +36,9 @@ import { scenarios as s39 } from "./scenarios/s39-task-checklist.ts";
 import { scenarios as checklistAdd } from "./scenarios/checklist-add-multiple.ts";
 import { scenarios as s41 } from "./scenarios/s41-mark-done.ts";
 import { scenarios as s42 } from "./scenarios/s42-checklist-modes.ts";
+import { scenarios as s43 } from "./scenarios/s43-week-start.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -151,6 +152,7 @@ async function runScenario(
   delayMs: number,
 ): Promise<ScenarioReport> {
   let data = loadFixture(scenario.fixture);
+  if (scenario.setup) data = scenario.setup(data);
   let turnDebug: AgentDebugEntry[] = [];
   let calledModelBefore = false;
 
@@ -160,10 +162,10 @@ async function runScenario(
       data = mutate(data);
       return true;
     },
-    callAgent: async (messages, categories, hasPendingConfirmation): Promise<AgentResponse> => {
+    callAgent: async (messages, categories, hasPendingConfirmation, weekStartsOn): Promise<AgentResponse> => {
       if (calledModelBefore) await sleep(delayMs);
       calledModelBefore = true;
-      const call = () => handleAgentRequest(messages, env, undefined, categories, hasPendingConfirmation);
+      const call = () => handleAgentRequest(messages, env, undefined, categories, hasPendingConfirmation, weekStartsOn);
       const result = verbose ? await call() : await quietly(call);
       if (result.status !== 200) throw new AgentRequestError(result.body.error ?? `status ${result.status}`, result.body.debug);
       return result.body as AgentResponse;

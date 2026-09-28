@@ -40,7 +40,7 @@ A default starter set with icons ships out of the box: Quit a bad habit, Study, 
 
 Supported rules: daily, specific weekdays, every N days, N times per week/month (flexible, not pinned to days), nth weekday of month (first to fifth, or last), specific yearly dates (MM-DD), and on/off cycles.
 
-**`occursOn(item, date)` is the single source of truth for "is this due?"** Views, stats, streaks and the heatmap all ask it. That's why pausing needed no special cases elsewhere, so route new scheduling rules through it too. Weeks start on Sunday (0=Sunday), hardcoded; making it a setting is Roadmap §43.
+**`occursOn(item, date)` is the single source of truth for "is this due?"** Views, stats, streaks and the heatmap all ask it. That's why pausing needed no special cases elsewhere, so route new scheduling rules through it too. Where a week *begins* is a synced setting (`AppData.weekStartsOn`, Sunday or Monday, absent = Sunday; `WeekStartContext` in the UI) passed explicitly to `startOfWeek`/`completionsInPeriod` and the stats; weekday numbers in rules stay 0=Sunday. Switching regroups past weeks, deliberately with no per-period history of the setting.
 
 ## Stats (`src/lib/habitStats.ts`)
 

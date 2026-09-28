@@ -30,5 +30,7 @@ export interface Scenario {
   name: string;
   /** Fixture file name, without .json. */
   fixture: string;
+  /** Adjusts the loaded fixture, for data that depends on today's date or on a setting. */
+  setup?: (data: AppData) => AppData;
   turns: Turn[];
 }

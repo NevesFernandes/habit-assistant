@@ -10,7 +10,7 @@
 import { resolveProvider } from "./providers/index.ts";
 import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
-import { DEFAULT_CATEGORIES, type Category } from "../types/models.ts";
+import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
 import { classifyIntent, type IntentBucket } from "./classifyIntent.ts";
 import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
 
@@ -119,10 +119,10 @@ function isBucketActive(activeBuckets: IntentBucket[] | "all", bucket: IntentBuc
   return activeBuckets === "all" || activeBuckets.includes(bucket);
 }
 
-function buildIdentityPreamble(todayISO: string, todayWeekday: string): string {
+function buildIdentityPreamble(todayISO: string, todayWeekday: string, weekStartsOn: WeekStart): string {
   return `You are the in-app assistant for Habit Assistant, a personal habit and task tracker the user controls entirely through conversation.
 
-Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any relative date the user gives you — "today", "tomorrow", "in 3 days", etc. — and resolve it to an exact ISO date (YYYY-MM-DD) yourself before calling a tool.
+Today's date is ${todayISO} (${todayWeekday}). Use this as the anchor for any relative date the user gives you — "today", "tomorrow", "in 3 days", etc. — and resolve it to an exact ISO date (YYYY-MM-DD) yourself before calling a tool. The user's weeks start on ${WEEKDAY_NAMES[weekStartsOn]}, so "this week", "last week" and "the end of the week" follow that.
 
 Exception: if the user names the start day by weekday (e.g. "on Tuesday", "next Thursday", "starting next Tuesday") rather than an absolute date, do NOT compute that date yourself — day-of-week counting is where you're most error-prone. Instead pass startWeekday (0=Sunday..6=Saturday) and startWeekdayMode ("next" if the user said the word "next" before the weekday, otherwise "closest") and leave startDate unset; the app resolves the exact date deterministically. The same goes for changing an existing item's start day: use newStartWeekday/newStartWeekdayMode and leave newStartDate unset — never ask the user to confirm a date you computed.`;
 }
@@ -208,12 +208,17 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 // prose to only what the classifier is confident the message needs — see
 // §24 in Roadmap.md. "all" (the classifier's fallback sentinel) sends every
 // chunk, i.e. today's exact pre-§24 behavior.
-function buildSystemPrompt(categories: Category[], todayISO: string, activeBuckets: IntentBucket[] | "all"): string {
+function buildSystemPrompt(
+  categories: Category[],
+  todayISO: string,
+  activeBuckets: IntentBucket[] | "all",
+  weekStartsOn: WeekStart,
+): string {
   const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
   const todayWeekday = WEEKDAY_NAMES[new Date(`${todayISO}T00:00:00Z`).getUTCDay()];
 
   const chunks: string[] = [
-    buildIdentityPreamble(todayISO, todayWeekday),
+    buildIdentityPreamble(todayISO, todayWeekday, weekStartsOn),
     buildActionsList(activeManifestEntries(activeBuckets)),
     GENERAL_POLICY,
   ];
@@ -1076,6 +1081,7 @@ export async function handleAgentRequest(
   byok?: Byok,
   categories: Category[] = [],
   hasPendingConfirmation = false,
+  weekStartsOn: WeekStart = 0,
 ): Promise<AgentResult> {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { status: 400, body: { error: "Expected a non-empty `messages` array." } };
@@ -1111,7 +1117,7 @@ export async function handleAgentRequest(
   const toolNames = tools.map((tool) => tool.name);
   const systemPrompt = hasPendingConfirmation
     ? buildConfirmationSystemPrompt(todayISO)
-    : buildSystemPrompt(availableCategories, todayISO, activeBuckets);
+    : buildSystemPrompt(availableCategories, todayISO, activeBuckets, weekStartsOn);
 
   providerLoop: for (let i = 0; i < chain.length; i++) {
     const attempt = chain[i];

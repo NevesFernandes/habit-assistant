@@ -66,7 +66,7 @@ npm run typecheck
 npm run build
 ```
 
-**Unit tests** are plain scripts, one per area: `test:classify`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`. Run them with, for example, `npm run test:pause`.
+**Unit tests** are plain scripts, one per area: `test:classify`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:driveToken`, `test:weekStart`. Run them with, for example, `npm run test:pause`.
 
 **Chat scenario tests** play scripted conversations against a *real* model with no browser and no Google login. They drive the same chat engine the app uses (`src/lib/chatEngine.ts`), with fixture data from `tests/chat/fixtures/*.json`.
 

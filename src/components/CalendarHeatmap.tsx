@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
-import type { HabitCalendarDay } from "../lib/habitStats";
-import { dayOfWeek } from "../lib/recurrence";
+import { heatmapRowLabels, heatmapWeeks, type HabitCalendarDay } from "../lib/habitStats";
+import { useWeekStart } from "../lib/weekStartContext";
 import { formatDate } from "../lib/confirmations";
 
 // GitHub-style calendar heatmap — the one real chart in §17's dashboard (see Roadmap.md;
@@ -16,9 +16,6 @@ interface CalendarHeatmapProps {
 const CELL = 11;
 const GAP = 3;
 const PITCH = CELL + GAP;
-// Rows follow dayOfWeek's 0=Sunday convention (startOfWeek in recurrence.ts).
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-
 // §36: "not due" sits one step above the slate-800 card so it's visible without competing,
 // and "missed" is a red that reads as red on that card, not as another near-black.
 const NOT_DUE = "fill-slate-700";
@@ -47,6 +44,7 @@ function cellTitle(day: HabitCalendarDay, todayISO: string): string {
 export default function CalendarHeatmap({ days, todayISO }: CalendarHeatmapProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const firstDate = days[0]?.date;
+  const weekStartsOn = useWeekStart();
 
   // Open on the most recent weeks (the right edge), and again whenever another habit's
   // window is shown.
@@ -57,17 +55,9 @@ export default function CalendarHeatmap({ days, todayISO }: CalendarHeatmapProps
 
   if (days.length === 0) return null;
 
-  // Bucket the contiguous day list into week columns (Sunday-start, matching this app's
-  // 0=Sunday..6=Saturday convention everywhere else — see recurrence.ts). The first column
-  // may have empty rows above its first day if the window doesn't start on a Sunday.
-  const weeks: (HabitCalendarDay | undefined)[][] = [];
-  let weekIndex = -1;
-  days.forEach((day, i) => {
-    const row = dayOfWeek(day.date);
-    if (i === 0 || row === 0) weekIndex += 1;
-    if (!weeks[weekIndex]) weeks[weekIndex] = [];
-    weeks[weekIndex][row] = day;
-  });
+  // Week columns start on the user's first day of the week (§43); the first column may
+  // have empty rows above its first day if the window doesn't start on that day.
+  const weeks = heatmapWeeks(days, weekStartsOn);
 
   const width = weeks.length * PITCH;
   const height = 7 * PITCH;
@@ -99,7 +89,7 @@ export default function CalendarHeatmap({ days, todayISO }: CalendarHeatmapProps
         </div>
         {/* Outside the scroll area, so it stays put while the grid scrolls. */}
         <svg width={10} height={height} className="block shrink-0" aria-hidden>
-          {WEEKDAY_LABELS.map((label, row) => (
+          {heatmapRowLabels(weekStartsOn).map((label, row) => (
             <text key={row} x={1} y={row * PITCH + CELL - 2} fontSize={9} className="fill-slate-500">
               {label}
             </text>

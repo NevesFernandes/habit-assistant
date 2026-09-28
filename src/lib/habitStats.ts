@@ -1,5 +1,5 @@
-import type { ChecklistItem, CompletionLogEntry, Habit } from "../types/models";
-import { addDays, completionsInPeriod, occursOn, startOfMonth, startOfWeek, startOfYear } from "./recurrence";
+import type { ChecklistItem, CompletionLogEntry, Habit, WeekStart } from "../types/models";
+import { addDays, completionsInPeriod, dayOfWeek, occursOn, startOfMonth, startOfWeek, startOfYear } from "./recurrence";
 
 export interface HabitStats {
   currentStreak: number;
@@ -160,10 +160,11 @@ function periodBasedStats(
   habit: Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
   completionLog: CompletionLogEntry[],
   todayISO: string,
+  weekStartsOn: WeekStart,
 ) {
   const { period, count: target } = habit.recurrence;
   const step = (p: string, n: number) => (period === "week" ? addDays(p, 7 * n) : addMonths(p, n));
-  const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO) : startOfMonth(dateISO));
+  const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO, weekStartsOn) : startOfMonth(dateISO));
   const startPeriod = periodStart(habit.startDate);
   const currentPeriod = periodStart(todayISO);
 
@@ -207,21 +208,27 @@ function periodBasedStats(
   };
 }
 
-export function computeHabitStats(habit: Habit, completionLog: CompletionLogEntry[], todayISO: string): HabitStats {
+export function computeHabitStats(
+  habit: Habit,
+  completionLog: CompletionLogEntry[],
+  todayISO: string,
+  weekStartsOn: WeekStart,
+): HabitStats {
   const core =
     habit.recurrence.type === "timesPerPeriod"
       ? periodBasedStats(
           habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
           completionLog,
           todayISO,
+          weekStartsOn,
         )
       : dayBasedStats(habit, completionLog, todayISO);
 
   const habitCompletions = completionLog.filter((e) => e.itemId === habit.id);
   return {
     ...core,
-    completionsThisWeek: completionsInPeriod(completionLog, habit.id, todayISO, "week"),
-    completionsThisMonth: completionsInPeriod(completionLog, habit.id, todayISO, "month"),
+    completionsThisWeek: completionsInPeriod(completionLog, habit.id, todayISO, "week", weekStartsOn),
+    completionsThisMonth: completionsInPeriod(completionLog, habit.id, todayISO, "month", weekStartsOn),
     completionsThisYear: habitCompletions.filter((e) => e.date >= startOfYear(todayISO)).length,
     completionsAllTime: habitCompletions.length,
   };
@@ -235,9 +242,10 @@ function periodOccurrenceCounts(
   habit: Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
   completionLog: CompletionLogEntry[],
   todayISO: string,
+  weekStartsOn: WeekStart,
 ): { launched: number; completed: number } {
   const { period, count: target } = habit.recurrence;
-  const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO) : startOfMonth(dateISO));
+  const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO, weekStartsOn) : startOfMonth(dateISO));
   const step = (p: string) => (period === "week" ? addDays(p, 7) : addMonths(p, 1));
   const startPeriod = periodStart(habit.startDate);
   const currentPeriod = periodStart(todayISO);
@@ -256,12 +264,14 @@ function habitOccurrenceCounts(
   habit: Habit,
   completionLog: CompletionLogEntry[],
   todayISO: string,
+  weekStartsOn: WeekStart,
 ): { launched: number; completed: number } {
   return habit.recurrence.type === "timesPerPeriod"
     ? periodOccurrenceCounts(
         habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
         completionLog,
         todayISO,
+        weekStartsOn,
       )
     : dayOccurrenceCounts(habit, completionLog, todayISO);
 }
@@ -279,6 +289,7 @@ export function aggregateCategoryStats(
   habits: Habit[],
   completionLog: CompletionLogEntry[],
   todayISO: string,
+  weekStartsOn: WeekStart,
 ): CategoryStats {
   if (habits.length === 0) {
     return {
@@ -294,12 +305,12 @@ export function aggregateCategoryStats(
   let totalLaunched = 0;
   let totalCompleted = 0;
   for (const habit of habits) {
-    const { launched, completed } = habitOccurrenceCounts(habit, completionLog, todayISO);
+    const { launched, completed } = habitOccurrenceCounts(habit, completionLog, todayISO, weekStartsOn);
     totalLaunched += launched;
     totalCompleted += completed;
   }
 
-  const perHabitWindowCounts = habits.map((habit) => computeHabitStats(habit, completionLog, todayISO));
+  const perHabitWindowCounts = habits.map((habit) => computeHabitStats(habit, completionLog, todayISO, weekStartsOn));
   return {
     completionPercentage: totalLaunched === 0 ? 0 : Math.round((totalCompleted / totalLaunched) * 100),
     completionsThisWeek: perHabitWindowCounts.reduce((sum, s) => sum + s.completionsThisWeek, 0),
@@ -353,4 +364,26 @@ export function habitCalendar(
     days.push({ date: d, scheduled: true, ratio: habitCompletionRatio(habit, entry) });
   }
   return days;
+}
+
+const WEEKDAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
+
+/** §43: the heatmap's row labels, top to bottom, starting on the user's first day of the week. */
+export function heatmapRowLabels(weekStartsOn: WeekStart): string[] {
+  return Array.from({ length: 7 }, (_, row) => WEEKDAY_INITIALS[(row + weekStartsOn) % 7]);
+}
+
+/**
+ * Buckets a contiguous, ascending day list into week columns of 7 rows, a new column
+ * starting on `weekStartsOn` (§43). The first column has empty rows above its first day
+ * when the window doesn't start on that weekday, and the last one below today.
+ */
+export function heatmapWeeks<T extends { date: string }>(days: T[], weekStartsOn: WeekStart): (T | undefined)[][] {
+  const weeks: (T | undefined)[][] = [];
+  days.forEach((day, i) => {
+    const row = (dayOfWeek(day.date) - weekStartsOn + 7) % 7;
+    if (i === 0 || row === 0) weeks.push([]);
+    weeks[weeks.length - 1][row] = day;
+  });
+  return weeks;
 }

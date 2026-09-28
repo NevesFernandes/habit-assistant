@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
+import { useWeekStart } from "../lib/weekStartContext";
 import CategoryIcon from "./CategoryIcon";
 import StatTile from "./StatTile";
 import Meter from "./Meter";
@@ -22,12 +23,13 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
   const sortedHabits = habits.slice().sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(sortedHabits[0]?.id ?? null);
   const selectedHabit = sortedHabits.find((h) => h.id === selectedHabitId) ?? sortedHabits[0];
+  const weekStartsOn = useWeekStart();
 
   if (habits.length === 0) {
     return <p className="text-sm text-slate-500">No habits yet — stats will show up here once you have some.</p>;
   }
 
-  const overall = aggregateCategoryStats(habits, completionLog, today);
+  const overall = aggregateCategoryStats(habits, completionLog, today, weekStartsOn);
   const categoryBreakdown = categories
     .map((category) => ({
       category,
@@ -35,6 +37,7 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
         habits.filter((h) => h.categoryId === category.id),
         completionLog,
         today,
+        weekStartsOn,
       ),
     }))
     .filter((row) => row.stats.habitCount > 0)

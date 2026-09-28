@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, ListChecks } from "lucide-react";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate, isFutureDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
 import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
+import { useWeekStart } from "../lib/weekStartContext";
 import { recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
@@ -168,6 +169,7 @@ function HabitRow({
   onToggle: (habitId: string) => void;
   onToggleChecklistItem: (habitId: string, itemId: string) => void;
 }) {
+  const weekStartsOn = useWeekStart();
   const category = categories.find((c) => c.id === habit.categoryId);
   const entry = completionLog.find((e) => e.itemId === habit.id && e.date === selectedDate);
   const isDone = isHabitEntryComplete(habit, entry);
@@ -186,7 +188,7 @@ function HabitRow({
           {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
           {habit.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
-              {completionsInPeriod(completionLog, habit.id, selectedDate, habit.recurrence.period)}/
+              {completionsInPeriod(completionLog, habit.id, selectedDate, habit.recurrence.period, weekStartsOn)}/
               {habit.recurrence.count} this {habit.recurrence.period}
             </div>
           )}
@@ -254,6 +256,7 @@ function RecurringTaskRow({
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
 }) {
+  const weekStartsOn = useWeekStart();
   const category = categories.find((c) => c.id === task.categoryId);
   const isDone = completionLog.some((entry) => entry.itemId === task.id && entry.date === selectedDate);
   // §42: this occurrence's list, not the stored items (see recurringChecklist.ts).
@@ -271,7 +274,7 @@ function RecurringTaskRow({
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
           {task.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
-              {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period)}/
+              {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period, weekStartsOn)}/
               {task.recurrence.count} this {task.recurrence.period}
             </div>
           )}

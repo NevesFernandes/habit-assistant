@@ -20,12 +20,7 @@ _Nothing queued._
 
 ## Next
 
-### §43 — Choose the first day of the week
-Weeks start on Sunday, hardcoded (`startOfWeek` in `recurrence.ts`). This decides what counts as "this week" for "N times per week" habits and the week stats, and the row order of the calendar heatmap (`CalendarHeatmap.tsx`). Much of Europe starts weeks on Monday.
-
-**Proposal:** a Settings option (Sunday / Monday), synced across devices in the Drive file, and threaded through `startOfWeek` and everything that uses it (`recurrence.ts`, `habitStats.ts`, `CalendarHeatmap.tsx`). The 0=Sunday numbering of weekdays in recurrence rules stays as is; only where a week *begins* changes.
-
-**Watch out:** switching moves the week boundary for past weeks too, so an "N times per week" habit's history can re-bucket (a week that was met may look missed, or vice versa). Accept that and mention it next to the setting; don't try to keep per-period history of the setting. Test the per-week rules around the switch explicitly. Update `public/help.html`.
+_Nothing queued._
 
 ## Later
 
