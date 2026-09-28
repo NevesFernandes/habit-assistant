@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { Category, RecurringTask } from "../types/models";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
+import { checklistModeOf, recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 
@@ -141,9 +142,18 @@ function RecurringTaskDetail({
           <span>{describeRecurrence(task.recurrence)}</span>
         </DetailRow>
 
-        <DetailRow label="Checklist items">
+        {/* §42: like a habit's page, the checklist shown and edited here is today's occurrence. */}
+        <DetailRow
+          label={
+            task.checklist
+              ? checklistModeOf(task) === "sameList"
+                ? "Checklist today · same list every time"
+                : "Checklist today · unticked items carry over"
+              : "Checklist items"
+          }
+        >
           <Checklist
-            items={task.checklist ?? []}
+            items={recurringTaskChecklistOn(task, todayISO()) ?? []}
             onToggle={(itemId) => onToggleChecklistItem(task.id, itemId)}
             onAdd={(text) => onAddChecklistItem(task.id, text)}
           />

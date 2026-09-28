@@ -487,9 +487,10 @@ export default function App() {
     void persist((current) => updateSingleTask(current, taskId, { newDone: true, newStartDate: todayISO() }));
   }
 
-  function handleRecurringTaskChecklistToggle(taskId: string, itemId: string) {
+  // §42: a recurring task's checklist is per occurrence, hence the date.
+  function handleRecurringTaskChecklistToggle(taskId: string, itemId: string, dateISO: string) {
     if (!data) return;
-    void persist((current) => toggleRecurringTaskChecklistItem(current, taskId, itemId));
+    void persist((current) => toggleRecurringTaskChecklistItem(current, taskId, itemId, dateISO));
   }
 
   function handleSingleTaskChecklistToggle(taskId: string, itemId: string) {
@@ -497,9 +498,9 @@ export default function App() {
     void persist((current) => toggleSingleTaskChecklistItem(current, taskId, itemId));
   }
 
-  function handleRecurringTaskChecklistAdd(taskId: string, text: string) {
+  function handleRecurringTaskChecklistAdd(taskId: string, text: string, dateISO: string) {
     if (!data) return;
-    void persist((current) => addRecurringTaskChecklistItem(current, taskId, text));
+    void persist((current) => addRecurringTaskChecklistItem(current, taskId, text, dateISO));
   }
 
   function handleSingleTaskChecklistAdd(taskId: string, text: string) {
@@ -661,8 +662,10 @@ export default function App() {
               onCompleteFutureTask={handleFutureTaskComplete}
               onToggleTaskChecklistItem={handleSingleTaskChecklistToggle}
               onAddTaskChecklistItem={handleSingleTaskChecklistAdd}
-              onToggleRecurringTaskChecklistItem={handleRecurringTaskChecklistToggle}
-              onAddRecurringTaskChecklistItem={handleRecurringTaskChecklistAdd}
+              onToggleRecurringTaskChecklistItem={(taskId, itemId) =>
+                handleRecurringTaskChecklistToggle(taskId, itemId, selectedDate)
+              }
+              onAddRecurringTaskChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, selectedDate)}
             />
           </div>
         )}
@@ -720,8 +723,8 @@ export default function App() {
               <RecurringTasksView
                 recurringTasks={data.recurringTasks}
                 categories={data.categories}
-                onToggleChecklistItem={handleRecurringTaskChecklistToggle}
-                onAddChecklistItem={handleRecurringTaskChecklistAdd}
+                onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
+                onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
               />
             )}
           </div>

@@ -123,7 +123,7 @@ export interface CheckHabitChecklistItemToolCall {
 
 export interface CheckRecurringTaskChecklistItemToolCall {
   name: "checkRecurringTaskChecklistItem";
-  input: { name: string; categoryId?: string; item: string; checked?: boolean };
+  input: { name: string; categoryId?: string; item: string; checked?: boolean; date?: string };
 }
 
 export interface CheckSingleTaskChecklistItemToolCall {

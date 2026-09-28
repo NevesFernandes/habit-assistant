@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, ListChecks } from "lucide-react";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate, isFutureDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
 import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
+import { recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
 import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
@@ -255,13 +256,15 @@ function RecurringTaskRow({
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
   const isDone = completionLog.some((entry) => entry.itemId === task.id && entry.date === selectedDate);
-  const checklist = useTaskChecklist(task.checklist, selectedDate, isDone, !readOnly);
+  // §42: this occurrence's list, not the stored items (see recurringChecklist.ts).
+  const items = recurringTaskChecklistOn(task, selectedDate);
+  const checklist = useTaskChecklist(items, selectedDate, isDone, !readOnly);
   return (
     <li className="flex flex-col gap-2 rounded-md bg-slate-800 px-3 py-2">
       <div className="flex w-full items-center gap-3">
         <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
         <div
-          className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""} ${task.checklist ? "cursor-pointer" : ""}`}
+          className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""} ${items ? "cursor-pointer" : ""}`}
           onClick={checklist.toggleExpanded}
         >
           <div>{task.name}</div>
@@ -273,9 +276,7 @@ function RecurringTaskRow({
             </div>
           )}
         </div>
-        {task.checklist && (
-          <ChecklistBadge items={task.checklist} expanded={checklist.expanded} onClick={checklist.toggleExpanded} />
-        )}
+        {items && <ChecklistBadge items={items} expanded={checklist.expanded} onClick={checklist.toggleExpanded} />}
         <YesNoCheckbox
           checked={isDone}
           onChange={() => onToggle(task.id)}
@@ -283,9 +284,9 @@ function RecurringTaskRow({
           title={readOnly ? FUTURE_TITLE : undefined}
         />
       </div>
-      {task.checklist && checklist.expanded && (
+      {items && checklist.expanded && (
         <TaskChecklistPanel
-          items={task.checklist}
+          items={items}
           showDonePrompt={checklist.showDonePrompt}
           onToggleItem={(itemId) => checklist.onToggleItem(itemId, () => onToggleChecklistItem(task.id, itemId))}
           onAddItem={(text) => onAddChecklistItem(task.id, text)}

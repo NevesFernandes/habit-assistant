@@ -57,6 +57,7 @@ import {
 } from "./confirmations";
 import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
+import { recurringTaskChecklistOn } from "./recurringChecklist";
 import type { AppData, Category, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -168,6 +169,7 @@ function updateKindsFor(patch: UpdatePatch, isArchive: boolean): ItemKind[] {
   );
   const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
   const recurringOnly = patch.newRecurrence !== undefined || isArchive;
+  if (patch.newChecklistMode !== undefined) return habitOnly || singleTaskOnly ? [] : ["recurringTask"];
   if (habitOnly) return singleTaskOnly ? [] : ["habit"];
   if (singleTaskOnly) return recurringOnly ? [] : ["singleTask"];
   return recurringOnly ? ["habit", "recurringTask"] : ["habit", "recurringTask", "singleTask"];
@@ -848,8 +850,12 @@ export class ChatSession {
     const kind = this.resolveKind(requestedKind, ["recurringTask", "singleTask"], input) as "recurringTask" | "singleTask";
     const task = this.pickItem(kind, input, toolCall);
     if (!task) return;
-    const addOne = kind === "recurringTask" ? addRecurringTaskChecklistItem : addSingleTaskChecklistItem;
-    const saved = await this.deps.persist((current) => texts.reduce((data, text) => addOne(data, task.id, text), current));
+    const today = this.todayISO;
+    const addOne = (data: AppData, text: string) =>
+      kind === "recurringTask"
+        ? addRecurringTaskChecklistItem(data, task.id, text, today)
+        : addSingleTaskChecklistItem(data, task.id, text);
+    const saved = await this.deps.persist((current) => texts.reduce(addOne, current));
     if (saved) this.pushAssistantMessage(`Added ${formatQuotedAnd(texts)} to "${task.name}".`, toolCall);
   }
 
@@ -895,18 +901,22 @@ export class ChatSession {
 
   private async handleCheckTaskChecklistItem(
     requestedKind: "recurringTask" | "singleTask",
-    input: ItemSelector & { item: string; checked?: boolean },
+    input: ItemSelector & { item: string; checked?: boolean; date?: string },
     toolCall: ToolCallRef,
   ) {
     const kind = this.resolveKind(requestedKind, ["recurringTask", "singleTask"], input) as "recurringTask" | "singleTask";
     const task = this.pickItem(kind, input, toolCall);
     if (!task) return;
-    const itemMatches = resolveChecklistItemMatches(task.checklist, input.item);
+    // §42: a recurring task's items are matched against that day's list, so an item
+    // ticked off on an earlier trip can't be matched (or re-ticked) again.
+    const dateISO = input.date ?? this.todayISO;
+    const items = task.kind === "recurringTask" ? recurringTaskChecklistOn(task, dateISO) : task.checklist;
+    const itemMatches = resolveChecklistItemMatches(items, input.item);
     if (!this.checkSingleChecklistMatch(itemMatches, input.item, task.name, toolCall)) return;
     const checked = input.checked ?? true;
     const saved = await this.deps.persist((current) =>
       kind === "recurringTask"
-        ? setRecurringTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked)
+        ? setRecurringTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked, dateISO)
         : setSingleTaskChecklistItemChecked(current, task.id, itemMatches[0].id, checked),
     );
     if (saved) {

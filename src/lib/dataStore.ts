@@ -6,6 +6,7 @@ import type {
   BaseItem,
   Category,
   ChecklistItem,
+  ChecklistMode,
   CompletionLogEntry,
   CompletionType,
   Habit,
@@ -15,6 +16,12 @@ import type {
   SingleTask,
 } from "../types/models";
 import { resolveWeekdayDate } from "./recurrence";
+import {
+  isRecurringTaskChecklistItemChecked,
+  withChecklistMode,
+  withRecurringTaskChecklistItemAdded,
+  withRecurringTaskChecklistItemChecked,
+} from "./recurringChecklist";
 
 export interface CreateSingleTaskInput {
   name: string;
@@ -207,6 +214,7 @@ export interface CreateRecurringTaskInput {
   recurrence: RecurrenceRule;
   withChecklist?: boolean;
   checklistItems?: string[];
+  checklistMode?: ChecklistMode; // §42; only stored when the task has a checklist
 }
 
 export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
@@ -222,6 +230,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     recurrence: input.recurrence,
     checklist: initialTaskChecklist(input),
   };
+  if (task.checklist && input.checklistMode) task.checklistMode = input.checklistMode;
   return { ...data, recurringTasks: [...data.recurringTasks, task] };
 }
 
@@ -369,6 +378,7 @@ export interface UpdatePatch {
   newRecurrence?: RecurrenceRule; // Habit + RecurringTask — fully replaces the existing rule
   newCompletionType?: CompletionType; // Habit only
   newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
+  newChecklistMode?: ChecklistMode; // RecurringTask only (§42)
   newTarget?: number; // Habit only — meaningful when completionType is "value" or "timer"
   newUnit?: string; // Habit only — meaningful when completionType is "value"
 }
@@ -502,11 +512,12 @@ export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatc
     recurringTasks: data.recurringTasks.map((task) => {
       if (task.id !== id) return task;
       const base = applyBaseItemPatch(task, patch);
-      return {
+      const updated: RecurringTask = {
         ...base,
         categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
         recurrence: resolveRecurrence(task.recurrence, patch),
       };
+      return patch.newChecklistMode ? withChecklistMode(updated, patch.newChecklistMode, today()) : updated;
     }),
   };
 }
@@ -571,13 +582,16 @@ export function toggleHabitChecklistItem(data: AppData, habitId: string, itemId:
   return withHabitChecklistEntry(data, habit, dateISO, (checklist) => toggleChecklistItemState(checklist, itemId));
 }
 
-export function toggleRecurringTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
-  return {
-    ...data,
-    recurringTasks: data.recurringTasks.map((t) =>
-      t.id === taskId ? { ...t, checklist: toggleChecklistItemState(t.checklist, itemId) } : t,
-    ),
-  };
+// §42: a Recurring Task's checklist state depends on the occurrence, hence the date
+// (see recurringChecklist.ts).
+function mapRecurringTask(data: AppData, taskId: string, update: (task: RecurringTask) => RecurringTask): AppData {
+  return { ...data, recurringTasks: data.recurringTasks.map((t) => (t.id === taskId ? update(t) : t)) };
+}
+
+export function toggleRecurringTaskChecklistItem(data: AppData, taskId: string, itemId: string, dateISO: string): AppData {
+  return mapRecurringTask(data, taskId, (t) =>
+    withRecurringTaskChecklistItemChecked(t, itemId, !isRecurringTaskChecklistItemChecked(t, itemId, dateISO), dateISO),
+  );
 }
 
 export function toggleSingleTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
@@ -608,13 +622,9 @@ export function setRecurringTaskChecklistItemChecked(
   taskId: string,
   itemId: string,
   checked: boolean,
+  dateISO: string,
 ): AppData {
-  return {
-    ...data,
-    recurringTasks: data.recurringTasks.map((t) =>
-      t.id === taskId ? { ...t, checklist: setChecklistItemCheckedState(t.checklist, itemId, checked) } : t,
-    ),
-  };
+  return mapRecurringTask(data, taskId, (t) => withRecurringTaskChecklistItemChecked(t, itemId, checked, dateISO));
 }
 
 export function setSingleTaskChecklistItemChecked(
@@ -635,13 +645,8 @@ export function setSingleTaskChecklistItemChecked(
 // the chat path (resolves the task by name first, then calls this same function). No
 // Habit equivalent — a Habit's checklist is a fixed routine set at creation/update
 // time (createHabit/updateHabit's checklistItems/newChecklistItems), not a growing list.
-export function addRecurringTaskChecklistItem(data: AppData, taskId: string, text: string): AppData {
-  return {
-    ...data,
-    recurringTasks: data.recurringTasks.map((t) =>
-      t.id === taskId ? { ...t, checklist: appendChecklistItemState(t.checklist, text) } : t,
-    ),
-  };
+export function addRecurringTaskChecklistItem(data: AppData, taskId: string, text: string, dateISO: string): AppData {
+  return mapRecurringTask(data, taskId, (t) => withRecurringTaskChecklistItemAdded(t, text, dateISO));
 }
 
 export function addSingleTaskChecklistItem(data: AppData, taskId: string, text: string): AppData {

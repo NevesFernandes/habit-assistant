@@ -15,7 +15,17 @@ export interface ChecklistItem {
   id: string;
   text: string;
   checked: boolean;
+  // §42, Recurring Task checklists only (see src/lib/recurringChecklist.ts): the first
+  // occurrence date the item belongs to, and — in "carryOver" mode — the day it was
+  // ticked. There `checked` is derived per date, not stored.
+  addedOn?: string;
+  doneOn?: string;
 }
+
+// §42: what a Recurring Task's checklist does from one occurrence to the next.
+// carryOver: each occurrence has its own list; unticked items move on to the next one.
+// sameList: a fixed routine; every item starts unticked each occurrence.
+export type ChecklistMode = "carryOver" | "sameList";
 
 export interface BaseItem {
   id: string;
@@ -82,6 +92,8 @@ export interface RecurringTask extends BaseItem {
   kind: "recurringTask";
   recurrence: RecurrenceRule;
   checklist?: ChecklistItem[];
+  checklistMode?: ChecklistMode; // §42; absent = "carryOver"
+  checklistDoneByDate?: Record<string, string[]>; // §42, "sameList" only: item ids ticked on each date
   pauses?: PausePeriod[]; // §28; absent on items saved before pausing existed
 }
 
