@@ -36,6 +36,11 @@
         padding-top: 2rem;
         border-top: 1px solid #1e293b;
       }
+      h3 {
+        font-size: 0.95rem;
+        margin: 1.5rem 0 0.5rem;
+        color: #cbd5e1;
+      }
       p.lead {
         color: #94a3b8;
         margin-top: 0;
@@ -129,8 +134,38 @@
           <strong>Your own key:</strong> if you add your own Anthropic, Groq or Gemini key in Settings, your messages
           go to that provider under your own account and its terms. Your key is sent along with each message so our
           server can pass it on, and is never stored there. Keys are saved in your browser and, so your other devices
-          can use them, <strong>in plain text in your Drive data file</strong>.
+          can use them, <strong>in plain text in your Drive data file</strong>. See below for what that means.
         </li>
+      </ul>
+
+      <h3 id="keys">What "plain text in your Drive" means for your keys</h3>
+      <p>
+        Your key is as safe as your Google Drive: Google protects the file, but Habit Assistant adds no encryption of
+        its own. Anyone who can open your data file can read the key and use it. That includes:
+      </p>
+      <ul>
+        <li>anyone who gets into your Google account;</li>
+        <li>anyone you share the <strong>Habit Assistant</strong> folder or file with, even by accident;</li>
+        <li>
+          other apps you've given access to your whole Drive (backup tools, file managers). Habit Assistant itself can
+          only see its own files, but they can see everything;
+        </li>
+        <li>copies of the file outside Drive, such as downloads, backups or a computer running Google Drive for desktop.</li>
+      </ul>
+      <p>
+        What a leaked key can cost depends on whether billing is attached to it, not on the provider. A free Groq key
+        with no billing can only have its free allowance used up (and heavy misuse could get the account suspended).
+        A Gemini key becomes a paying key if billing is ever turned on for its Google Cloud project. An Anthropic key
+        is always paid, so a leak means someone else spending your credit.
+      </p>
+      <p>To keep the risk small:</p>
+      <ul>
+        <li><strong>Create a separate key just for Habit Assistant,</strong> so you can delete it without affecting anything else.</li>
+        <li>
+          <strong>Set a monthly spending limit</strong> on any key with billing (the Anthropic Console and Google Cloud
+          both offer one), so the worst case has a known ceiling.
+        </li>
+        <li>Don't share the Habit Assistant folder, and delete the key at the provider if you think it has leaked.</li>
       </ul>
       <p>
         Provider policies: <a href="https://ai.google.dev/gemini-api/terms">Google Gemini API</a>,

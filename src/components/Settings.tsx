@@ -176,8 +176,16 @@ export default function Settings({
         value={apiKey}
         onChange={(event) => setApiKey(event.target.value)}
         placeholder="sk-..."
-        className="mb-3 w-full rounded-md bg-slate-900 px-2 py-1.5"
+        className="mb-1 w-full rounded-md bg-slate-900 px-2 py-1.5"
       />
+      {/* §40: said at the moment of pasting a key, not only in the privacy policy. */}
+      <p className="mb-3 text-xs text-slate-500">
+        Saved in plain text in your Drive file, so your other devices can use it. For a key with billing (like
+        Anthropic), set a spending limit.{" "}
+        <a href="/privacy.html#keys" target="_blank" rel="noreferrer" className="text-violet-400 underline">
+          Details
+        </a>
+      </p>
 
       <label className="mb-1 block text-slate-300">Model override (optional)</label>
       <input
