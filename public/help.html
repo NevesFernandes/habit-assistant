@@ -128,10 +128,24 @@
         display: inline-block;
         margin-top: 2rem;
       }
+      /* §40 step 8: the logo and name, linking back to the app. */
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #e2e8f0;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <a class="brand" href="/"><img src="/icon.svg" alt="" />Habit Assistant</a>
       <h1>How Habit Assistant works</h1>
       <p class="lead">
         Instead of menus and forms, you tell the assistant what you want in plain words, typed or spoken. It does
@@ -306,6 +320,7 @@
       </ul>
 
       <h2 id="app">6. Around the app</h2>
+      <p>Before you sign in, the app opens on its welcome page: <strong>Sign in with Google</strong> at the top, then a short introduction, a few things you can say, and links to this page, the privacy policy and a contact address.</p>
       <p>The row of buttons under the title, from left to right:</p>
       <ul>
         <li><strong>Chat</strong> (speech bubble): talk to the assistant.</li>
@@ -357,16 +372,19 @@
         </li>
         <li>
           <strong>Chat messages</strong> go to an AI provider to be understood. By default that's the free shared
-          trial (Google Gemini). Free tiers can use messages to improve the provider's models.
+          trial (Google Gemini). The trial covers your first 50 messages; after that, the chat asks you to add
+          your own key. Free tiers can use messages to improve the provider's models.
         </li>
         <li><strong>Voice recordings</strong> go to Groq to be turned into text, then are thrown away. They are never stored.</li>
         <li>
-          <strong>Your own key:</strong> if the shared trial is slow or runs out, you can plug in your own free
+          <strong>Your own key:</strong> if the shared trial is busy or runs out (the chat will point you here), you
+          can plug in your own free
           Groq or Gemini key (or an Anthropic key) in Settings. Your keys are saved in your Drive file, in plain text,
           so every device you sign in on can use them.
           <a href="/api-key-setup.html">How to get a free key</a>.
         </li>
       </ul>
+      <p>The full details are in the <a href="/privacy.html">privacy policy</a>.</p>
 
       <a class="back" href="/">← Back to Habit Assistant</a>
     </main>

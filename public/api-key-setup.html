@@ -69,10 +69,24 @@
         display: inline-block;
         margin-top: 1rem;
       }
+      /* §40 step 8: the logo and name, linking back to the app. */
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #e2e8f0;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <a class="brand" href="/"><img src="/icon.svg" alt="" />Habit Assistant</a>
       <h1>Get a free Groq or Gemini key</h1>
       <p class="lead">
         Habit Assistant's shared trial is limited, but Groq and Google Gemini both offer generous free tiers —
@@ -97,9 +111,17 @@
       </ol>
 
       <div class="note">
-        Whichever you pick, the key is saved in your Habit Assistant data file in your own Google Drive, in plain
-        text, so every device you sign in on can use it. Apart from that, it's only sent to that provider when you
-        chat, never stored by Habit Assistant anywhere else.
+        <p style="margin-top: 0">
+          <strong>Two tips while you're creating the key:</strong> make a <strong>separate key just for Habit
+          Assistant</strong>, so you can delete it on its own; and if the account has billing turned on (always the
+          case for an Anthropic key), <strong>set a monthly spending limit</strong>.
+        </p>
+        <p style="margin-bottom: 0">
+          Whichever you pick, the key is saved in your browser and in your Habit Assistant data file in your own
+          Google Drive, <strong>in plain text</strong>, so every device you sign in on can use it. When you chat, it
+          passes through Habit Assistant's server on its way to the provider, and is never stored there.
+          <a href="/privacy.html#keys">What plain text in Drive means</a>.
+        </p>
       </div>
       <a class="back" href="/">← Back to Habit Assistant</a>
     </main>

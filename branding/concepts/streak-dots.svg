@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Generated from branding/logo.svg by `npm run icons`; edit that file instead. -->
+  <!-- Concept B: a "typing" bubble whose dots grow left to right, like a streak building up. -->
   <rect width="512" height="512" rx="112" fill="#0f172a"/>
   <path d="M160 80h192a88 88 0 0 1 88 88v112a88 88 0 0 1-88 88H240l-100 70c-12 8-26-1-23-15l12-60a88 88 0 0 1-57-83V168a88 88 0 0 1 88-88z" fill="#8b5cf6"/>
-  <path d="M164 228l66 66 120-126" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="152" cy="252" r="28" fill="#c4b5fd"/>
+  <circle cx="240" cy="238" r="40" fill="#ede9fe"/>
+  <circle cx="348" cy="220" r="54" fill="#fff"/>
 </svg>

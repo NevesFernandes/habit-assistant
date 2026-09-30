@@ -20,7 +20,9 @@
     "test:recurringChecklist": "tsx src/lib/recurringChecklist.test.ts",
     "test:driveToken": "tsx src/lib/driveToken.test.ts",
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
+    "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
+    "icons": "tsx scripts/generateIcons.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
   },
@@ -37,6 +39,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "sharp": "^0.35.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "^5.7.3",

@@ -27,7 +27,7 @@ If it needs more information to act, it asks one short question. It doesn't gues
 
 ## Cost
 
-A free shared allowance lets you try the assistant right away. For unlimited use, paste your own AI provider key into Settings. Google Gemini and Groq both offer a free key that takes a couple of minutes to get, and Anthropic works too. The app has no subscription and no ads.
+A free shared allowance (your first 50 messages) lets you try the assistant right away. After that, paste your own AI provider key into Settings. Google Gemini and Groq both offer a free key that takes a couple of minutes to get, and Anthropic works too. The app has no subscription and no ads.
 
 ## Status
 

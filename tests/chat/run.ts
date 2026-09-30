@@ -167,7 +167,7 @@ async function runScenario(
       calledModelBefore = true;
       const call = () => handleAgentRequest(messages, env, undefined, categories, hasPendingConfirmation, weekStartsOn);
       const result = verbose ? await call() : await quietly(call);
-      if (result.status !== 200) throw new AgentRequestError(result.body.error ?? `status ${result.status}`, result.body.debug);
+      if (result.status !== 200) throw new AgentRequestError(result.body.error ?? `status ${result.status}`, result.body.debug, result.status);
       return result.body as AgentResponse;
     },
     todayISO: () => new Date().toISOString().slice(0, 10),

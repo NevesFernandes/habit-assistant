@@ -714,13 +714,10 @@ export function deleteCategory(data: AppData, id: string): AppData {
 }
 
 // See §20 in Roadmap.md — client-trusted nudge off the shared trial key toward BYOK.
-// Temporarily lifted to Infinity (2026-09-16): sole user is the app operator doing
-// solo day-to-day dogfooding on their own Google profile/quota, so the original
-// rationale (protect the operator's shared key from *other* people's usage) doesn't
-// apply yet — and the shared-key path is the only one with §22/§23 retry+failover.
-// Restore a real cap (e.g. the original 5, or something in between) before sharing
-// this with anyone else.
-export const SHARED_KEY_MESSAGE_CAP = Infinity;
+// §40: 50 messages, enough to settle into a small daily routine before being asked for a
+// key. Deliberately still client-trusted (stored in the user's own Drive file, so it can be
+// reset): an honour-system nudge, not enforcement — the operator chose no server-side check.
+export const SHARED_KEY_MESSAGE_CAP = 50;
 
 export function bumpSharedKeyMessageCount(data: AppData): AppData {
   return { ...data, sharedKeyMessageCount: (data.sharedKeyMessageCount ?? 0) + 1 };

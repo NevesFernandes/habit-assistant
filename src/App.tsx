@@ -28,7 +28,14 @@ import {
   type DriveFileRef,
 } from "./lib/driveClient";
 import { sendMessage, type AgentHistoryMessage } from "./lib/agentClient";
-import { loadDebugLog, appendDebugLogEntry, clearDebugLog, type DebugLogEntry } from "./lib/debugLogStore";
+import {
+  loadDebugLog,
+  appendDebugLogEntry,
+  clearDebugLog,
+  isDebugLogEnabled,
+  applyDebugLogSwitchFromUrl,
+  type DebugLogEntry,
+} from "./lib/debugLogStore";
 import { toDisplayMessages } from "./server/agentHistory";
 import {
   addCategory,
@@ -158,6 +165,11 @@ export default function App() {
   // log panel updates live while it's open during a chat turn, instead of
   // only reflecting a one-time snapshot taken when it was unlocked.
   const [debugLog, setDebugLog] = useState<DebugLogEntry[]>(() => loadDebugLog());
+  // §40: hidden unless switched on for this device via `#debug` (see debugLogStore.ts).
+  const [debugLogEnabled] = useState(() => {
+    applyDebugLogSwitchFromUrl();
+    return isDebugLogEnabled();
+  });
 
   const [activeTab, setActiveTab] = useState<Tab>("chat");
   const [viewSubTab, setViewSubTab] = useState<ViewSubTab>("habits");
@@ -195,6 +207,8 @@ export default function App() {
   }
 
   function recordDebugEntry(entry: DebugLogEntry) {
+    // Read from storage, not state: the long-lived ChatSession holds this render's closure.
+    if (!isDebugLogEnabled()) return;
     appendDebugLogEntry(entry);
     setDebugLog(loadDebugLog());
   }
@@ -413,6 +427,7 @@ export default function App() {
       todayISO,
       onDebug: (entry) => recordDebugEntry(entry),
       onChange: () => setMessages(session.messages),
+      usingSharedTrial: () => !latestRef.current.byok,
       beforeModelCall: ({ hasPendingConfirmation }) => {
         const current = latestRef.current;
         const usingSharedKey = !current.byok;
@@ -546,7 +561,11 @@ export default function App() {
     <WeekStartContext.Provider value={weekStartOf(data)}>
       <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Habit Assistant</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            {/* §40 step 8: the logo (public/icon.svg, generated from branding/logo.svg). */}
+            <img src="/icon.svg" alt="" className="h-7 w-7" />
+            Habit Assistant
+          </h1>
           <div className="flex gap-2">
             {/* §38: the user manual, a static page precached like api-key-setup.html. */}
             <a
@@ -613,6 +632,7 @@ export default function App() {
             onClose={() => setSettingsOpen(false)}
             weekStartsOn={weekStartOf(data)}
             onChangeWeekStart={(weekStartsOn) => void persist((current) => ({ ...current, weekStartsOn }))}
+            debugLogEnabled={debugLogEnabled}
             debugLog={debugLog}
             onClearDebugLog={handleClearDebugLog}
           />

@@ -88,6 +88,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 3. Under **Settings → Variables and Secrets**, add the secrets: `TRIAL_API_KEY`, `STT_TRIAL_API_KEY`, and any optional failover keys.
 4. Also add `VITE_GOOGLE_CLIENT_ID` as a plain **build** variable. Vite bakes it into the bundle at build time, and without it sign-in silently breaks.
 5. Add the deployed `*.workers.dev` URL (or your custom domain) as another "Authorized JavaScript origin" on your OAuth client.
+6. **No custom domain?** The official deployment uses one (`habitassistant.app`), so `wrangler.jsonc` sets `"workers_dev": false`, which switches the `*.workers.dev` address off. Set it to `true` in your fork, or your copy has no address at all.
 
 **Gotcha:** `TRIAL_PROVIDER` (and `TRIAL_FALLBACK_PROVIDER`, if used) belongs in `wrangler.jsonc`'s `vars`, not the dashboard. A dashboard variable of the same name is silently overwritten by the committed value on every Git-triggered deploy. To change providers, edit `wrangler.jsonc` and push.
 
@@ -106,6 +107,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 | `src/server/classifyIntent.ts` | Narrows which tools are sent to the model, per message |
 | `src/server/providers/` | One adapter per LLM provider |
 | `src/types/models.ts` | The data model: items, recurrence rules, completion log |
+| `branding/` | The logo (`logo.svg`, the one source file) and the rejected concepts. `npm run icons` regenerates every icon in `public/` from it; commit the output |
 
 ## 6. How work is organized
 

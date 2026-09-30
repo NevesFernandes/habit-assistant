@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Concept C: a round speech bubble drawn as a completed progress ring, with a check inside. -->
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <circle cx="268" cy="236" r="148" fill="none" stroke="#a78bfa" stroke-width="48"/>
+  <path d="M128 300l84 92-116 36z" fill="#a78bfa" stroke="#a78bfa" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M196 240l50 50 94-102" fill="none" stroke="#fff" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

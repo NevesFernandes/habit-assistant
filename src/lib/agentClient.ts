@@ -191,10 +191,13 @@ export interface AgentResponse {
 // Error and the response body — including `debug` — would be lost.
 export class AgentRequestError extends Error {
   debug?: AgentDebugEntry;
-  constructor(message: string, debug?: AgentDebugEntry) {
+  /** The HTTP status the server answered with (§40: tells "the model is unavailable" apart). */
+  status?: number;
+  constructor(message: string, debug?: AgentDebugEntry, status?: number) {
     super(message);
     this.name = "AgentRequestError";
     this.debug = debug;
+    this.status = status;
   }
 }
 
@@ -247,7 +250,7 @@ export async function sendMessage(
   });
   const { ok, status, body } = await sendWithRetry(payload);
   if (!ok) {
-    throw new AgentRequestError(body.error ?? `Agent request failed (${status}).`, body.debug);
+    throw new AgentRequestError(body.error ?? `Agent request failed (${status}).`, body.debug, status);
   }
   return body;
 }
