@@ -207,7 +207,23 @@ export interface ChatEngineDeps {
    * e.g. the §20 shared-trial cap — or null to go ahead.
    */
   beforeModelCall?(context: { hasPendingConfirmation: boolean }): string | null;
+  /**
+   * Whether this turn runs on the operator's shared free trial rather than the user's own
+   * key. §40: when the trial's models are unavailable, the reply nudges toward BYOK.
+   */
+  usingSharedTrial?(): boolean;
 }
+
+// §40: the shared trial's models are unavailable (rate-limited, overloaded, or every
+// provider in the failover chain failed), as opposed to a bad request or being offline.
+function isModelUnavailable(err: unknown): boolean {
+  if (err instanceof AgentRequestError) return err.status === 429 || (err.status ?? 0) >= 500;
+  return err instanceof Error && err.name === "TimeoutError";
+}
+
+export const SHARED_TRIAL_UNAVAILABLE_HINT =
+  "The free shared trial is busy right now. For a steadier assistant, add your own free Gemini or Groq key " +
+  "in Settings (⚙) — it takes about a minute. Step-by-step guide: /api-key-setup.html";
 
 export class ChatSession {
   messages: AgentHistoryMessage[] = [];
@@ -281,7 +297,9 @@ export class ChatSession {
       }
     } catch (err) {
       if (err instanceof AgentRequestError && err.debug) this.deps.onDebug?.(err.debug);
-      this.pushAssistantMessage(err instanceof Error ? err.message : "Something went wrong talking to the assistant.");
+      const message = err instanceof Error ? err.message : "Something went wrong talking to the assistant.";
+      const hint = this.deps.usingSharedTrial?.() && isModelUnavailable(err) ? `\n\n${SHARED_TRIAL_UNAVAILABLE_HINT}` : "";
+      this.pushAssistantMessage(message + hint);
       // pendingConfirmation is deliberately left untouched here — only a real
       // response (or explicit decline) clears it, so a transient network
       // failure while awaiting confirmation doesn't silently drop it.

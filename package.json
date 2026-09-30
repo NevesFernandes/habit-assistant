@@ -20,6 +20,7 @@
     "test:recurringChecklist": "tsx src/lib/recurringChecklist.test.ts",
     "test:driveToken": "tsx src/lib/driveToken.test.ts",
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
+    "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
