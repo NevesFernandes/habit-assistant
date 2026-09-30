@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Privacy — Habit Assistant</title>
+    <!--
+      §40 step 3: the privacy policy Google's OAuth consent screen links to. Like help.html, it
+      restates behaviour defined in code (what leaves the device, and where it goes), so any
+      change to that updates this page in the same commit, along with the "Last updated" date.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      main {
+        max-width: 620px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 0.5rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin: 2.5rem 0 1rem;
+        padding-top: 2rem;
+        border-top: 1px solid #1e293b;
+      }
+      p.lead {
+        color: #94a3b8;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+      }
+      ul {
+        padding-left: 1.25rem;
+        margin: 0 0 1rem;
+      }
+      li {
+        margin-bottom: 0.4rem;
+      }
+      code {
+        background: #1e293b;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      a {
+        color: #a78bfa;
+      }
+      .summary {
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 1rem;
+      }
+      .summary ul {
+        margin: 0;
+      }
+      a.back {
+        display: inline-block;
+        margin-top: 2.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy policy</h1>
+      <p class="lead">Last updated: 30 September 2026</p>
+
+      <p>
+        Habit Assistant is a habit tracker you talk to. It's run by the Habit Assistant project (Vasco Fernandes, "we") at
+        <code>habitassistant.app</code>. This page explains what happens to your information when you use it.
+      </p>
+
+      <div class="summary">
+        <ul>
+          <li>Your habits and tasks are stored in <strong>your own Google Drive</strong>, not on our servers.</li>
+          <li>The app can only see the files it created, not the rest of your Drive.</li>
+          <li>Chat messages go to an AI provider to be understood. Voice clips go to Groq to be turned into text.</li>
+          <li>No ads, no analytics, no tracking. We don't sell or share your data.</li>
+        </ul>
+      </div>
+
+      <h2>1. Signing in with Google</h2>
+      <p>
+        You sign in with your Google account. The app asks Google for one permission,
+        <code>drive.file</code>: to create and read files that this app itself created in your Google Drive. It
+        can't see, change or delete any of your other files. The app doesn't ask for your name, email address or
+        contacts.
+      </p>
+      <p>
+        Google gives the app a temporary access token (valid for an hour) that it uses only to read and save your
+        data file. The token stays in your browser.
+      </p>
+
+      <h2>2. Your habits and tasks</h2>
+      <p>
+        Everything you track (habits, tasks, checklists, categories, completion history and settings) is saved as
+        one file, <code>habit-assistant-data.json</code>, in a visible <strong>Habit Assistant</strong> folder in
+        your Google Drive. It goes straight from your browser to Google Drive; it never passes through or is stored
+        on our servers. You can open, download, back up or delete it whenever you like.
+      </p>
+
+      <h2>3. Chat messages and the AI provider</h2>
+      <p>
+        To understand what you type, the app sends it through our small server (a Cloudflare Worker) to an AI
+        provider. Each message sends the current conversation (your messages and the app's replies, which can
+        mention your items by name) and your list of categories. The assistant doesn't receive your whole data file.
+        The conversation isn't saved anywhere: it's cleared when you close the app.
+      </p>
+      <ul>
+        <li>
+          <strong>The free shared trial</strong> uses Google Gemini through our account, on its free tier. On that
+          tier, Google may use what's sent to improve its products, and human reviewers may read it. So don't type
+          anything you wouldn't want seen. If the main provider is unavailable, a message may be answered by a backup
+          provider instead (Cloudflare Workers AI or Groq).
+        </li>
+        <li>
+          <strong>Your own key:</strong> if you add your own Anthropic, Groq or Gemini key in Settings, your messages
+          go to that provider under your own account and its terms. Your key is sent along with each message so our
+          server can pass it on, and is never stored there. Keys are saved in your browser and, so your other devices
+          can use them, <strong>in plain text in your Drive data file</strong>.
+        </li>
+      </ul>
+      <p>
+        Provider policies: <a href="https://ai.google.dev/gemini-api/terms">Google Gemini API</a>,
+        <a href="https://groq.com/privacy-policy/">Groq</a>,
+        <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>,
+        <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>.
+      </p>
+
+      <h2>4. Voice input</h2>
+      <p>
+        When you hold the microphone button, the recording is first checked on your device for speech. If there's
+        speech, the clip is sent through our server to Groq's speech-to-text service, and the text comes back as your
+        message. We don't store or log the audio.
+      </p>
+      <p>
+        If you turn on "read replies aloud", your browser's built-in voice reads them. Depending on your browser and
+        device, that voice may run online through your browser's maker (for example, Google for Chrome).
+      </p>
+
+      <h2>5. Our server</h2>
+      <p>
+        Our server only passes chat messages and voice clips on to the providers above. It has no database and keeps
+        no account for you. Cloudflare, which hosts it, keeps short-lived technical logs (such as request times,
+        errors and IP addresses) for security and troubleshooting. We use these only to fix problems.
+      </p>
+
+      <h2>6. Stored on your device</h2>
+      <p>
+        The app keeps a few things in your browser's local storage: your AI key settings, a running timer, your
+        read-aloud preference, and a random device ID (so each device can keep its own read-aloud setting). This is
+        not used to track you. Clearing the site's data in your browser, or uninstalling the app, removes it.
+      </p>
+
+      <h2>7. Google user data</h2>
+      <p>
+        Habit Assistant's use and transfer of information received from Google APIs adheres to the
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+        including the Limited Use requirements. Data from your Google Drive is used only to show and save your habits
+        and tasks in the app. It isn't used for advertising, isn't sold, and isn't read by people, except when you ask
+        us for help and share it yourself.
+      </p>
+
+      <h2>8. Deleting your data</h2>
+      <ul>
+        <li><strong>Your data:</strong> delete the <strong>Habit Assistant</strong> folder in your Google Drive.</li>
+        <li>
+          <strong>The app's access:</strong> remove Habit Assistant at
+          <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>.
+        </li>
+        <li><strong>This device:</strong> clear the site's data in your browser, or uninstall the app.</li>
+      </ul>
+      <p>Since we don't hold your habit data, there's nothing else for us to delete.</p>
+
+      <h2>9. Children</h2>
+      <p>Habit Assistant isn't meant for children under 13, and we don't knowingly collect their information.</p>
+
+      <h2>10. Changes and contact</h2>
+      <p>
+        If this policy changes, we'll update this page and its date. Questions or requests:
+        <a href="mailto:hello@habitassistant.app">hello@habitassistant.app</a>.
+      </p>
+
+      <a class="back" href="/">← Back to Habit Assistant</a>
+    </main>
+  </body>
+</html>

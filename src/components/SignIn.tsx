@@ -23,6 +23,10 @@ export default function SignIn({ onClick, loading, error }: SignInProps) {
       <a href="/help.html" target="_blank" rel="noreferrer" className="text-sm text-violet-400 underline">
         How it works, and where your data goes
       </a>
+      {/* §40: Google's consent screen links here too. */}
+      <a href="/privacy.html" target="_blank" rel="noreferrer" className="text-sm text-slate-400 underline">
+        Privacy policy
+      </a>
     </div>
   );
 }
