@@ -106,6 +106,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 | `src/server/classifyIntent.ts` | Narrows which tools are sent to the model, per message |
 | `src/server/providers/` | One adapter per LLM provider |
 | `src/types/models.ts` | The data model: items, recurrence rules, completion log |
+| `branding/` | The logo (`logo.svg`, the one source file) and the rejected concepts. `npm run icons` regenerates every icon in `public/` from it; commit the output |
 
 ## 6. How work is organized
 

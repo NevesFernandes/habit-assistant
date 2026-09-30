@@ -69,10 +69,24 @@
         display: inline-block;
         margin-top: 1rem;
       }
+      /* §40 step 8: the logo and name, linking back to the app. */
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #e2e8f0;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <a class="brand" href="/"><img src="/icon.svg" alt="" />Habit Assistant</a>
       <h1>Get a free Groq or Gemini key</h1>
       <p class="lead">
         Habit Assistant's shared trial is limited, but Groq and Google Gemini both offer generous free tiers —

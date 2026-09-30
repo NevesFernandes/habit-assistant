@@ -561,7 +561,11 @@ export default function App() {
     <WeekStartContext.Provider value={weekStartOf(data)}>
       <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Habit Assistant</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            {/* §40 step 8: the logo (public/icon.svg, generated from branding/logo.svg). */}
+            <img src="/icon.svg" alt="" className="h-7 w-7" />
+            Habit Assistant
+          </h1>
           <div className="flex gap-2">
             {/* §38: the user manual, a static page precached like api-key-setup.html. */}
             <a
