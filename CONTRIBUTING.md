@@ -88,6 +88,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 3. Under **Settings → Variables and Secrets**, add the secrets: `TRIAL_API_KEY`, `STT_TRIAL_API_KEY`, and any optional failover keys.
 4. Also add `VITE_GOOGLE_CLIENT_ID` as a plain **build** variable. Vite bakes it into the bundle at build time, and without it sign-in silently breaks.
 5. Add the deployed `*.workers.dev` URL (or your custom domain) as another "Authorized JavaScript origin" on your OAuth client.
+6. **No custom domain?** The official deployment uses one (`habitassistant.app`), so `wrangler.jsonc` sets `"workers_dev": false`, which switches the `*.workers.dev` address off. Set it to `true` in your fork, or your copy has no address at all.
 
 **Gotcha:** `TRIAL_PROVIDER` (and `TRIAL_FALLBACK_PROVIDER`, if used) belongs in `wrangler.jsonc`'s `vars`, not the dashboard. A dashboard variable of the same name is silently overwritten by the committed value on every Git-triggered deploy. To change providers, edit `wrangler.jsonc` and push.
 
