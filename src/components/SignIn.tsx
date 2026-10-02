@@ -86,6 +86,9 @@ export default function SignIn({ onClick, loading, error }: SignInProps) {
         <a href="/privacy.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
           Privacy policy
         </a>
+        <a href="/terms.html" target="_blank" rel="noreferrer" className="text-violet-400 underline">
+          Terms
+        </a>
         <a href="mailto:hello@habitassistant.app" className="text-violet-400 underline">
           Contact
         </a>
