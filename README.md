@@ -33,7 +33,9 @@ A free shared allowance (your first 50 messages) lets you try the assistant righ
 
 Habit Assistant is a working personal project and is still growing. Everything listed above works today. [Roadmap.md](Roadmap.md) lists what's planned next.
 
-The app is currently set up to be self-hosted: you deploy your own copy (free) and sign in with your own Google account. [CONTRIBUTING.md](CONTRIBUTING.md) explains how.
+**Use it at [habitassistant.app](https://habitassistant.app)**: sign in with any Google account, on your phone or computer. On Android, install it to your home screen from Chrome's menu. See the [privacy policy](https://habitassistant.app/privacy) and [terms](https://habitassistant.app/terms).
+
+You can also deploy your own copy (free); [CONTRIBUTING.md](CONTRIBUTING.md) explains how.
 
 ## More
 
