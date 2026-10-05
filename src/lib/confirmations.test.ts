@@ -130,6 +130,15 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
   assert.doesNotMatch(text, /Checklist/);
 }
 
+// §57: a day given by weekday is a given date, so nothing was assumed.
+{
+  const task: SingleTask = { kind: "singleTask", id: "s1", name: "Beacons", priority: 0, startDate: "2026-09-24", done: false, persistency: false };
+  const text = describeCreatedSingleTask(task, { name: "Beacons", startWeekday: 4, startWeekdayMode: "next", persistency: false }, categories, TODAY);
+  assert.match(text, /• Date: Thu 24 Sep/);
+  assert.match(text, /dropped at the end of the day/);
+  assert.doesNotMatch(text, /Assumed/);
+}
+
 // §53: a one-off task shows its category when it has one, first in the list.
 {
   const task: SingleTask = { kind: "singleTask", id: "s1", name: "Run 5k", categoryId: "sports", priority: 0, startDate: TODAY, done: false, persistency: true };
