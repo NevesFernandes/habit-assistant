@@ -134,12 +134,16 @@ function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
 
 const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
+Only ever offer the user actions from the list above, and only for the kind of item each one applies to. Never suggest something you have no tool for.
+
 If you don't have enough information to act — at minimum, a clear name, or for a deletion, a clear sense of what should be deleted, or for an edit, both which item and what to change — ask a short, single clarifying question instead of guessing, and never call a tool with a placeholder, guessed, or empty value.
 
 You cannot see the user's habits or tasks, so never ask which existing item they mean. For any tool that selects an existing item by name (update, archive, log progress, checklist), a word from the user's own message is enough (e.g. "log six glasses of water" → name: "water"): call the tool right away and the app finds the matches itself — if several match, it shows the user a numbered list to pick from.`;
 
 function buildDeleteProse(categoryList: string, todayISO: string): string {
-  return `For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
+  return `Deleting is for whole items only. When the user wants one part of an item removed — its description (which they may call notes, comments or details), its end date, or a task's category — that is an edit: use the update tool with that field set to "", and never a delete tool. A task's checklist, or an item on it, can't be removed through chat yet: say so plainly rather than deleting the task.
+
+For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
 - all: set true to match every item of that kind, ignoring every other field below.
 - name: a text fragment to match against the item's name (e.g. "delete the gym habit" → name: "gym").
 - categoryIds: one or more category ids from this list: ${categoryList} (e.g. "delete my Health and Finance tasks" → categoryIds: ["health", "finance"]).
@@ -151,7 +155,7 @@ function buildDeleteProse(categoryList: string, todayISO: string): string {
 - inactiveSince (deleteHabits and deleteRecurringTasks): an ISO date you compute from a relative phrase like "haven't done in 2 weeks" — matches items with no completions on or after that date.`;
 }
 
-const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed.`;
+const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed. Archiving and pausing exist only for habits and recurring tasks — a one-off task can be neither archived nor paused, so never offer that for one.`;
 
 // §28: pausing sits between "leave it running" and archiving — the user gets the habit
 // back. Kept in both the delete and modify buckets for the same reason archiving is:
@@ -162,7 +166,7 @@ const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resume
 Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
 
 function buildModifyProse(categoryList: string): string {
-  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 ${PICK_FROM_LIST_PROSE}
 
@@ -313,7 +317,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Short name of the task." },
-          description: { type: "string", description: "Optional extra detail." },
+          description: { type: "string", description: "Optional extra detail — what the user may call a note, comment or description." },
           categoryId: {
             type: "string",
             description: "Optional. The category the user named for this task; omit when they named none.",
@@ -353,7 +357,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Short name of the habit." },
-          description: { type: "string", description: "Optional extra detail." },
+          description: { type: "string", description: "Optional extra detail — what the user may call a note, comment or description." },
           categoryId: {
             type: "string",
             description: "Best-fit category id for this habit.",
@@ -415,7 +419,7 @@ function buildTools(
         type: "object",
         properties: {
           name: { type: "string", description: "Short name of the task." },
-          description: { type: "string", description: "Optional extra detail." },
+          description: { type: "string", description: "Optional extra detail — what the user may call a note, comment or description." },
           categoryId: {
             type: "string",
             description: "Optional. The category the user named for this task, or else a clear best fit; omit when neither applies.",
@@ -564,7 +568,7 @@ function buildTools(
           name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
           categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the task." },
-          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newDescription: { type: "string", description: "New description — what the user may call its notes, comments or details. Empty string clears it." },
           newCategoryId: {
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
@@ -606,7 +610,7 @@ function buildTools(
           name: { type: "string", description: "Fragment to match against the habit's current name, to find which habit to change." },
           categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the habit." },
-          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newDescription: { type: "string", description: "New description — what the user may call its notes, comments or details. Empty string clears it." },
           newCategoryId: {
             type: "string",
             description: `New category id from: ${categoryList}.`,
@@ -667,7 +671,7 @@ function buildTools(
           name: { type: "string", description: "Fragment to match against the task's current name, to find which task to change." },
           categoryId: CATEGORY_SELECTOR_FIELD,
           newName: { type: "string", description: "New name for the task." },
-          newDescription: { type: "string", description: "New description. Empty string clears it." },
+          newDescription: { type: "string", description: "New description — what the user may call its notes, comments or details. Empty string clears it." },
           newCategoryId: {
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,

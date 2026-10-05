@@ -45,6 +45,26 @@ const cases: Case[] = [
   ["studied for 2 hours today", ["modify"]],
   ["tracked 5 miles today", ["modify"]],
   ["I practiced my routine today", ["modify", "checklist"]],
+  // §55: removing one field of an item is an edit, not a deletion.
+  ["Remove the comments of the task Reply to Family.", ["modify"]],
+  ["clear the notes on my gym habit", ["modify"]],
+  ["delete the description from the dentist task", ["modify"]],
+  ["remove the end date from my reading habit", ["modify"]],
+  ["remove the category from the pay rent task", ["modify"]],
+  ["get rid of the details of my shopping task", ["modify"]],
+  ["drop the priority of the gym habit", ["modify"]],
+  ["remove the end date", ["modify"]],
+  ["take the category off the water the plants task", ["modify"]],
+  ["clear its description.", ["modify"]],
+  // The field word only describes which items to delete, so the delete tools must stay.
+  ["delete the notes task", ["delete", "modify"]],
+  ["remove my Finance category tasks", ["delete", "modify"]],
+  ["delete the priority 5 tasks", ["delete", "modify"]],
+  // A real deletion alongside the field: both.
+  ["remove the notes from my gym habit and delete the dentist task", ["delete", "modify"]],
+  // No field word: unchanged.
+  ["remove my gym habit", ["delete"]],
+  ["clear out my old tasks", ["delete"]],
 ];
 
 let failures = 0;
