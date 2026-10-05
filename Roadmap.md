@@ -16,14 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §52 — A fixed top bar with a Back button on the info pages
-On "How Habit Assistant works" (`help.html`), the privacy policy (`privacy.html`) and the terms (`terms.html`), the only way back is the "← Back to Habit Assistant" link at the very bottom, so a long page means scrolling all the way down. The logo and name at the top (§40 step 8) also link to the app, but they scroll away and don't look like a button.
-
-- **Top bar that stays in place while scrolling** (`position: sticky`, solid background so text doesn't show through): logo + "Habit Assistant" on the left, a clear **← Back** button in the top-right corner. Remove the bottom link.
-- **Same on `api-key-setup.html`** (the free-key guide), which has the same layout and bottom link, so all four pages match.
-- **What "Back" does:** the app opens these pages in a new tab (`target="_blank"`), where there's no history to go back to. Most likely: go back if the page was reached from another page (e.g. help → privacy), otherwise go to `/`. Check how this behaves in the installed Android app, where these links may open in a separate browser view, and pick what actually returns the user to the app.
-- Mind the phone width (the bar mustn't crowd the logo) and links to anchors like `privacy.html#keys`, whose heading must not end up hidden under the bar (`scroll-margin-top`).
-
 ### §50 — Creation replies give the first real occurrence, not "today"
 When a Habit or Recurring Task is created, the confirmation (`confirmations.ts`) always shows `Starts: today` and, if the user gave no start, `Assumed: … starting today`. That's right for a daily item, but misleading when the rule's first occurrence is later: "add a recurring task to take out the bins every Monday", sent on a Wednesday, says it starts today although nothing is due until next Monday.
 
