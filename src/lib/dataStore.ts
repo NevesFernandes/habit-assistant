@@ -29,6 +29,10 @@ export interface CreateSingleTaskInput {
   categoryId?: string;
   priority?: number;
   startDate?: string;
+  // §57: same deterministic weekday resolution as habits and recurring tasks — without
+  // these, "a task for next Thursday" had nowhere to go and landed on today.
+  startWeekday?: number;
+  startWeekdayMode?: "closest" | "next";
   persistency?: boolean;
   withChecklist?: boolean;
   checklistItems?: string[];
@@ -44,7 +48,7 @@ function initialTaskChecklist(input: { withChecklist?: boolean; checklistItems?:
 }
 
 export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppData {
-  const startDate = normalizeStartDate(input.startDate);
+  const startDate = resolveStartDate(input);
   const task: SingleTask = {
     kind: "singleTask",
     id: crypto.randomUUID(),

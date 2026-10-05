@@ -228,7 +228,7 @@ export function describeCreatedSingleTask(
   if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
 
-  const hint = input.startDate === undefined ? `Assumed: due today.\n${ASSUMED_FOLLOW_UP}` : null;
+  const hint = startDateGiven(input) ? null : `Assumed: due today.\n${ASSUMED_FOLLOW_UP}`;
   return withHint(`Added task "${task.name}":\n${bullets(lines)}`, hint);
 }
 

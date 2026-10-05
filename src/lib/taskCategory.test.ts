@@ -1,7 +1,9 @@
-// §53: a task only ever stores a category that exists. Plain assert-based check, same
+// §53: a task only ever stores a category that exists. Also §57, further down: a one-off
+// task's day given by weekday. Plain assert-based check, same
 // no-framework pattern as the other *.test.ts files. Run: npm run test:taskCategory
 import assert from "node:assert/strict";
 import { addRecurringTask, addSingleTask, resolveCategoryId, updateRecurringTask, updateSingleTask } from "./dataStore.ts";
+import { addDays, dayOfWeek } from "./recurrence.ts";
 import { DEFAULT_CATEGORIES, type AppData } from "../types/models.ts";
 
 const data: AppData = {
@@ -53,6 +55,26 @@ assert.equal(recurring("garden").categoryId, undefined);
   assert.equal(after("selfcare"), "c-123");
   assert.equal(after(""), undefined);
   assert.equal(after("garden"), "home");
+}
+
+// §57: a one-off task's day can be given by weekday, resolved the same way as for habits.
+{
+  const today = new Date().toISOString().slice(0, 10);
+  const weekday = dayOfWeek(today);
+  const dated = (input: Partial<Parameters<typeof addSingleTask>[1]>) => addSingleTask(data, { name: "Beacons", ...input }).singleTasks[0];
+  const later = (weekday + 3) % 7;
+  assert.equal(dated({ startWeekday: later }).startDate, addDays(today, 3));
+  assert.equal(dated({ startWeekday: later, startWeekdayMode: "next" }).startDate, addDays(today, 3));
+  // Today's own weekday: "closest" is today, "next" is a week out.
+  assert.equal(dated({ startWeekday: weekday }).startDate, today);
+  assert.equal(dated({ startWeekday: weekday, startWeekdayMode: "next" }).startDate, addDays(today, 7));
+  // The weekday wins over a date the model worked out itself; originalStartDate follows.
+  const both = dated({ startWeekday: later, startDate: addDays(today, 1) });
+  assert.equal(both.startDate, addDays(today, 3));
+  assert.equal(both.originalStartDate, addDays(today, 3));
+  // Plain dates behave as before.
+  assert.equal(dated({ startDate: addDays(today, 1) }).startDate, addDays(today, 1));
+  assert.equal(dated({}).startDate, today);
 }
 
 console.log("taskCategory.test.ts: all passed");

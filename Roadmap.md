@@ -16,14 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §57 — Fix: a one-off task "for next Thursday" is created for today
-Reported 2026-10-05: "add a task for next Thursday, just that day, called ingress battle beacons, in the social category" → `Date: today (Mon 5 Oct)`, `Assumed: due today`. The category and "just that day" were understood; the day was lost.
-
-- **Cause (read from the code, not yet confirmed in the debug log):** the prompt tells the model never to work out a date from a weekday itself, but to pass `startWeekday`/`startWeekdayMode` and leave `startDate` empty, so the app resolves it (`resolveWeekdayDate`). `createHabit` and `createRecurringTask` have those fields; `createSingleTask` (`handleAgentRequest.ts`) has only `startDate`. The model obeys, sends no date, and the task defaults to today.
-- **Fix:** add `startWeekday` and `startWeekdayMode` to `createSingleTask`'s tool and to `CreateSingleTaskInput`, and have `addSingleTask` use `resolveStartDate` (`dataStore.ts`) as the other two do. `describeCreatedSingleTask`'s "Assumed: due today" hint must then also count a weekday as a given date (`startDateGiven` in `confirmations.ts` already does this for the other two).
-- Editing already works ("move it to next Thursday"): `updateSingleTask` has `newStartWeekday`. "Tomorrow" and "on the 8th" work too, since they go through `startDate`.
-- Targeted chat scenarios, on Gemini and Groq: "a task for next Thursday", "a task on Friday" (closest), and one said on that same weekday ("next Monday" on a Monday is 7 days out). Check `help.html`'s task examples still hold.
-
 ## Next
 
 ### §48 — Point to your own key when the shared trial's key is broken

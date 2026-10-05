@@ -190,7 +190,7 @@ ${PICK_FROM_LIST_PROSE}`;
 function buildCreateProse(categoryList: string): string {
   return `For createSingleTask specifically:
 - categoryId is optional. Always set it when the user names a category for the task (e.g. "add a task to pay rent, Finance category", "a work task to email Sam", "put it in Health") — use its id from this list: ${categoryList}. When the user names no category, leave it out: never pick one yourself for a one-off task.
-- startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
+- startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date. When they name the day by weekday instead ("a task for next Thursday", "on Friday"), pass startWeekday/startWeekdayMode and leave startDate out, exactly as described above — never leave both out for a task that was given a day.
 - persistency defaults to true (the task keeps carrying forward until done) — leave it out unless the user's own phrasing signals a same-day/one-shot intent (e.g. "just for today", "don't need this tomorrow") or explicitly asks for it to persist or not. Never ask about this proactively; it has a sensible default.
 
 For createHabit specifically:
@@ -329,7 +329,19 @@ function buildTools(
           },
           startDate: {
             type: "string",
-            description: "ISO date (YYYY-MM-DD), today or later. Omit to default to today.",
+            description:
+              "ISO date (YYYY-MM-DD), today or later. Omit to default to today. Do not use this for a day given by weekday name — use startWeekday/startWeekdayMode instead.",
+          },
+          startWeekday: {
+            type: "number",
+            description:
+              "Use instead of startDate when the user names the task's day by weekday (e.g. 'on Friday', 'for next Thursday'). 0=Sunday..6=Saturday.",
+          },
+          startWeekdayMode: {
+            type: "string",
+            description:
+              "'next' if the user said the word 'next' before the weekday; 'closest' (default) otherwise.",
+            enum: ["closest", "next"],
           },
           persistency: {
             type: "boolean",

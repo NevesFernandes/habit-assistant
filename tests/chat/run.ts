@@ -40,8 +40,9 @@ import { scenarios as s43 } from "./scenarios/s43-week-start.ts";
 import { scenarios as s50 } from "./scenarios/s50-first-due.ts";
 import { scenarios as s53 } from "./scenarios/s53-task-category.ts";
 import { scenarios as s55 } from "./scenarios/s55-clear-fields.ts";
+import { scenarios as s57 } from "./scenarios/s57-task-weekday.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s53, ...s55];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s53, ...s55, ...s57];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
