@@ -141,8 +141,105 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
 {
   const before = habit({ name: "Gym", categoryId: "sports" });
   const after = habit({ name: "Gym", categoryId: "sports", recurrence: { type: "daysOfWeek", days: [1] } });
-  assert.equal(describeUpdate(before, after, categories, TODAY), `Updated "Gym":\n• Repeats: every day → every Mon`);
+  assert.equal(
+    describeUpdate(before, after, categories, TODAY),
+    `Updated "Gym":\n• Repeats: every day → every Mon\n• Next due: today (Fri 18 Sep) → Mon 21 Sep`,
+  );
   assert.match(describeUpdate(before, before, categories, TODAY), /^Nothing changed/);
+}
+
+// §50: the reply names the first day the item is actually due, not the start date.
+{
+  const bins = (overrides: Partial<RecurringTask> = {}): RecurringTask => ({
+    kind: "recurringTask",
+    id: "r1",
+    name: "Bins",
+    priority: 1,
+    startDate: TODAY,
+    recurrence: { type: "daysOfWeek", days: [1] },
+    ...overrides,
+  });
+  const created = (task: RecurringTask, userText = "take out the bins") =>
+    describeCreatedRecurringTask(task, { name: task.name, recurrence: task.recurrence }, categories, userText, TODAY);
+
+  // Every Monday, created on a Friday: first due Monday, and the hint says so too.
+  const monday = created(bins());
+  assert.match(monday, /• First due: Mon 21 Sep/);
+  assert.doesNotMatch(monday, /Starts:/);
+  assert.match(monday, /Assumed: no category, first due Mon 21 Sep\./);
+  assert.doesNotMatch(monday, /starting today/);
+
+  // The first due day is tomorrow.
+  assert.match(created(bins({ recurrence: { type: "daysOfWeek", days: [6] } })), /• First due: tomorrow \(Sat 19 Sep\)/);
+
+  // A rule that matches the start date keeps today's wording.
+  const friday = created(bins({ recurrence: { type: "daysOfWeek", days: [5] } }));
+  assert.match(friday, /• Starts: today \(Fri 18 Sep\)/);
+  assert.match(friday, /starting today\./);
+  assert.doesNotMatch(friday, /First due/);
+
+  // Flexible, every-N-days and on/off rules are due on their start date.
+  for (const recurrence of [
+    { type: "timesPerPeriod", period: "week", count: 3 },
+    { type: "intervalDays", interval: 3 },
+    { type: "onOffCycle", onDays: 2, offDays: 5 },
+  ] as const) {
+    assert.match(created(bins({ recurrence })), /• Starts: today \(Fri 18 Sep\)/);
+  }
+
+  // Nth weekday of the month, and a yearly date in another year.
+  assert.match(created(bins({ recurrence: { type: "nthWeekdayOfMonth", nth: "first", weekday: 1 } })), /• First due: Mon 5 Oct/);
+  assert.match(created(bins({ recurrence: { type: "specificDatesOfYear", dates: ["03-15"] } })), /• First due: Mon 15 Mar 2027/);
+  assert.match(created(bins({ recurrence: { type: "specificDatesOfYear", dates: ["02-29"] } })), /• First due: Tue 29 Feb 2028/);
+
+  // A start date in the future that isn't a due day: first due is counted from it.
+  const later = describeCreatedRecurringTask(
+    bins({ startDate: "2026-09-23" }),
+    { name: "Bins", recurrence: { type: "daysOfWeek", days: [1] }, startDate: "2026-09-23" },
+    categories,
+    "bins every monday from the 23rd",
+    TODAY,
+  );
+  assert.match(later, /• First due: Mon 28 Sep/);
+  assert.doesNotMatch(later, /first due|starting today/);
+
+  // It ends before it is ever due.
+  assert.match(created(bins({ endDate: "2026-09-20" })), /• First due: never, it ends before its first day/);
+
+  // A habit gets the same line.
+  const gym = describeCreatedHabit(
+    habit({ name: "Gym", categoryId: "sports", recurrence: { type: "daysOfWeek", days: [1, 3] } }),
+    { name: "Gym", categoryId: "sports", recurrence: { type: "daysOfWeek", days: [1, 3] } },
+    categories,
+    "sports habit gym on mon and wed",
+    TODAY,
+  );
+  assert.match(gym, /• First due: Mon 21 Sep/);
+  assert.match(gym, /Assumed: yes\/no, first due Mon 21 Sep\./);
+
+  // Edits: "Next due" only when the change moves it.
+  assert.equal(
+    describeUpdate(bins(), bins({ recurrence: { type: "daysOfWeek", days: [4] } }), categories, TODAY),
+    `Updated "Bins":\n• Repeats: every Mon → every Thu\n• Next due: Mon 21 Sep → Thu 24 Sep`,
+  );
+  assert.equal(describeUpdate(bins(), bins({ name: "Rubbish" }), categories, TODAY), `Updated "Bins":\n• Name: "Bins" → "Rubbish"`);
+  assert.equal(
+    describeUpdate(bins(), bins({ endDate: "2026-12-31" }), categories, TODAY),
+    `Updated "Bins":\n• Ends: none → Thu 31 Dec`,
+  );
+  // Counted from today, not from a start date in the past.
+  assert.match(
+    describeUpdate(bins({ startDate: "2026-09-01" }), bins({ startDate: "2026-09-01", recurrence: { type: "daysOfWeek", days: [2] } }), categories, TODAY),
+    /• Next due: Mon 21 Sep → Tue 22 Sep$/,
+  );
+  // A new start date that is itself the next due day isn't repeated.
+  const daily = habit();
+  assert.equal(
+    describeUpdate(daily, habit({ startDate: "2026-09-25" }), categories, TODAY),
+    `Updated "Read":\n• Starts: today (Fri 18 Sep) → Fri 25 Sep`,
+  );
+  // An end date that leaves nothing due.
+  assert.match(describeUpdate(bins(), bins({ endDate: "2026-09-19" }), categories, TODAY), /• Next due: Mon 21 Sep → none$/);
 }
 
 assert.match(describeArchive(habit()), /^Archived "Read"/);

@@ -16,14 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §50 — Creation replies give the first real occurrence, not "today"
-When a Habit or Recurring Task is created, the confirmation (`confirmations.ts`) always shows `Starts: today` and, if the user gave no start, `Assumed: … starting today`. That's right for a daily item, but misleading when the rule's first occurrence is later: "add a recurring task to take out the bins every Monday", sent on a Wednesday, says it starts today although nothing is due until next Monday.
-
-- When the first day on which `occursOn` is true differs from `startDate`, show that date instead (e.g. `First: Mon, Oct 12`), and say it in the assumed hint too (`first on Mon, Oct 12` rather than `starting today`). When the first occurrence *is* the start date (daily, or a matching weekday), keep today's wording.
-- Look for the first occurrence with `occursOn`, as everything else does, with a bounded search (yearly dates can be almost a year away). Flexible rules (N times per week/month) are due any day, so they keep showing the start date.
-- Open question for when work starts: should the edit confirmation do the same when a rule change moves the first occurrence?
-- Add cases to `confirmations.test.ts` and a targeted chat scenario; check whether `help.html` quotes the reply.
-
 ### §53 — Fix: asking for a category when creating a task doesn't work
 Reported 2026-10-05: asking for a category while creating a task (e.g. "add a task to pay rent, Finance category") consistently fails. Habits aren't affected. Investigate, reproduce and fix. First findings from reading the code (not yet confirmed by a run):
 

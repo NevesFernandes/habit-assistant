@@ -183,6 +183,24 @@ export function occursOn(item: RecurringItem, dateISO: string): boolean {
   }
 }
 
+// Yearly dates can be almost a year away, and 29 Feb up to four.
+const NEXT_OCCURRENCE_SEARCH_DAYS = 4 * 366;
+
+/**
+ * §50: the first day on or after `fromISO` that the item is due, found by asking occursOn
+ * day by day so every rule (and pauses) is honoured without restating any of them here.
+ * Undefined when there is none: the item ends first, or is paused with no end.
+ */
+export function nextOccurrence(item: RecurringItem, fromISO: string): string | undefined {
+  let cursor = fromISO > item.startDate ? fromISO : item.startDate;
+  for (let i = 0; i < NEXT_OCCURRENCE_SEARCH_DAYS; i++) {
+    if (item.endDate && cursor > item.endDate) return undefined;
+    if (occursOn(item, cursor)) return cursor;
+    cursor = addDays(cursor, 1);
+  }
+  return undefined;
+}
+
 export function getHabitsForDate(habits: Habit[], dateISO: string): Habit[] {
   return habits
     .filter((habit) => occursOn(habit, dateISO))
