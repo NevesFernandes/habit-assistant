@@ -185,6 +185,7 @@ ${PICK_FROM_LIST_PROSE}`;
 
 function buildCreateProse(categoryList: string): string {
   return `For createSingleTask specifically:
+- categoryId is optional. Always set it when the user names a category for the task (e.g. "add a task to pay rent, Finance category", "a work task to email Sam", "put it in Health") — use its id from this list: ${categoryList}. When the user names no category, leave it out: never pick one yourself for a one-off task.
 - startDate must be today or a future date. If unspecified, it defaults to today automatically — leave it out unless the user gives a specific date.
 - persistency defaults to true (the task keeps carrying forward until done) — leave it out unless the user's own phrasing signals a same-day/one-shot intent (e.g. "just for today", "don't need this tomorrow") or explicitly asks for it to persist or not. Never ask about this proactively; it has a sensible default.
 
@@ -196,10 +197,12 @@ For createHabit specifically:
 - completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). Never ask how the user wants to track a habit if they haven't described an amount, duration, or checklist — just use "yesno". A "value" or "timer" habit always needs a target greater than 0 — completion means reaching 100% of it, so there's no such thing as tracking one without a goal. If the user states a specific amount (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they haven't given a specific amount, ask a short clarifying question for it rather than guessing or leaving it unset.
 
 For createRecurringTask specifically:
-- categoryId is optional — only set it if there's a clear match from this list: ${categoryList}; otherwise leave it out rather than guessing or asking.
+- categoryId is optional. Always set it when the user names a category for the task (e.g. "a recurring Home task to water the plants every week") — use its id from this list: ${categoryList}. When the user names no category, set it only if one of them is a clear match; otherwise leave it out rather than guessing or asking.
 - priority, startDate/startWeekday/startWeekdayMode, and recurrence all work exactly as they do for createHabit — see above.
 - There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
 - checklistMode (only with a checklist): each occurrence of a recurring task has its own checklist. Leave checklistMode out by default — unticked items then carry over to the next occurrence, which suits a running list like shopping. Set "sameList" only when the user says the list is the same every time or should reset each time (e.g. "a cleaning routine with the same checklist every week"). Never ask about this; the confirmation states it.
+
+For all three create tools: a category the user names always wins over your own pick. Match it loosely against the list ("selfcare" means Self-care, "sport" means Sports). If the user names a category that isn't in the list at all, do not swap in a different one and do not create the item yet: tell them that category doesn't exist (new ones are added in the app's Categories tab) and ask which existing category to use instead — or, for a task, whether to add it with no category.
 
 For both task tools: a task can carry a checklist inside it (e.g. a shopping list). Set withChecklist to true when the user asks for one ("with a checklist", "a shopping list for Friday"), and put any items they name in checklistItems. Otherwise leave both out. The checklist never affects whether the task itself is done.`;
 }
@@ -311,6 +314,11 @@ function buildTools(
         properties: {
           name: { type: "string", description: "Short name of the task." },
           description: { type: "string", description: "Optional extra detail." },
+          categoryId: {
+            type: "string",
+            description: "Optional. The category the user named for this task; omit when they named none.",
+            enum: categories.map((category) => category.id),
+          },
           priority: {
             type: "number",
             description: "Optional numeric priority; higher values show first.",
@@ -410,7 +418,7 @@ function buildTools(
           description: { type: "string", description: "Optional extra detail." },
           categoryId: {
             type: "string",
-            description: "Optional best-fit category id for this task.",
+            description: "Optional. The category the user named for this task, or else a clear best fit; omit when neither applies.",
             enum: categories.map((category) => category.id),
           },
           priority: {

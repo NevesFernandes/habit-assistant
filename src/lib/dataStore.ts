@@ -50,7 +50,7 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
     id: crypto.randomUUID(),
     name: input.name,
     description: input.description,
-    categoryId: input.categoryId,
+    categoryId: resolveCategoryId(data, input.categoryId),
     priority: input.priority ?? 0,
     startDate,
     originalStartDate: startDate,
@@ -110,6 +110,28 @@ export interface CreateHabitInput {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * §53: the category a task should store for the id a tool call carried. A known id passes
+ * through; otherwise a weaker model may have sent the category's name ("Finance",
+ * "selfcare") instead of its id, so that's matched ignoring case and punctuation.
+ * Undefined when nothing matches — a task is never saved with a category that doesn't exist.
+ */
+export function resolveCategoryId(data: AppData, raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (data.categories.some((category) => category.id === raw)) return raw;
+  const simplify = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const wanted = simplify(raw);
+  if (!wanted) return undefined;
+  return data.categories.find((category) => simplify(category.name) === wanted || simplify(category.id) === wanted)?.id;
+}
+
+// "" clears a task's category; an id that doesn't resolve leaves it as it was.
+function patchedTaskCategoryId(data: AppData, current: string | undefined, patch: UpdatePatch): string | undefined {
+  if (patch.newCategoryId === undefined) return current;
+  if (patch.newCategoryId === "") return undefined;
+  return resolveCategoryId(data, patch.newCategoryId) ?? current;
 }
 
 /** Positive integer, defaulting to 1 (the lowest priority) — never 0 or negative. */
@@ -223,7 +245,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     id: crypto.randomUUID(),
     name: input.name,
     description: input.description,
-    categoryId: input.categoryId,
+    categoryId: resolveCategoryId(data, input.categoryId),
     priority: normalizePriority(input.priority),
     startDate: resolveStartDate(input),
     endDate: input.endDate,
@@ -461,7 +483,7 @@ export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch):
       const base = applyBaseItemPatch(task, patch);
       return {
         ...base,
-        categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
+        categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
         done: patch.newDone !== undefined ? patch.newDone : task.done,
         persistency: patch.newPersistency !== undefined ? patch.newPersistency : task.persistency,
       };
@@ -514,7 +536,7 @@ export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatc
       const base = applyBaseItemPatch(task, patch);
       const updated: RecurringTask = {
         ...base,
-        categoryId: patch.newCategoryId !== undefined ? patch.newCategoryId || undefined : task.categoryId,
+        categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
         recurrence: resolveRecurrence(task.recurrence, patch),
       };
       return patch.newChecklistMode ? withChecklistMode(updated, patch.newChecklistMode, today()) : updated;

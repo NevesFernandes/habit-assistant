@@ -212,8 +212,15 @@ export function describeCreatedRecurringTask(
   return withHint(`Added recurring task "${task.name}":\n${bullets(lines)}`, buildHint(assumed));
 }
 
-export function describeCreatedSingleTask(task: SingleTask, input: CreateSingleTaskInput, todayISO: string): string {
+export function describeCreatedSingleTask(
+  task: SingleTask,
+  input: CreateSingleTaskInput,
+  categories: Category[],
+  todayISO: string,
+): string {
   const lines = [
+    // §53: only when one was saved — a one-off task has no category unless the user named one.
+    ...(task.categoryId ? [`Category: ${categoryName(task.categoryId, categories)}`] : []),
     `Date: ${formatDate(task.startDate, todayISO)}`,
     task.persistency ? "If not done: carries over to the next day" : "If not done: dropped at the end of the day",
     ...taskChecklistLines(task, todayISO),

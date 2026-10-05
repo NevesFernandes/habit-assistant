@@ -16,15 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §53 — Fix: asking for a category when creating a task doesn't work
-Reported 2026-10-05: asking for a category while creating a task (e.g. "add a task to pay rent, Finance category") consistently fails. Habits aren't affected. Investigate, reproduce and fix. First findings from reading the code (not yet confirmed by a run):
-
-- **Single Tasks: the model can't send a category at all.** `createSingleTask`'s tool schema (`handleAgentRequest.ts`) has no `categoryId` field and its prompt rules never mention category, though the data layer accepts one (`dataStore.ts`). So the model drops the category, or answers in text without acting. Add `categoryId` (optional, enum of the user's categories) as `createRecurringTask` has it.
-- **Recurring Tasks: the field exists but the prompt holds it back.** The rule "only set it if there's a clear match … otherwise leave it out rather than guessing" may lead weaker models to skip a category the user named outright. Reword: *always* set it when the user names a category; only the best-fit guess stays optional.
-- **Custom categories** (user-added): check the enum and the prompt's category list include them, and how a near-miss name ("selfcare" vs. "Self-care") resolves.
-- **Check the confirmation** shows the saved category, and the "Assumed: no category" hint (§31) disappears when one was given.
-- Reproduce first with targeted chat scenarios (single and recurring, built-in and custom category), on Gemini and on Groq. Update `help.html` if it says tasks can't get a category at creation.
-
 ## Next
 
 ### §48 — Point to your own key when the shared trial's key is broken
