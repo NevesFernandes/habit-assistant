@@ -33,6 +33,35 @@ const POINTS: { title: string; text: string }[] = [
   },
 ];
 
+// §49: real screenshots, so a visitor sees the app before signing in. Generated into
+// public/screenshots/ by `npm run screenshots` (all 720×1492) and deliberately not
+// precached by the service worker. They go stale when the UI changes: retake them then.
+const HERO_SHOT = {
+  src: "/screenshots/chat.webp",
+  alt: "The chat: “Create a habit to do Calisthenics, on Mondays, Wednesdays and Fridays, starting only next week”, and the assistant's reply listing the habit it added.",
+};
+
+const MORE_SHOTS: { src: string; alt: string; caption: string }[] = [
+  {
+    src: "/screenshots/chat-voice.webp",
+    alt: "The chat while recording a voice message, after marking a habit complete by text.",
+    caption: "Type or talk",
+  },
+  { src: "/screenshots/today.webp", alt: "The day view, listing today's habits and tasks.", caption: "Your day" },
+  {
+    src: "/screenshots/habit.webp",
+    alt: "A habit's page, with its streak, completion numbers and a calendar heatmap.",
+    caption: "Each habit's history",
+  },
+  {
+    src: "/screenshots/stats.webp",
+    alt: "The stats tab, with an overall completion meter and a breakdown by category.",
+    caption: "Stats",
+  },
+];
+
+const SHOT_FRAME = "rounded-2xl border border-slate-700 shadow-lg";
+
 export default function SignIn({ onClick, loading, error }: SignInProps) {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-10">
@@ -57,12 +86,40 @@ export default function SignIn({ onClick, loading, error }: SignInProps) {
           does it. If it needs more information, it asks one short question.
         </p>
 
+        <img
+          src={HERO_SHOT.src}
+          alt={HERO_SHOT.alt}
+          width={720}
+          height={1492}
+          className={`mx-auto h-auto w-64 ${SHOT_FRAME}`}
+        />
+
         <section>
           <h2 className="mb-3 font-medium text-slate-100">Things you can say</h2>
           <ul className="flex flex-col gap-2">
             {EXAMPLES.map((example) => (
               <li key={example} className="rounded-md bg-slate-800 px-3 py-2 text-violet-300">
                 “{example}”
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="mb-3 font-medium text-slate-100">A look inside</h2>
+          {/* Swipeable: bleeds to the screen edges (-mx-6) so the next image peeks in. */}
+          <ul className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-2">
+            {MORE_SHOTS.map((shot) => (
+              <li key={shot.src} className="w-44 shrink-0 snap-center">
+                <img
+                  src={shot.src}
+                  alt={shot.alt}
+                  width={720}
+                  height={1492}
+                  loading="lazy"
+                  className={`h-auto w-full ${SHOT_FRAME}`}
+                />
+                <p className="mt-2 text-center text-xs text-slate-400">{shot.caption}</p>
               </li>
             ))}
           </ul>

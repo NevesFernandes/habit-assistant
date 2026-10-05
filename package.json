@@ -26,6 +26,7 @@
     "test:taskCategory": "tsx src/lib/taskCategory.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "icons": "tsx scripts/generateIcons.ts",
+    "screenshots": "tsx scripts/generateScreenshots.ts",
     "preview": "vite preview",
     "workers:dev": "npm run build && wrangler dev"
   },
