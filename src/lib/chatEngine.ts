@@ -629,7 +629,7 @@ export class ChatSession {
         created = next.singleTasks[next.singleTasks.length - 1];
         return next;
       });
-      if (saved && created) this.pushAssistantMessage(describeCreatedSingleTask(created, toolCall.input, today), replyTo);
+      if (saved && created) this.pushAssistantMessage(describeCreatedSingleTask(created, toolCall.input, data.categories, today), replyTo);
     } else if (toolCall.name === "createHabit") {
       let created: Habit | undefined;
       const saved = await this.deps.persist((current) => {
