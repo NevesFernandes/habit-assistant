@@ -12,6 +12,12 @@ Most habit trackers make you work for them: open the app, find the right screen,
 
 If it needs more information to act, it asks one short question. It doesn't guess.
 
+<p align="center">
+  <img src="public/screenshots/chat.webp" width="230" alt="The chat: a habit created in one sentence, with the assistant's confirmation" />
+  <img src="public/screenshots/today.webp" width="230" alt="The day view, listing today's habits and tasks" />
+  <img src="public/screenshots/habit.webp" width="230" alt="A habit's page, with its streaks and calendar heatmap" />
+</p>
+
 ## What it does
 
 - **Talk, don't tap.** Everything can be created, changed, completed, paused, archived or deleted from the chat.

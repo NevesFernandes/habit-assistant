@@ -44,6 +44,24 @@
         margin: 1.5rem 0 0.5rem;
         color: #cbd5e1;
       }
+      /* §49: a screenshot illustrating a section. Not precached, so it needs a connection. */
+      figure.shot {
+        margin: 1.25rem auto;
+        max-width: 280px;
+        text-align: center;
+      }
+      figure.shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid #334155;
+        border-radius: 1rem;
+      }
+      figure.shot figcaption {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
       p.lead {
         color: #94a3b8;
         margin-top: 0;
@@ -281,6 +299,19 @@
         A habit is Yes/No unless you describe an amount, a duration or a list of steps. Number and Timer habits
         always need a goal; if you don't give one, the assistant asks.
       </p>
+      <figure class="shot">
+        <img
+          src="/screenshots/today.webp"
+          width="720"
+          height="1492"
+          loading="lazy"
+          alt="The Today tab, listing a day's habits and tasks with their progress."
+        />
+        <figcaption>
+          The Today tab, with all four types: a Checklist habit (3 of 4 steps), a Number habit (3 of 8 glasses), a
+          Yes/No habit and a finished Timer habit.
+        </figcaption>
+      </figure>
 
       <h3>Checklists on tasks</h3>
       <p>
@@ -367,6 +398,16 @@
       <p>Next to the title, the <strong>?</strong> button opens this page (also linked from the sign-in screen) and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies, and the first day of the week.</p>
 
       <h2 id="stats">7. Stats and the heatmap</h2>
+      <figure class="shot">
+        <img
+          src="/screenshots/habit-stats.webp"
+          width="720"
+          height="820"
+          loading="lazy"
+          alt="A habit's statistics: current streak 8 days, best streak 12 days, completion rate 72%, completion counts, and its heatmap."
+        />
+        <figcaption>A habit's own page: its numbers, then its heatmap.</figcaption>
+      </figure>
       <ul>
         <li><strong>Current streak:</strong> how many due days in a row you've completed, up to today. Today doesn't break it until the day is over.</li>
         <li><strong>Best streak:</strong> the longest streak so far.</li>
