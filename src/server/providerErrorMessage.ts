@@ -13,6 +13,16 @@ const PROVIDER_NAMES: Record<string, string> = {
 export const GENERIC_PROVIDER_ERROR = "The assistant provider had a problem answering. Please try again in a moment.";
 
 /**
+ * §48: the provider refused the API key itself (wrong, revoked or deleted), as opposed to
+ * the request. Groq, Anthropic and Workers AI answer 401/403; Gemini answers 400 with
+ * `API_KEY_INVALID` ("API key not valid…"), so a 400 counts only with that text.
+ */
+export function isKeyRejected(status: number, rawMessage: string): boolean {
+  if (status === 401 || status === 403) return true;
+  return status === 400 && /API_KEY_INVALID|API key not valid/i.test(rawMessage);
+}
+
+/**
  * `rawMessage` is the provider's own error text, read only to recognise the case.
  * `usingOwnKey` is false on the shared trial, where the user can't do anything about the
  * operator's limits — chatEngine's §40 hint covers that — so the generic text stays.
@@ -25,6 +35,9 @@ export function providerErrorMessage(status: number, rawMessage: string, provide
   if (status === 413 || /request too large/i.test(rawMessage)) {
     const base = `That request was too large for ${name}${providerId === "groq" ? "'s free tier" : ""}. Try saying it with a clear action word (add, change, delete, mark done), or wait a minute and try again.`;
     return providerId === "groq" ? `${base} Gemini's free tier has no such limit: you can switch in Settings (⚙).` : base;
+  }
+  if (isKeyRejected(status, rawMessage)) {
+    return `Your ${name === "the provider" ? "API" : name} key was rejected. Check it in Settings (⚙).`;
   }
   if (status === 429) {
     const subject = name === "the provider" ? "The provider's" : `${name}'s`;

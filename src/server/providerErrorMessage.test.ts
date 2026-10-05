@@ -1,7 +1,7 @@
 // §51: plain assert-based check, same pattern as classifyIntent.test.ts.
 // Run: node src/server/providerErrorMessage.test.ts
 import assert from "node:assert/strict";
-import { GENERIC_PROVIDER_ERROR, providerErrorMessage } from "./providerErrorMessage.ts";
+import { GENERIC_PROVIDER_ERROR, isKeyRejected, providerErrorMessage } from "./providerErrorMessage.ts";
 
 const GROQ_TOO_LARGE =
   '{"error":{"message":"Request too large for model `openai/gpt-oss-120b` … on tokens per minute (TPM): Limit 8000, Requested 12828, please reduce your message size and try again.","type":"tokens","code":"rate_limit_exceeded"}}';
@@ -26,9 +26,25 @@ assert.equal(providerErrorMessage(429, "", "someNewProvider", true), "The provid
 
 // Anything else, and everything on the shared trial, keeps the generic text.
 assert.equal(providerErrorMessage(500, "boom", "groq", true), GENERIC_PROVIDER_ERROR);
-assert.equal(providerErrorMessage(400, "API_KEY_INVALID", "gemini", true), GENERIC_PROVIDER_ERROR);
+assert.equal(providerErrorMessage(400, "Invalid JSON payload", "gemini", true), GENERIC_PROVIDER_ERROR);
 assert.equal(providerErrorMessage(413, GROQ_TOO_LARGE, "groq", false), GENERIC_PROVIDER_ERROR);
 assert.equal(providerErrorMessage(429, GROQ_RATE_LIMIT, "groq", false), GENERIC_PROVIDER_ERROR);
+assert.equal(providerErrorMessage(400, "API_KEY_INVALID", "gemini", false), GENERIC_PROVIDER_ERROR);
+
+// §48: the key itself was refused. Gemini says so with a 400, the others with 401/403.
+assert.ok(isKeyRejected(400, '{"error":{"message":"API key not valid. Please pass a valid API key."}}'));
+assert.ok(isKeyRejected(400, "API_KEY_INVALID"));
+assert.ok(isKeyRejected(401, ""));
+assert.ok(isKeyRejected(403, ""));
+assert.ok(!isKeyRejected(400, "Invalid JSON payload"));
+assert.ok(!isKeyRejected(429, GROQ_RATE_LIMIT));
+assert.ok(!isKeyRejected(500, "API_KEY_INVALID"));
+
+// Own key rejected: say so, and where to fix it.
+assert.equal(providerErrorMessage(400, "API_KEY_INVALID", "gemini", true), "Your Gemini key was rejected. Check it in Settings (⚙).");
+assert.equal(providerErrorMessage(401, "invalid_api_key", "groq", true), "Your Groq key was rejected. Check it in Settings (⚙).");
+assert.equal(providerErrorMessage(401, "authentication_error", "anthropic", true), "Your Anthropic key was rejected. Check it in Settings (⚙).");
+assert.equal(providerErrorMessage(403, "", "someNewProvider", true), "Your API key was rejected. Check it in Settings (⚙).");
 
 // The raw provider text never leaks.
 for (const message of [tooLarge, other]) assert.doesNotMatch(message, /TPM|gpt-oss|rate_limit_exceeded/);

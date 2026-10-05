@@ -40,6 +40,11 @@ assert.ok((await lastReply(timeout, true)).includes(SHARED_TRIAL_UNAVAILABLE_HIN
 
 // Own key → no hint (the user already did what it would suggest).
 assert.ok(!(await lastReply(overloaded(), false)).includes(SHARED_TRIAL_UNAVAILABLE_HINT), "no hint with BYOK");
+// §48: a rejected own key arrives as a 4xx with its own message, and gets no hint either.
+// (A rejected *trial* key is answered as 503 by the server — keyRejected.test.ts — so it
+// takes the 503 path above.)
+const ownKeyRejected = await lastReply(new AgentRequestError("Your Gemini key was rejected. Check it in Settings (⚙).", undefined, 401), false);
+assert.equal(ownKeyRejected, "Your Gemini key was rejected. Check it in Settings (⚙).");
 
 // Not an availability problem → no hint.
 assert.ok(!(await lastReply(new AgentRequestError("Expected a non-empty `messages` array.", undefined, 400), true)).includes(SHARED_TRIAL_UNAVAILABLE_HINT), "no hint on 400");

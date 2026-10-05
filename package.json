@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "test:classify": "node src/server/classifyIntent.test.ts",
     "test:providerError": "node src/server/providerErrorMessage.test.ts",
+    "test:keyRejected": "node src/server/keyRejected.test.ts",
     "test:recurrenceSpec": "node src/server/recurrenceSpec.test.ts",
     "test:confirmations": "node src/lib/confirmations.test.ts",
     "test:itemSelection": "node src/lib/itemSelection.test.ts",
