@@ -10,11 +10,19 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §56** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §58** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
 ## Now
+
+### §57 — Fix: a one-off task "for next Thursday" is created for today
+Reported 2026-10-05: "add a task for next Thursday, just that day, called ingress battle beacons, in the social category" → `Date: today (Mon 5 Oct)`, `Assumed: due today`. The category and "just that day" were understood; the day was lost.
+
+- **Cause (read from the code, not yet confirmed in the debug log):** the prompt tells the model never to work out a date from a weekday itself, but to pass `startWeekday`/`startWeekdayMode` and leave `startDate` empty, so the app resolves it (`resolveWeekdayDate`). `createHabit` and `createRecurringTask` have those fields; `createSingleTask` (`handleAgentRequest.ts`) has only `startDate`. The model obeys, sends no date, and the task defaults to today.
+- **Fix:** add `startWeekday` and `startWeekdayMode` to `createSingleTask`'s tool and to `CreateSingleTaskInput`, and have `addSingleTask` use `resolveStartDate` (`dataStore.ts`) as the other two do. `describeCreatedSingleTask`'s "Assumed: due today" hint must then also count a weekday as a given date (`startDateGiven` in `confirmations.ts` already does this for the other two).
+- Editing already works ("move it to next Thursday"): `updateSingleTask` has `newStartWeekday`. "Tomorrow" and "on the 8th" work too, since they go through `startDate`.
+- Targeted chat scenarios, on Gemini and Groq: "a task for next Thursday", "a task on Friday" (closest), and one said on that same weekday ("next Monday" on a Monday is 7 days out). Check `help.html`'s task examples still hold.
 
 ## Next
 
@@ -41,14 +49,6 @@ Seen 2026-10-05 (own Groq key, `openai/gpt-oss-120b`): "Change my brush teeth ha
 - **Replies aren't read as replies.** `classifyIntent` (`src/server/classifyIntent.ts`) classifies only the latest user message, so a short answer to an app question ("both", "yes, Monday", "the morning one") gets no action words and goes to the full tool list. When the app has just asked something (a pending pick, or any question), classify using the original request, or reuse the bucket of the call that asked.
 - **The full tool list doesn't fit Groq's free tier** (~12.8k tokens against an 8k-per-minute limit). That is the known blocker for Groq as the trial's fallback (CLAUDE.md), and it hits BYOK Groq users directly. Fixing the two gaps above makes `fallback:full` rarer, but doesn't remove it. Consider a slimmer fallback payload, or a clearer error that tells a Groq BYOK user what happened instead of a generic failure.
 - Output of the review: a short decision per gap (some may become their own `§N` items), then targeted chat scenarios reproducing this exact sequence. Update `help.html` if multi-item edits become possible.
-
-### §55 — Fix: "remove the comments" refused instead of clearing a field
-Seen 2026-10-05: "Remove the comments of the task Reply to Family." → *"I can't edit the comments or details of a task, but I can delete the task entirely, archive it, or help you update other aspects of it. Would you like me to delete "Reply to Family"?"* By design every field is editable through chat, and clearing the description is supported (`updateSingleTask` with `newDescription: ""`).
-
-- **Most likely cause (from the code, not yet confirmed in the debug log):** `classifyIntent` puts "remove" only in the `delete` bucket, so the model got delete/archive tools but no `update*` tools, and honestly said it couldn't edit. Removing or clearing a *part* of an item ("remove the description / end date / category / priority", "clear the comments") is an edit, not a delete. Have such phrasings also reach `modify` (e.g. delete verb + field word → add `modify`), and add `classifyIntent.test.ts` cases.
-- **"Comments" means the description.** The app never calls it that, but users will ("notes", "comments", "details"). Say so in the tool/prompt wording so the model maps them to `newDescription`.
-- **The reply offered to archive a one-off task,** which doesn't exist. Check why (archive tools are in the `delete` bucket; their descriptions say habits/recurring tasks only), and that the reply never offers an action the app can't do.
-- **Sweep:** test clearing every clearable field on all three item types (description, end date, category on tasks, checklist) with "remove…"/"clear…"/"delete the … from …" phrasings, as targeted chat scenarios.
 
 ## Later
 
@@ -88,5 +88,13 @@ Questions to bring to the session (not decisions):
 - **Chat fit:** how the user says it ("make gym top priority", "move reading above meditation") and what the model can reliably map to the stored value.
 - **Display:** a number, a colour, a flag icon, or only position in the list.
 - **Migration:** existing items' numbers in users' Drive files must map cleanly to whatever replaces them.
+
+### §56 — Remove a checklist, or one item from it, through chat
+Found while fixing §55: chat can add items to a task's checklist and tick them, but nothing can take an item off again, or remove the checklist from a task ("remove milk from my shopping list", "remove the checklist from the shopping task"). `Checklist.tsx` has no delete control either, so a mistyped item stays forever. Today the assistant says it can't (§55 added that wording so it doesn't delete the task instead).
+
+- Tools to remove one or more items from a Single or Recurring Task's checklist, and to remove the checklist itself (back to a plain task, no badge). Decide what removing an item means in each recurring mode (§42): in *carry over* the item just ends; in *same list* it leaves the routine from that day on, keeping earlier days' ticks.
+- A Checklist habit already replaces its whole list through `updateHabit`'s `newChecklistItems`; consider a remove-one-item path there too.
+- `classifyIntent`: "remove … from my … list" should reach the checklist tools, not the delete tools. Consider a delete control in `Checklist.tsx` as well.
+- Update `help.html`, which currently says this can't be done through chat.
 
 New items go in on request, at whichever position and tier they deserve, taking the next free ID above.

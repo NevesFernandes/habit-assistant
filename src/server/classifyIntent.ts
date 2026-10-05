@@ -5,7 +5,8 @@
 // buckets are OR'd together, never narrowed to a risky single guess — and a
 // message with no confident match falls back to sending everything, i.e.
 // today's exact pre-§24 behavior. This keeps the router strictly
-// risk-reducing: it only narrows payload when confident.
+// risk-reducing: it only narrows payload when confident. (One deliberate
+// exception, §55: clearing a single field of an item — see FIELD_CLEAR_PATTERN.)
 
 export type IntentBucket = "create" | "delete" | "modify" | "checklist";
 
@@ -48,6 +49,25 @@ const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
 // not be left with only the destructive tools in its payload.
 const PAUSE_VERBS = ["pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
 
+// §55: "remove the comments of the task X" / "clear the end date on gym" take one *field*
+// off an item — an edit (updateX with that field set to ""), not a deletion. Users say
+// notes/comments/details for the description.
+const FIELD_WORDS = ["description", "descriptions", "note", "notes", "comment", "comments", "details", "end date", "deadline", "category", "priority"];
+const CLEAR_ONLY_VERBS = ["clear", "drop", "take off", "take away", "unset"];
+// The field is the verb's own object, and then the sentence ends or names the item it
+// belongs to: "remove the notes from …", "delete the description of …", "clear the end
+// date". Not "delete the notes task" or "remove my Finance category tasks", where the word
+// only describes which items to delete.
+const FIELD_CLEAR_PATTERN = new RegExp(
+  "\\b(?:remove|delete|erase|wipe|scrap|cancel|get rid of|clear out|clear|drop|take off|take away|unset)\\s+" +
+    "(?:(?:the|its|their|my|that|this|all|any)\\s+)*" +
+    "(?:descriptions?|notes?|comments?|details|end date|deadline|category|priority)" +
+    "(?:\\s+(?:from|of|on|for|in)\\b|[\\s.!?]*$)",
+);
+// "take the category off my shopping task" — the same request with the verb split in two.
+const TAKE_FIELD_OFF_PATTERN =
+  /\btake\s+(?:(?:the|its|their|my|that|this)\s+)*(?:descriptions?|notes?|comments?|details|end date|deadline|category|priority)\s+(?:off|away)\b/;
+
 const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal", "shift", "swap", "tweak", "revise", "move"];
 // "mark my dentist task as done" / "mark it not done" — a whole-item
 // done/not-done toggle, handled by updateSingleTask.newDone, not a checklist
@@ -67,7 +87,14 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const hasCreateVerb = matchesAny(text, CREATE_VERBS);
   const hasCreateNoun = matchesAny(text, CREATE_NOUNS);
   const hasRecurrence = RECURRENCE_PATTERNS.some((pattern) => pattern.test(text));
-  const hasDeleteVerb = matchesAny(text, DELETE_VERBS);
+  // §55: with a field-clearing phrase taken out, is anything still asking to delete? If
+  // not, the delete tools stay out of the payload — this is the one rule here that narrows
+  // instead of widening, because delete + modify together is too large for Groq's free
+  // tier and the phrase is unambiguous. A looser mention of a field (below) only widens.
+  const clearsField = FIELD_CLEAR_PATTERN.test(text);
+  const hasDeleteVerb = matchesAny(clearsField ? text.replace(FIELD_CLEAR_PATTERN, " ") : text, DELETE_VERBS);
+  const mentionsFieldToClear =
+    clearsField || TAKE_FIELD_OFF_PATTERN.test(text) || ((matchesAny(text, DELETE_VERBS) || matchesAny(text, CLEAR_ONLY_VERBS)) && matchesAny(text, FIELD_WORDS));
   const hasArchiveVerb = matchesAny(text, ARCHIVE_VERBS);
   const hasModifyVerb = matchesAny(text, MODIFY_VERBS) || MARK_DONE_PATTERN.test(text);
   const hasLogVerb = matchesAny(text, LOG_VERBS);
@@ -95,7 +122,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // (see Roadmap.md §24) because the system prompt cross-references them
   // pairwise — splitting them would require conditionally rewriting that
   // prose, which is exactly the kind of routing-induced fragility to avoid.
-  if (hasModifyVerb || hasArchiveVerb || hasPauseVerb || (hasLogVerb && hasNumberOrDuration)) buckets.add("modify");
+  if (hasModifyVerb || hasArchiveVerb || hasPauseVerb || mentionsFieldToClear || (hasLogVerb && hasNumberOrDuration)) buckets.add("modify");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous
