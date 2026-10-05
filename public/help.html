@@ -14,6 +14,10 @@
       :root {
         color-scheme: dark;
       }
+      /* §52: keeps headings reached by a link (#keys, the contents list) clear of the top bar. */
+      html {
+        scroll-padding-top: 4.5rem;
+      }
       body {
         margin: 0;
         background: #0f172a;
@@ -23,7 +27,7 @@
       main {
         max-width: 620px;
         margin: 0 auto;
-        padding: 2.5rem 1.25rem 4rem;
+        padding: 1.5rem 1.25rem 4rem;
       }
       h1 {
         font-size: 1.4rem;
@@ -124,11 +128,23 @@
         border-radius: 2px;
         flex-shrink: 0;
       }
-      .back {
-        display: inline-block;
-        margin-top: 2rem;
+      /* §52: a bar that stays in place while scrolling, with the logo and name (§40 step 8) and Back. */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #0f172a;
+        border-bottom: 1px solid #1e293b;
       }
-      /* §40 step 8: the logo and name, linking back to the app. */
+      .topbar-inner {
+        max-width: 620px;
+        margin: 0 auto;
+        padding: 0.6rem 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
       .brand {
         display: inline-flex;
         align-items: center;
@@ -138,14 +154,31 @@
         text-decoration: none;
       }
       .brand img {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
+      }
+      .back-btn {
+        background: #1e293b;
+        color: #e2e8f0;
+        border-radius: 6px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.9rem;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .back-btn:hover {
+        background: #334155;
       }
     </style>
   </head>
   <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/"><img src="/icon.svg" alt="" />Habit Assistant</a>
+        <a class="back-btn" href="/">← Back</a>
+      </div>
+    </header>
     <main>
-      <a class="brand" href="/"><img src="/icon.svg" alt="" />Habit Assistant</a>
       <h1>How Habit Assistant works</h1>
       <p class="lead">
         Instead of menus and forms, you tell the assistant what you want in plain words, typed or spoken. It does
@@ -385,8 +418,31 @@
         </li>
       </ul>
       <p>The full details are in the <a href="/privacy.html">privacy policy</a> and the <a href="/terms.html">terms of service</a>.</p>
-
-      <a class="back" href="/">← Back to Habit Assistant</a>
     </main>
+    <script>
+      // §52: Back returns to where the reader came from. The app opens these pages in a new tab,
+      // which has no history, so: go back to the previous page of this site if there is one
+      // (skipping jumps within this page), otherwise close the tab, otherwise open the app.
+      document.querySelector(".back-btn").addEventListener("click", function (event) {
+        event.preventDefault();
+        var nav = window.navigation;
+        if (nav && nav.currentEntry) {
+          var entries = nav.entries();
+          for (var i = nav.currentEntry.index - 1; i >= 0; i--) {
+            if (entries[i].url && new URL(entries[i].url).pathname !== location.pathname) {
+              nav.traverseTo(entries[i].key);
+              return;
+            }
+          }
+        } else if (history.length > 1 && document.referrer.indexOf(location.origin + "/") === 0) {
+          history.back();
+          return;
+        }
+        window.close();
+        setTimeout(function () {
+          location.href = "/";
+        }, 150);
+      });
+    </script>
   </body>
 </html>
