@@ -12,7 +12,7 @@ import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
 import { classifyTurn, type IntentBucket } from "./classifyIntent.ts";
-import { providerErrorMessage } from "./providerErrorMessage.ts";
+import { isKeyRejected, providerErrorMessage } from "./providerErrorMessage.ts";
 import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
 
 export interface AgentEnv {
@@ -978,7 +978,9 @@ interface ProviderAttempt {
 // exact failure that originally motivated this failover chain) is worth
 // trying elsewhere, even though retrying the *same* provider wouldn't help.
 // 529 is Anthropic's "overloaded_error" code. Any other 4xx (bad request,
-// auth, unknown model, ...) is a config problem switching providers won't fix.
+// unknown model, ...) is a config problem switching providers won't fix.
+// The one exception is handled where this set is read: a provider rejecting
+// the shared trial's own key (§48) also moves on to the next tier.
 const TRANSIENT_STATUSES = new Set([413, 429, 500, 502, 503, 504, 529]);
 
 // Subset of TRANSIENT_STATUSES worth retrying against the *same* provider first (§22): plain
@@ -1204,7 +1206,13 @@ export async function handleAgentRequest(
         // A non-ProviderRequestError (network failure, etc.) has no status of
         // its own to judge — treat it as transient too, same as a 5xx, rather
         // than giving up on the whole chain over one bad connection.
-        const transient = status === undefined || TRANSIENT_STATUSES.has(status);
+        // §48: a provider rejecting the *operator's* key (deleted or revoked, as on 2026-10-02)
+        // is an outage of that tier, not the caller's bad request: the next tier has its own
+        // key, so move on to it, and never retry this one. A BYOK caller's rejected key stays
+        // a plain 4xx, with its own message from providerErrorMessage.
+        const trialKeyRejected =
+          byok === undefined && err instanceof ProviderRequestError && isKeyRejected(err.status, err.message);
+        const transient = status === undefined || TRANSIENT_STATUSES.has(status) || trialKeyRejected;
         const retrySameProvider = status === undefined || RETRY_SAME_PROVIDER_STATUSES.has(status);
 
         if (transient && retrySameProvider && retry === 1) {
@@ -1223,9 +1231,14 @@ export async function handleAgentRequest(
           // meant for end users (e.g. Groq's rate-limit response) — log it
           // for debugging but never forward it verbatim into the chat UI.
           console.error(`Provider request failed (${err.status}):`, err.message);
+          if (trialKeyRejected) {
+            console.error(`Shared trial key rejected by "${attempt.providerId}" (${attempt.label}): check its key in the Worker's secrets.`);
+          }
           const debug = buildDebugEntry({ error: err.message });
           return {
-            status: err.status,
+            // §48: answered as 503 so the client treats it as the trial being unavailable
+            // and shows its add-your-own-key hint (isModelUnavailable in chatEngine.ts).
+            status: trialKeyRejected ? 503 : err.status,
             body: { error: providerErrorMessage(err.status, err.message, attempt.providerId, byok !== undefined), debug },
           };
         }

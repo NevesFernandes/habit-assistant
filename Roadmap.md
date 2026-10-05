@@ -18,13 +18,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Next
 
-### §48 — Point to your own key when the shared trial's key is broken
-During the 2026-10-02 incident (the trial's Gemini key was deleted along with the OAuth client), every shared-trial chat failed with only "The assistant provider had a problem answering. Please try again in a moment." The §40 hint toward setting up your own key never showed: Gemini answered `400 API_KEY_INVALID`, `handleAgentRequest.ts` passed that status through, and the client (`isModelUnavailable` in `chatEngine.ts`) deliberately skips the hint on 4xx, which normally means a malformed request.
-
-- **Shared trial:** a provider rejecting *the operator's* key (400 `API_KEY_INVALID`, 401, 403) is a server-side configuration problem, not the user's fault, so the user should see the same "the free trial is busy… add your own key" hint as for a 429/5xx. Most likely fix: on the trial path, map those provider responses to a 503 in `handleAgentRequest.ts`, so the existing client logic applies unchanged; also check whether such an error should skip retries and fail over to the next tier.
-- **Own key (BYOK):** the same rejection means *the user's* key is wrong or revoked. Say that plainly ("Your Gemini key was rejected. Check it in Settings (⚙)") instead of the generic message.
-- Extend `src/lib/trialHint.test.ts`; update `help.html` if the wording users see changes.
-
 ### §49 — Show the app in screenshots before sign-in
 The homepage (`SignIn.tsx`) describes the app only in text, so a visitor can't see what they'd get until after signing in with Google. Real screenshots exist in `branding/Screenshots/` (taken with `demo-data.json`: today, future day, categories, habits list, recurring tasks, stats, habit page with heatmap, timer). Chat screenshots are still to be taken.
 
