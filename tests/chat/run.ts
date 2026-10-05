@@ -40,9 +40,10 @@ import { scenarios as s43 } from "./scenarios/s43-week-start.ts";
 import { scenarios as s50 } from "./scenarios/s50-first-due.ts";
 import { scenarios as s53 } from "./scenarios/s53-task-category.ts";
 import { scenarios as s55 } from "./scenarios/s55-clear-fields.ts";
+import { scenarios as s51 } from "./scenarios/s51-follow-ups.ts";
 import { scenarios as s57 } from "./scenarios/s57-task-weekday.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s53, ...s55, ...s57];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s55, ...s57];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -211,6 +212,13 @@ function checkTurn(
     if ("error" in entry.result) failures.push(`model call failed: ${entry.result.error.slice(0, 200)}`);
     if (expectedProviderId && entry.providerId !== expectedProviderId) {
       failures.push(`answered by ${entry.providerId} (${entry.label}), expected ${expectedProviderId}`);
+    }
+  }
+  if (expect.bucket !== undefined) {
+    const wanted = expect.bucket;
+    const matches = (bucket: string) => (typeof wanted === "string" ? bucket === wanted : wanted.test(bucket));
+    for (const entry of debug) {
+      if (!matches(entry.bucket)) failures.push(`bucket was "${entry.bucket}", expected ${wanted}`);
     }
   }
   if (expect.noModelCall && debug.length > 0) failures.push("expected no model call, but the model was called");

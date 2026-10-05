@@ -11,6 +11,8 @@ export interface TurnExpect {
    * them; null means the model must answer in plain text with no tool call.
    */
   toolCall?: string | string[] | null;
+  /** §51: the tool-family bucket the server chose for this turn's model call (its debug entry's `bucket`). */
+  bucket?: TextMatch;
   /** The turn must be resolved by the app without calling the model (e.g. a §32 number pick). */
   noModelCall?: boolean;
   /** Every pattern must appear in the turn's reply text (all assistant messages, joined). */

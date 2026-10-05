@@ -137,3 +137,66 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   if (buckets.size === 0) return { kind: "fallback" };
   return { kind: "buckets", buckets: Array.from(buckets) };
 }
+
+// §51: a short answer to a question ("the one in Nutrition", "no, only on weekdays",
+// "10 glasses") carries no action words of its own, so on its own it would fall back to
+// every tool — a payload too large for Groq's free tier. What it answers says which tools
+// it needs.
+interface TurnMessage {
+  role: "user" | "assistant" | "tool";
+  content?: string;
+  toolCall?: { name: string };
+}
+
+export type ClassifyTurnResult = ClassifyIntentResult & { fromReply?: true };
+
+// Longer than this, an unclassified message is more likely a new request the rules above
+// missed than an answer to a question, and gets every tool as before.
+const REPLY_MAX_WORDS = 8;
+
+/**
+ * Classifies the latest user message; when it has no confident bucket of its own and is
+ * short, falls back to what the assistant said just before it:
+ * - an app reply to a tool call (a "which one?" list, or a confirmation inviting
+ *   corrections): the tools that edit an existing item — after a creation too, since the
+ *   follow-up corrects what was just made (plus the create tools if it has an add-type
+ *   verb) — or that tool's own buckets if it isn't an editing one;
+ * - the model's own question: whatever the user's previous message needed, since that
+ *   request is still being answered.
+ * `bucketsOfTool` is handleAgentRequest.ts's manifest lookup, passed in to keep this file
+ * free of the tool list.
+ */
+export function classifyTurn(
+  messages: TurnMessage[],
+  bucketsOfTool: (toolName: string) => IntentBucket[] | undefined,
+): ClassifyTurnResult {
+  const latestIndex = messages.map((message) => message.role).lastIndexOf("user");
+  const latest = messages[latestIndex]?.content ?? "";
+  const own = classifyIntent(latest);
+  if (own.kind === "buckets") return own;
+
+  const words = latest.trim().split(/\s+/).filter((word) => word.length > 0).length;
+  if (words === 0 || words > REPLY_MAX_WORDS) return own;
+
+  let index = latestIndex - 1;
+  while (index >= 0 && messages[index].role === "tool") index--;
+  const previous = messages[index];
+  if (!previous || previous.role !== "assistant") return own;
+
+  if (previous.toolCall) {
+    const buckets = bucketsOfTool(previous.toolCall.name);
+    if (!buckets || buckets.length === 0) return own;
+    if (buckets.includes("create")) {
+      // Usually a correction ("no, only on weekdays"), but an add-type verb may be asking
+      // for one more ("add another for evenings"), so keep the create tools for that.
+      const another = matchesAny(latest.toLowerCase(), CREATE_VERBS);
+      return { kind: "buckets", buckets: another ? ["create", "modify"] : ["modify"], fromReply: true };
+    }
+    return { kind: "buckets", buckets: buckets.includes("modify") ? ["modify"] : buckets, fromReply: true };
+  }
+
+  const asked = messages.slice(0, index).map((message) => message.role).lastIndexOf("user");
+  if (asked < 0) return own;
+  const earlier = classifyIntent(messages[asked].content ?? "");
+  return earlier.kind === "buckets" ? { ...earlier, fromReply: true } : own;
+}

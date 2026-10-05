@@ -10,7 +10,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §58** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §59** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
@@ -33,14 +33,6 @@ The homepage (`SignIn.tsx`) describes the app only in text, so a visitor can't s
 - **Web-sized copies:** about 600px wide, WebP. Keep them out of the service-worker precache (`globPatterns` currently doesn't match `.webp`/`.jpg`; keep it that way) so installs don't get heavier.
 - **Follow-up, optional:** one image in each matching `help.html` section (heatmap, task checklists) and in the README.
 - Screenshots go stale when the UI changes, like `help.html`. Keep them few and in obvious places.
-
-### §51 — Review: follow-up replies and changes to several items at once
-Seen 2026-10-05 (own Groq key, `openai/gpt-oss-120b`): "Change my brush teeth habits to self-care category" → `updateHabit` matched two habits → the app asked "which one?" → the user replied "Both, 1 and 2" → the debug log shows `bucket: fallback:full` and Groq refused the call: `Request too large … TPM: Limit 8000, Requested 12828`. The user saw a failure and nothing changed. Three gaps compound here; design them together before building anything:
-
-- **Picking several items.** `parsePick` (`itemSelection.ts`) accepts only one pick ("2", "the second one", "last"), so "both", "1 and 2", "all of them" fall through to the model as a brand-new message. Even if parsed, `updateHabit`/`updateRecurringTask`/`updateSingleTask` (and archive, mark done, log) change exactly one item. Delete already takes filters and several items, so it's the model to follow. Decide which actions get multi-item support, and how the confirmation lists what changed.
-- **Replies aren't read as replies.** `classifyIntent` (`src/server/classifyIntent.ts`) classifies only the latest user message, so a short answer to an app question ("both", "yes, Monday", "the morning one") gets no action words and goes to the full tool list. When the app has just asked something (a pending pick, or any question), classify using the original request, or reuse the bucket of the call that asked.
-- **The full tool list doesn't fit Groq's free tier** (~12.8k tokens against an 8k-per-minute limit). That is the known blocker for Groq as the trial's fallback (CLAUDE.md), and it hits BYOK Groq users directly. Fixing the two gaps above makes `fallback:full` rarer, but doesn't remove it. Consider a slimmer fallback payload, or a clearer error that tells a Groq BYOK user what happened instead of a generic failure.
-- Output of the review: a short decision per gap (some may become their own `§N` items), then targeted chat scenarios reproducing this exact sequence. Update `help.html` if multi-item edits become possible.
 
 ## Later
 
@@ -88,5 +80,13 @@ Found while fixing §55: chat can add items to a task's checklist and tick them,
 - A Checklist habit already replaces its whole list through `updateHabit`'s `newChecklistItems`; consider a remove-one-item path there too.
 - `classifyIntent`: "remove … from my … list" should reach the checklist tools, not the delete tools. Consider a delete control in `Checklist.tsx` as well.
 - Update `help.html`, which currently says this can't be done through chat.
+
+### §58 — Shrink the full tool list to fit Groq's free tier
+A message `classifyIntent` can't place still gets every tool and every prompt rule: about 14,900 tokens (estimated at 4 characters per token; Groq counted 12,828 for it on 2026-10-05), against the 8,000 tokens a minute of Groq's free tier. §51 made this rarer (short replies are classified by what they answer, and several items can be picked without a model call) and gave a user on their own Groq key a clear "too large" message, but the full list itself is unchanged. It is the last blocker for `TRIAL_FALLBACK_PROVIDER=groq` (CLAUDE.md).
+
+- Sizes measured 2026-10-05, estimated tokens: full ~14,900; edit ~7,500; create ~4,400; delete ~4,400. The edit set alone is close to the limit, so a Groq user gets about one edit a minute; delete + edit together doesn't fit.
+- Options to weigh: a first small call that only chooses the tool family (two calls per unclassified message); trimming the prompt rules, which are most of the size; splitting the edit set (update vs. log/mark done vs. pause/archive); or a cheaper model on Groq with higher limits.
+- Related safety net to consider: when the model was given a narrowed tool set and says it can't do what was asked, retry once with the full list. That would have caught §55's wrong refusal, and covers a short follow-up that §51 routes to the wrong family.
+- Whatever is chosen changes how every unclassified message is handled on every provider, so it needs the chat scenarios run broadly, not just targeted ones.
 
 New items go in on request, at whichever position and tier they deserve, taking the next free ID above.
