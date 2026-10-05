@@ -10,7 +10,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §53** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §54** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
@@ -31,6 +31,15 @@ When a Habit or Recurring Task is created, the confirmation (`confirmations.ts`)
 - Look for the first occurrence with `occursOn`, as everything else does, with a bounded search (yearly dates can be almost a year away). Flexible rules (N times per week/month) are due any day, so they keep showing the start date.
 - Open question for when work starts: should the edit confirmation do the same when a rule change moves the first occurrence?
 - Add cases to `confirmations.test.ts` and a targeted chat scenario; check whether `help.html` quotes the reply.
+
+### §53 — Fix: asking for a category when creating a task doesn't work
+Reported 2026-10-05: asking for a category while creating a task (e.g. "add a task to pay rent, Finance category") consistently fails. Habits aren't affected. Investigate, reproduce and fix. First findings from reading the code (not yet confirmed by a run):
+
+- **Single Tasks: the model can't send a category at all.** `createSingleTask`'s tool schema (`handleAgentRequest.ts`) has no `categoryId` field and its prompt rules never mention category, though the data layer accepts one (`dataStore.ts`). So the model drops the category, or answers in text without acting. Add `categoryId` (optional, enum of the user's categories) as `createRecurringTask` has it.
+- **Recurring Tasks: the field exists but the prompt holds it back.** The rule "only set it if there's a clear match … otherwise leave it out rather than guessing" may lead weaker models to skip a category the user named outright. Reword: *always* set it when the user names a category; only the best-fit guess stays optional.
+- **Custom categories** (user-added): check the enum and the prompt's category list include them, and how a near-miss name ("selfcare" vs. "Self-care") resolves.
+- **Check the confirmation** shows the saved category, and the "Assumed: no category" hint (§31) disappears when one was given.
+- Reproduce first with targeted chat scenarios (single and recurring, built-in and custom category), on Gemini and on Groq. Update `help.html` if it says tasks can't get a category at creation.
 
 ## Next
 
