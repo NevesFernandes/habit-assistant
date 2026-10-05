@@ -10,7 +10,7 @@
 // pushAssistantMessage), so follow-up corrections have real context.
 import type { Category, CompletionLogEntry, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
-import { describeRecurrence, isPaused, isPausedOn } from "./recurrence.ts";
+import { describeRecurrence, isPaused, isPausedOn, nextOccurrence } from "./recurrence.ts";
 import { checklistModeOf, recurringTaskChecklistOn } from "./recurringChecklist.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -81,7 +81,7 @@ const ASSUMED_LABELS: Record<AssumedField, (value: string) => string> = {
   recurrence: (v) => v,
   category: (v) => (v === "none" ? "no category" : v),
   tracking: (v) => v,
-  startDate: () => "starting today",
+  startDate: (v) => v,
   checklistMode: () => "unticked checklist items carry over",
 };
 
@@ -119,10 +119,24 @@ function withHint(body: string, hint: string | null): string {
   return hint ? `${body}\n${hint}` : body;
 }
 
-function datesLines(item: { startDate: string; endDate?: string }, todayISO: string): string[] {
-  const lines = [`Starts: ${formatDate(item.startDate, todayISO)}`];
+// §50: "every Monday" created on a Wednesday isn't due until Monday, so the reply names
+// that day instead of the start date. When the two are the same day (daily, flexible
+// rules, a matching weekday) it stays "Starts".
+function datesLines(item: Habit | RecurringTask, todayISO: string): string[] {
+  const firstDue = nextOccurrence(item, item.startDate);
+  const lines = [
+    firstDue === item.startDate
+      ? `Starts: ${formatDate(item.startDate, todayISO)}`
+      : `First due: ${firstDue ? formatDate(firstDue, todayISO) : "never, it ends before its first day"}`,
+  ];
   if (item.endDate) lines.push(`Ends: ${formatDate(item.endDate, todayISO)}`);
   return lines;
+}
+
+/** The "Assumed:" wording for a start date the user didn't give, matching datesLines. */
+function assumedStartText(item: Habit | RecurringTask, todayISO: string): string {
+  const firstDue = nextOccurrence(item, item.startDate);
+  return firstDue && firstDue !== item.startDate ? `first due ${formatDate(firstDue, todayISO)}` : "starting today";
 }
 
 // §42: what a recurring task's checklist does from one occurrence to the next.
@@ -167,7 +181,7 @@ export function describeCreatedHabit(
   if (isRecurrenceAssumed(habit, userText)) assumed.push({ field: "recurrence", value: recurrenceText(habit) });
   if (!mentionsCategory(habit.categoryId, categories, userText)) assumed.push({ field: "category", value: category });
   if (input.completionType === undefined) assumed.push({ field: "tracking", value: "yes/no" });
-  if (!startDateGiven(input)) assumed.push({ field: "startDate", value: "" });
+  if (!startDateGiven(input)) assumed.push({ field: "startDate", value: assumedStartText(habit, todayISO) });
 
   return withHint(`Added habit "${habit.name}":\n${bullets(lines)}`, buildHint(assumed));
 }
@@ -192,7 +206,7 @@ export function describeCreatedRecurringTask(
   const assumed: { field: AssumedField; value: string }[] = [];
   if (isRecurrenceAssumed(task, userText)) assumed.push({ field: "recurrence", value: recurrenceText(task) });
   if (!mentionsCategory(task.categoryId, categories, userText)) assumed.push({ field: "category", value: category });
-  if (!startDateGiven(input)) assumed.push({ field: "startDate", value: "" });
+  if (!startDateGiven(input)) assumed.push({ field: "startDate", value: assumedStartText(task, todayISO) });
   if (task.checklist && input.checklistMode === undefined) assumed.push({ field: "checklistMode", value: "" });
 
   return withHint(`Added recurring task "${task.name}":\n${bullets(lines)}`, buildHint(assumed));
@@ -230,6 +244,11 @@ export function describeChanges(before: AnyItem, after: AnyItem, categories: Cat
 
   if (before.kind !== "singleTask" && after.kind !== "singleTask") {
     add("Repeats", recurrenceText(before), recurrenceText(after));
+    // §50: when the change moves the next day the item is due, say so. Left out when
+    // the "Starts" line above already names that same day.
+    const nextDue = nextOccurrence(after, todayISO);
+    const saidByStarts = before.startDate !== after.startDate && nextDue === after.startDate;
+    if (!saidByStarts) add("Next due", date(nextOccurrence(before, todayISO)), date(nextDue));
   }
   if (before.kind === "habit" && after.kind === "habit") {
     add("Tracking", describeTracking(before), describeTracking(after));

@@ -37,8 +37,9 @@ import { scenarios as checklistAdd } from "./scenarios/checklist-add-multiple.ts
 import { scenarios as s41 } from "./scenarios/s41-mark-done.ts";
 import { scenarios as s42 } from "./scenarios/s42-checklist-modes.ts";
 import { scenarios as s43 } from "./scenarios/s43-week-start.ts";
+import { scenarios as s50 } from "./scenarios/s50-first-due.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
