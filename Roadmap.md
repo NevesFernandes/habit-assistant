@@ -18,15 +18,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Next
 
-### §49 — Show the app in screenshots before sign-in
-The homepage (`SignIn.tsx`) describes the app only in text, so a visitor can't see what they'd get until after signing in with Google. Real screenshots exist in `branding/Screenshots/` (taken with `demo-data.json`: today, future day, categories, habits list, recurring tasks, stats, habit page with heatmap, timer). Chat screenshots are still to be taken.
-
-- **Homepage:** a chat screenshot as the main image near the top, since the chat is what sets the app apart. Below it, a small swipeable row of 3–4 others (today, habit page with heatmap, stats).
-- **Install prompt:** add `screenshots` to the PWA manifest (`vite.config.ts`, none today), so Android shows its richer, store-like install dialog.
-- **Web-sized copies:** about 600px wide, WebP. Keep them out of the service-worker precache (`globPatterns` currently doesn't match `.webp`/`.jpg`; keep it that way) so installs don't get heavier.
-- **Follow-up, optional:** one image in each matching `help.html` section (heatmap, task checklists) and in the README.
-- Screenshots go stale when the UI changes, like `help.html`. Keep them few and in obvious places.
-
 ## Later
 
 ### §47 — Keep an API key on this device only

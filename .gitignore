@@ -38,3 +38,9 @@ npm-debug.log*
 
 # §33 chat-scenario reports — full model transcripts, local only
 test-results/
+
+# §49: the owner's local screenshot working files — the demo data the screenshots were
+# taken with (date-bound, goes stale), the raw phone files and hand-made web copies
+/demo-data.json
+/branding/Screenshots/originals/
+/branding/Screenshots/web/
