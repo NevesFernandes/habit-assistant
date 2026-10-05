@@ -1,7 +1,7 @@
 // Plain assert-based check for itemSelection.ts (§32) — same no-framework
 // pattern as src/server/recurrenceSpec.test.ts. Run: node src/lib/itemSelection.test.ts
 import assert from "node:assert/strict";
-import { findSameName, parsePick, selectOne } from "./itemSelection.ts";
+import { findSameName, parsePick, parsePicks, selectOne } from "./itemSelection.ts";
 import type { Habit, SingleTask } from "../types/models.ts";
 
 const TODAY = "2026-09-18";
@@ -160,6 +160,25 @@ const isLoggable = (h: Habit) => h.completionType === "value" || h.completionTyp
   for (const text of ["yes", "the Nutrition one", "read", "change it to 2 glasses", "one", "", "2 and 3"]) {
     assert.equal(parsePick(text, 3), null, text);
   }
+}
+
+// §51 parsePicks: several items from the list at once, or null (-> goes to the model).
+{
+  const three: [string, number[]][] = [
+    ["2", [2]], ["the last one", [3]], ["7", [7]],
+    ["all", [1, 2, 3]], ["All of them", [1, 2, 3]], ["all three", [1, 2, 3]], ["every one", [1, 2, 3]], ["each of them.", [1, 2, 3]],
+    ["all please", [1, 2, 3]],
+    ["2 and 3", [2, 3]], ["1, 3", [1, 3]], ["1,2 and 3", [1, 2, 3]], ["1, 2, and 3", [1, 2, 3]], ["3 & 1", [1, 3]],
+    ["the first and the last", [1, 3]], ["#1 and #2", [1, 2]], ["2 and 2", [2]], ["1 and 9", [1, 9]],
+  ];
+  for (const [text, expected] of three) assert.deepEqual(parsePicks(text, 3), expected, text);
+  for (const text of ["both", "yes", "the Nutrition ones", "read and write", "1 and the Nutrition one", "all the health ones", "and", "", "change both to 3"]) {
+    assert.equal(parsePicks(text, 3), null, text);
+  }
+  // "both" needs a list of exactly two; the reported reply was "Both, 1 and 2".
+  const two: [string, number[]][] = [["both", [1, 2]], ["Both.", [1, 2]], ["both of them", [1, 2]], ["Both, 1 and 2", [1, 2]], ["both please", [1, 2]]];
+  for (const [text, expected] of two) assert.deepEqual(parsePicks(text, 2), expected, text);
+  assert.deepEqual(parsePicks("both, 1 and 3", 3), [1, 3]);
 }
 
 console.log("itemSelection.test.ts: all passed");

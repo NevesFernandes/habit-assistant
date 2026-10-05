@@ -185,6 +185,36 @@ export function parsePick(text: string, count: number): number | null {
   return ORDINALS[token] ?? null;
 }
 
+const ALL_PICKS_PATTERN =
+  /^(?:all|all of (?:them|those|these)|all (?:two|three|four|five|six|seven|eight|nine|ten|\d+)(?: of them)?|them all|every one(?: of them)?|each(?: one| of them)?)$/;
+
+/**
+ * §51: like parsePick, but the reply may name several items from the list — "both",
+ * "all of them", "1 and 2", "the first and the last", "Both, 1 and 2". Returns the 1-based
+ * picks in list order without repeats, or null for anything else (so it goes to the
+ * model). "both" only counts for a list of exactly two. Out-of-range numbers are still
+ * returned, for the caller to reject.
+ */
+export function parsePicks(text: string, count: number): number[] | null {
+  const single = parsePick(text, count);
+  if (single !== null) return [single];
+
+  let rest = text.trim().toLowerCase().replace(/[.!]+$/, "").replace(/\s+please$/, "").trim();
+  if (ALL_PICKS_PATTERN.test(rest)) return Array.from({ length: count }, (_, index) => index + 1);
+
+  const both = /^both(?:\s+of\s+them)?(?:\s*[,:]\s*|\s+|$)/.exec(rest);
+  if (both) {
+    rest = rest.slice(both[0].length).trim();
+    if (!rest) return count === 2 ? [1, 2] : null;
+  }
+
+  const parts = rest.split(/\s*(?:,|&|\+|\band\b)\s*/).filter((part) => part.length > 0);
+  if (parts.length < 2) return null;
+  const picks = parts.map((part) => parsePick(part, count));
+  if (picks.some((pick) => pick === null)) return null;
+  return [...new Set(picks as number[])].sort((a, b) => a - b);
+}
+
 type AnyItem = Habit | RecurringTask | SingleTask;
 
 /** Still-live items with exactly this name — archived habits/recurring tasks and finished one-off tasks don't count. */

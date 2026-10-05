@@ -11,7 +11,8 @@ import { resolveProvider } from "./providers/index.ts";
 import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
-import { classifyIntent, type IntentBucket } from "./classifyIntent.ts";
+import { classifyTurn, type IntentBucket } from "./classifyIntent.ts";
+import { providerErrorMessage } from "./providerErrorMessage.ts";
 import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
 
 export interface AgentEnv {
@@ -1130,9 +1131,15 @@ export async function handleAgentRequest(
   // when hasPendingConfirmation, which already fully replaces both with its
   // own single-tool payload above this classification would ever run.
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
-  const classification = hasPendingConfirmation ? null : classifyIntent(latestUserMessage?.content ?? "");
+  // §51: classifyTurn also reads a short reply in the light of what it answers.
+  const classification = hasPendingConfirmation
+    ? null
+    : classifyTurn(messages, (toolName) => TOOL_MANIFEST.find((entry) => entry.name === toolName)?.buckets);
   const activeBuckets: IntentBucket[] | "all" = classification?.kind === "buckets" ? classification.buckets : "all";
-  const bucketLabel = classification?.kind === "buckets" ? classification.buckets.join(",") : "fallback:full";
+  const bucketLabel =
+    classification?.kind === "buckets"
+      ? `${classification.buckets.join(",")}${classification.fromReply ? " (from reply)" : ""}`
+      : "fallback:full";
   if (!hasPendingConfirmation) {
     console.log(`[classifyIntent] ${bucketLabel}`);
   }
@@ -1219,7 +1226,7 @@ export async function handleAgentRequest(
           const debug = buildDebugEntry({ error: err.message });
           return {
             status: err.status,
-            body: { error: "The assistant provider had a problem answering. Please try again in a moment.", debug },
+            body: { error: providerErrorMessage(err.status, err.message, attempt.providerId, byok !== undefined), debug },
           };
         }
         const debug = buildDebugEntry({ error: err instanceof Error ? err.message : "Unknown error." });

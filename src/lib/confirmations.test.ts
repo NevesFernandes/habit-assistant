@@ -270,7 +270,7 @@ assert.match(describeArchive(habit()), /^Archived "Read"/);
     `I found 2 habits matching "Drink water":\n` +
       `1. "Drink water" — Other · every day · number, goal 8 glasses\n` +
       `2. "Drink water" — Sports · every Mon, Wed · yes/no\n` +
-      "Which one did you mean? You can reply with its number.",
+      "Which one did you mean? You can reply with its number, several numbers, or \"all\".",
   );
   assert.equal(
     describeDuplicateQuestion("habit", "Drink water", [sports], categories, TODAY),

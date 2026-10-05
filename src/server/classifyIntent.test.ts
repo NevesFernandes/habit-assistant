@@ -3,7 +3,7 @@
 // with zero async/env dependency, so a no-dependency script (run directly by
 // Node's native TS support) is enough. Run: node src/server/classifyIntent.test.ts
 import assert from "node:assert/strict";
-import { classifyIntent, type IntentBucket } from "./classifyIntent.ts";
+import { classifyIntent, classifyTurn, type IntentBucket } from "./classifyIntent.ts";
 
 type Case = [text: string, expected: IntentBucket[] | "fallback"];
 
@@ -81,8 +81,54 @@ for (const [text, expected] of cases) {
   }
 }
 
+// §51 classifyTurn: a short reply takes its tools from what it answers.
+{
+  const TOOL_BUCKETS: Record<string, IntentBucket[]> = {
+    updateHabit: ["modify"],
+    createHabit: ["create"],
+    archiveHabit: ["delete", "modify"],
+    setHabitDone: ["modify", "checklist"],
+    addSingleTaskChecklistItem: ["checklist"],
+    deleteHabits: ["delete"],
+  };
+  const user = (content: string) => ({ role: "user" as const, content });
+  const model = (content: string) => ({ role: "assistant" as const, content });
+  const app = (toolName: string, content: string) => [
+    { role: "assistant" as const, content, toolCall: { name: toolName } },
+    { role: "tool" as const },
+  ];
+  type TurnCase = [label: string, messages: Parameters<typeof classifyTurn>[0], expected: IntentBucket[] | "fallback", fromReply: boolean];
+  const turnCases: TurnCase[] = [
+    ["own buckets win", [user("add a habit to read"), ...app("createHabit", "Added"), user("delete my gym habit")], ["delete"], false],
+    ["the reported reply", [user("change my brush teeth habits to self-care category"), ...app("updateHabit", "I found 2 habits"), user("Both, 1 and 2")], ["modify"], true],
+    ["pick by description", [user("log six glasses of water"), ...app("updateHabit", "I found 2 habits"), user("the one in Nutrition")], ["modify"], true],
+    ["correction after a creation", [user("add a habit to read"), ...app("createHabit", "Added habit… Need any changes?"), user("no, only on weekdays")], ["modify"], true],
+    ["one more after a creation", [user("add a habit to read"), ...app("createHabit", "Added habit… Need any changes?"), user("add another one for evenings")], ["create", "modify"], true],
+    ["archive list", [user("archive read"), ...app("archiveHabit", "I found 2 habits"), user("the study one")], ["modify"], true],
+    ["mark-done list", [user("I did read"), ...app("setHabitDone", "I found 2 habits"), user("the second, I think")], ["modify"], true],
+    ["checklist list", [user("add milk to my shopping list"), ...app("addSingleTaskChecklistItem", "I found 2 tasks"), user("the Friday one")], ["checklist"], true],
+    ["answer to the model's question", [user("add a habit to drink water"), model("How many glasses a day?"), user("eight glasses")], ["create"], true],
+    ["model's question after a vague request", [user("handle my stuff"), model("What would you like to do?"), user("the usual")], "fallback", false],
+    ["first message", [user("the usual")], "fallback", false],
+    ["long unclassified message stays full", [user("add a habit to read"), ...app("createHabit", "Added"), user("so what I was thinking is that maybe we could look at the whole thing again")], "fallback", false],
+    ["unknown tool", [user("yes"), ...app("confirmPendingAction", "Okay"), user("the other one")], "fallback", false],
+  ];
+  for (const [label, messages, expected, fromReply] of turnCases) {
+    const result = classifyTurn(messages, (name) => TOOL_BUCKETS[name]);
+    const actual = result.kind === "fallback" ? "fallback" : [...result.buckets].sort();
+    try {
+      assert.deepEqual(actual, expected === "fallback" ? "fallback" : [...expected].sort());
+      assert.equal(result.fromReply === true, fromReply);
+      console.log(`ok   turn: ${label}`);
+    } catch {
+      failures++;
+      console.error(`FAIL turn: ${label}\n  expected: ${JSON.stringify(expected)} fromReply=${fromReply}\n  actual:   ${JSON.stringify(actual)} fromReply=${result.fromReply === true}`);
+    }
+  }
+}
+
 if (failures > 0) {
-  console.error(`\n${failures}/${cases.length} case(s) failed.`);
+  console.error(`\n${failures} case(s) failed.`);
   process.exit(1);
 }
-console.log(`\nAll ${cases.length} cases passed.`);
+console.log(`\nAll cases passed.`);

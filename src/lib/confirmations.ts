@@ -322,7 +322,7 @@ export function describeItemList(items: AnyItem[], categories: Category[], today
     .join("\n");
 }
 
-/** The "which one did you mean?" question, numbered and with details so identical names can be told apart. */
+/** The "which one did you mean?" question, numbered and with details so identical names can be told apart. §51: the reply may pick several. */
 export function describeCandidates(
   noun: string,
   fragment: string,
@@ -330,7 +330,7 @@ export function describeCandidates(
   categories: Category[],
   todayISO: string,
 ): string {
-  return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean? You can reply with its number.`;
+  return `I found ${items.length} ${noun}s matching "${fragment}":\n${describeItemList(items, categories, todayISO)}\nWhich one did you mean? You can reply with its number, several numbers, or "all".`;
 }
 
 /**

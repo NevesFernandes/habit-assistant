@@ -8,7 +8,7 @@
 // scenario means the real app behaves the same way.
 import { AgentRequestError, type AgentHistoryMessage, type AgentResponse, type AgentToolCall } from "./agentClient";
 import type { AgentDebugEntry } from "../server/handleAgentRequest";
-import { findSameName, parsePick, selectOne, type ItemSelector } from "./itemSelection";
+import { findSameName, parsePicks, selectOne, type ItemSelector } from "./itemSelection";
 import { formatDurationMinutes } from "./duration";
 import {
   addHabit,
@@ -308,24 +308,44 @@ export class ChatSession {
 
   // §32: a bare number reply to the last "which one?" list. Returns true if it handled
   // the message (no model call, so no shared-trial message is used up).
+  // §51: the reply may pick several ("both", "1 and 3", "all") — the same tool call is then
+  // rerun once per item, each with its own confirmation.
   private async handlePickReply(userText: string): Promise<boolean> {
     const pick = this.pendingPick;
     if (!pick) return false;
-    const index = parsePick(userText, pick.itemIds.length);
-    if (index === null) return false;
+    const indexes = parsePicks(userText, pick.itemIds.length);
+    if (indexes === null) return false;
 
     this.append({ role: "user", content: userText });
-    if (index < 1 || index > pick.itemIds.length) {
-      this.pushAssistantMessage(`Please pick a number from 1 to ${pick.itemIds.length}.`);
+    if (indexes.some((index) => index < 1 || index > pick.itemIds.length)) {
+      // The list stays open, so the next reply can still pick from it.
+      this.pushAssistantMessage(
+        indexes.length === 1
+          ? `Please pick a number from 1 to ${pick.itemIds.length}.`
+          : `Please pick numbers from 1 to ${pick.itemIds.length}.`,
+      );
       return true;
     }
     this.pendingPick = null;
-    this.forcedPick = { kind: pick.kind, id: pick.itemIds[index - 1] };
-    try {
-      // Fresh id: the original call is already paired with its "which one?" result in history.
-      await this.dispatchToolCall({ ...pick.toolCall, id: crypto.randomUUID() }, userText);
-    } finally {
-      this.forcedPick = null;
+    for (const [position, index] of indexes.entries()) {
+      this.forcedPick = { kind: pick.kind, id: pick.itemIds[index - 1] };
+      try {
+        // Fresh id: the original call is already paired with its "which one?" result in history.
+        await this.dispatchToolCall({ ...pick.toolCall, id: crypto.randomUUID() }, userText);
+      } finally {
+        this.forcedPick = null;
+      }
+      // One of the items asked a question of its own (e.g. §29's future-dated task): the
+      // next reply answers that, so the rest can't be carried through it. Say so plainly.
+      const left = indexes.length - position - 1;
+      if (left > 0 && (this.pendingConfirmation || this.pendingPick)) {
+        this.pushAssistantMessage(
+          left === 1
+            ? "I stopped there to wait for your answer. The other one wasn't changed, so ask again for it afterwards."
+            : `I stopped there to wait for your answer. The other ${left} weren't changed, so ask again for them afterwards.`,
+        );
+        break;
+      }
     }
     return true;
   }
