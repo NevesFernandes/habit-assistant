@@ -10,7 +10,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §49** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §50** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
@@ -26,6 +26,15 @@ During the 2026-10-02 incident (the trial's Gemini key was deleted along with th
 - **Shared trial:** a provider rejecting *the operator's* key (400 `API_KEY_INVALID`, 401, 403) is a server-side configuration problem, not the user's fault, so the user should see the same "the free trial is busy… add your own key" hint as for a 429/5xx. Most likely fix: on the trial path, map those provider responses to a 503 in `handleAgentRequest.ts`, so the existing client logic applies unchanged; also check whether such an error should skip retries and fail over to the next tier.
 - **Own key (BYOK):** the same rejection means *the user's* key is wrong or revoked. Say that plainly ("Your Gemini key was rejected. Check it in Settings (⚙)") instead of the generic message.
 - Extend `src/lib/trialHint.test.ts`; update `help.html` if the wording users see changes.
+
+### §49 — Show the app in screenshots before sign-in
+The homepage (`SignIn.tsx`) describes the app only in text, so a visitor can't see what they'd get until after signing in with Google. Real screenshots exist in `branding/Screenshots/` (taken with `demo-data.json`: today, future day, categories, habits list, recurring tasks, stats, habit page with heatmap, timer). Chat screenshots are still to be taken.
+
+- **Homepage:** a chat screenshot as the main image near the top, since the chat is what sets the app apart. Below it, a small swipeable row of 3–4 others (today, habit page with heatmap, stats).
+- **Install prompt:** add `screenshots` to the PWA manifest (`vite.config.ts`, none today), so Android shows its richer, store-like install dialog.
+- **Web-sized copies:** about 600px wide, WebP. Keep them out of the service-worker precache (`globPatterns` currently doesn't match `.webp`/`.jpg`; keep it that way) so installs don't get heavier.
+- **Follow-up, optional:** one image in each matching `help.html` section (heatmap, task checklists) and in the README.
+- Screenshots go stale when the UI changes, like `help.html`. Keep them few and in obvious places.
 
 ## Later
 
