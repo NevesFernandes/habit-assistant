@@ -20,14 +20,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Later
 
-### §47 — Keep an API key on this device only
-Today every BYOK key syncs to the Drive data file in plain text (§30), so each device can use it. That's fine for a free key, but a key with billing (always the case for Anthropic) is only as safe as the Drive file: anyone the folder is shared with, or any app with whole-Drive access, can read it. §40 documented this in the privacy policy (`privacy.html#keys`), in Settings and in `api-key-setup.html`. This item adds the real fix: a per-key **"Keep on this device only"** option in Settings.
-
-- A device-only key stays in `localStorage` and is left out of `exportByokState()`, so it never reaches the Drive file. Other devices don't see it and need their own.
-- Sign-in reconciliation (`importByokState` in `App.tsx`) must not overwrite or delete a device-only key with the Drive copy (or its absence).
-- Turning the option on for a key that was already synced removes it from the Drive file. **But Google Drive keeps earlier versions of a file (typically for 30 days)**, so the key stays readable in the file's version history. The Settings text should say so, and suggest replacing the key at the provider to be fully safe.
-- Update CLAUDE.md's BYOK paragraph, `help.html`, `privacy.html` and `api-key-setup.html` to match.
-
 ### §44 — Research: reminders / push notifications
 The app is deliberately pull-based today (no notifications). Reminders are the most common habit-app feature, but real push needs something the app doesn't have: a scheduled server-side job that knows when each user's items are due and holds their push subscriptions. That cuts against "data in your own Drive, $0 by construction."
 

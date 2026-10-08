@@ -6,6 +6,9 @@ import {
   forgetProviderKey,
   getSttUsesOwnKey,
   setSttUsesOwnKey,
+  isDeviceOnly,
+  setDeviceOnly,
+  defaultDeviceOnly,
   type ByokProvider,
 } from "../lib/settingsStore";
 import { getTtsEnabled, setTtsEnabled } from "../lib/ttsPreference";
@@ -58,6 +61,12 @@ export default function Settings({
   const [selected, setSelected] = useState<ByokProvider>(activeProvider ?? "groq");
   const [apiKey, setApiKey] = useState(() => getSavedKey(selected)?.apiKey ?? "");
   const [model, setModel] = useState(() => getSavedKey(selected)?.model ?? "");
+  // §47: for a saved key, what's stored; for one not saved yet, the provider's default.
+  const deviceOnlyFor = (provider: ByokProvider) =>
+    getSavedKey(provider) ? isDeviceOnly(provider) : defaultDeviceOnly(provider);
+  const [deviceOnly, setDeviceOnlyChoice] = useState(() => deviceOnlyFor(selected));
+  // The provider whose synced key was just taken out of the Drive file, for the notice below.
+  const [removedFromDrive, setRemovedFromDrive] = useState<ByokProvider | null>(null);
   const [sttOwnKey, setSttOwnKey] = useState(getSttUsesOwnKey());
   const [ttsOn, setTtsOn] = useState(getTtsEnabled());
   const [debugPasswordInput, setDebugPasswordInput] = useState("");
@@ -68,11 +77,23 @@ export default function Settings({
     const saved = getSavedKey(provider);
     setApiKey(saved?.apiKey ?? "");
     setModel(saved?.model ?? "");
+    setDeviceOnlyChoice(deviceOnlyFor(provider));
   }
 
   function handleSave() {
     if (!apiKey.trim()) return;
-    saveProviderKey(selected, apiKey.trim(), model.trim() || undefined);
+    saveProviderKey(selected, apiKey.trim(), model.trim() || undefined, deviceOnly);
+    onChange();
+  }
+
+  // §47: for a saved key the switch applies at once — onChange rewrites the Drive file,
+  // with or without the key. For a key not saved yet it only sets what Save will do.
+  function handleToggleDeviceOnly() {
+    const next = !deviceOnly;
+    setDeviceOnlyChoice(next);
+    if (!getSavedKey(selected)) return;
+    setDeviceOnly(selected, next);
+    setRemovedFromDrive(next ? selected : null);
     onChange();
   }
 
@@ -85,6 +106,8 @@ export default function Settings({
     forgetProviderKey(selected);
     setApiKey("");
     setModel("");
+    setDeviceOnlyChoice(defaultDeviceOnly(selected));
+    setRemovedFromDrive(null);
     onChange();
   }
 
@@ -128,9 +151,9 @@ export default function Settings({
       </div>
       <p className="mb-3 text-slate-400">
         You're on the free shared trial by default. Save a key per provider below, then switch
-        between them any time — each one is saved with your account data (synced across your
-        devices via Drive, same as your habits and tasks, as plain text) until you remove it, so
-        testing back and forth doesn't lose anything.
+        between them any time — each one stays saved until you remove it, so testing back and
+        forth doesn't lose anything. A key is either synced across your devices via Drive (as
+        plain text, like your habits and tasks) or kept on this device only: you choose per key.
       </p>
 
       <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 px-3 py-2">
@@ -178,14 +201,25 @@ export default function Settings({
         placeholder="sk-..."
         className="mb-1 w-full rounded-md bg-slate-900 px-2 py-1.5"
       />
-      {/* §40: said at the moment of pasting a key, not only in the privacy policy. */}
+      {/* §47: where this key is kept. §40: said at the moment of pasting a key, not only in the privacy policy. */}
+      <label className="mb-1 flex items-center gap-2 text-slate-300">
+        <input type="checkbox" checked={deviceOnly} onChange={handleToggleDeviceOnly} className="h-4 w-4 shrink-0" />
+        Keep this key on this device only
+      </label>
       <p className="mb-3 text-xs text-slate-500">
-        Saved in plain text in your Drive file, so your other devices can use it. For a key with billing (like
-        Anthropic), set a spending limit.{" "}
+        {deviceOnly
+          ? "Stays in this browser and is never saved to your Drive file. Your other devices need their own key."
+          : "Saved in plain text in your Drive file, so your other devices can use it. For a key with billing (like Anthropic), keep it on this device only, or set a spending limit."}{" "}
         <a href="/privacy.html#keys" target="_blank" rel="noreferrer" className="text-violet-400 underline">
           Details
         </a>
       </p>
+      {removedFromDrive === selected && deviceOnly && (
+        <p className="mb-3 rounded-md bg-slate-900 px-3 py-2 text-xs text-amber-200">
+          This key is no longer in your Drive file. Google Drive keeps earlier versions of a file for about 30 days,
+          though, and the key can still be read in those. To be fully safe, replace it with a new key at the provider.
+        </p>
+      )}
 
       <label className="mb-1 block text-slate-300">Model override (optional)</label>
       <input
