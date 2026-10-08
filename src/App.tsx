@@ -723,6 +723,7 @@ export default function App() {
                 onRemoveRecurringTaskChecklistItem={(taskId, itemId) =>
                   handleRecurringTaskChecklistRemove(taskId, itemId, selectedDate)
                 }
+                onPlaceItem={handlePlaceItem}
               />
             </div>
           )}

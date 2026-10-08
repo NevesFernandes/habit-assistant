@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import type { Category, SingleTask } from "../types/models";
 import CategoryIcon from "./CategoryIcon";
-import DayPartPicker, { type PlacementPatch } from "./DayPartPicker";
-import { compareForDay } from "../lib/dayParts";
+import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
+import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
 
 interface SingleTasksViewProps {
@@ -62,6 +62,7 @@ export default function SingleTasksView({
               <div className="flex-1">
                 <div>
                   <span className={task.done ? "text-slate-500 line-through" : ""}>{task.name}</span>
+                  {isImportant(task) && <ImportantMark />}
                   {task.done && <span className="ml-2 text-xs text-emerald-400">Done</span>}
                 </div>
                 {task.description && (

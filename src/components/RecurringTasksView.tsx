@@ -3,8 +3,8 @@ import type { Category, RecurringTask } from "../types/models";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistModeOf, recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
-import DayPartPicker, { type PlacementPatch } from "./DayPartPicker";
-import { compareForDay } from "../lib/dayParts";
+import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
+import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
 
 interface RecurringTasksViewProps {
@@ -64,6 +64,7 @@ export default function RecurringTasksView({
               <div className="flex-1">
                 <div>
                   {task.name}
+                  {isImportant(task) && <ImportantMark />}
                   {isArchived(task) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
                   {!isArchived(task) && currentPause(task, todayISO()) && (
                     <span className="ml-2 text-xs text-sky-400">Paused</span>

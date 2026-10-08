@@ -1,13 +1,13 @@
 import type { Category, ChecklistItem, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
-import { useState } from "react";
-import { ChevronDown, ChevronRight, ListChecks } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, ListChecks, MoreVertical } from "lucide-react";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate, isFutureDate } from "../lib/recurrence";
 import { isSingleTaskActiveOn } from "../lib/dataStore";
 import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "../lib/habitStats";
 import { useWeekStart } from "../lib/weekStartContext";
 import { recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
-import { ImportantMark } from "./DayPartPicker";
+import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
 import { groupByDayPart, isImportant, type DayPartGroup } from "../lib/dayParts";
 import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
@@ -39,6 +39,8 @@ interface DayViewProps {
   onToggleRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
   onAddRecurringTaskChecklistItem: (taskId: string, text: string) => void;
   onRemoveRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
+  /** §54: moves an item to another part of the day, or flags it, without leaving the day. */
+  onPlaceItem: (kind: DayItem["kind"], id: string, patch: PlacementPatch) => void;
 }
 
 function getItemsForDate(
@@ -82,12 +84,43 @@ export default function DayView({
   onToggleRecurringTaskChecklistItem,
   onAddRecurringTaskChecklistItem,
   onRemoveRecurringTaskChecklistItem,
+  onPlaceItem,
 }: DayViewProps) {
   const groups = getGroupsForDate(habits, singleTasks, recurringTasks, selectedDate);
   // §29: a day that hasn't happened yet is read-only for completion. One-off tasks are the
   // exception — they can be done early, after confirming the move to today.
   const isFuture = isFutureDate(selectedDate, todayISO);
   const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
+  // §54: the one row whose part-of-day buttons are open. A wrongly assumed part is fixed
+  // here, in two taps, instead of through the item's own page or a chat message.
+  const [placingId, setPlacingId] = useState<string | null>(null);
+  const placeControl = (entry: DayItem) => (
+    <button
+      onClick={() => setPlacingId((open) => (open === entry.item.id ? null : entry.item.id))}
+      aria-label={`Change part of day for ${entry.item.name}`}
+      aria-expanded={placingId === entry.item.id}
+      title="Part of day"
+      className={`shrink-0 rounded-md p-1 hover:bg-slate-700 hover:text-slate-200 ${
+        placingId === entry.item.id ? "bg-slate-700 text-slate-200" : "text-slate-500"
+      }`}
+    >
+      <MoreVertical className="h-4 w-4" aria-hidden />
+    </button>
+  );
+  const placePanel = (entry: DayItem) =>
+    placingId === entry.item.id ? (
+      <div className="w-full border-t border-slate-700 pt-2 text-sm">
+        <div className="text-xs text-slate-500">Part of day</div>
+        <DayPartPicker
+          item={entry.item}
+          onChange={(patch) => {
+            onPlaceItem(entry.kind, entry.item.id, patch);
+            // The item moves to another heading, so the buttons close; a star toggle stays put.
+            if (patch.newDayPart) setPlacingId(null);
+          }}
+        />
+      </div>
+    ) : null;
 
   if (groups.length === 0) {
     return (
@@ -113,6 +146,8 @@ export default function DayView({
           return (
             <HabitRow
               key={entry.item.id}
+              placeControl={placeControl(entry)}
+              placePanel={placePanel(entry)}
               habit={entry.item}
               selectedDate={selectedDate}
               completionLog={completionLog}
@@ -127,6 +162,8 @@ export default function DayView({
           return (
             <RecurringTaskRow
               key={entry.item.id}
+              placeControl={placeControl(entry)}
+              placePanel={placePanel(entry)}
               task={entry.item}
               selectedDate={selectedDate}
               completionLog={completionLog}
@@ -142,6 +179,8 @@ export default function DayView({
         return (
           <TaskRow
             key={entry.item.id}
+            placeControl={placeControl(entry)}
+            placePanel={placePanel(entry)}
             task={entry.item}
             categories={categories}
             isFuture={isFuture}
@@ -170,6 +209,8 @@ const FUTURE_TITLE = "This day hasn't happened yet";
 
 function HabitRow({
   habit,
+  placeControl,
+  placePanel,
   selectedDate,
   completionLog,
   categories,
@@ -178,6 +219,8 @@ function HabitRow({
   onToggleChecklistItem,
 }: {
   habit: Habit;
+  placeControl: ReactNode;
+  placePanel: ReactNode;
   selectedDate: string;
   completionLog: CompletionLogEntry[];
   categories: Category[];
@@ -194,7 +237,7 @@ function HabitRow({
   return (
     <li
       className={`flex gap-3 rounded-md bg-slate-800 px-3 py-2 ${
-        habit.completionType === "checklist" ? "flex-col" : "items-center"
+        habit.completionType === "checklist" || placePanel ? "flex-col" : "items-center"
       }`}
     >
       <div className="flex w-full items-center gap-3">
@@ -243,7 +286,9 @@ function HabitRow({
             </span>
           </CompletionControl>
         ) : null}
+        {placeControl}
       </div>
+      {placePanel}
       {habit.completionType === "checklist" && (
         <Checklist
           items={checklistItems}
@@ -258,6 +303,8 @@ function HabitRow({
 
 function RecurringTaskRow({
   task,
+  placeControl,
+  placePanel,
   selectedDate,
   completionLog,
   categories,
@@ -268,6 +315,8 @@ function RecurringTaskRow({
   onRemoveChecklistItem,
 }: {
   task: RecurringTask;
+  placeControl: ReactNode;
+  placePanel: ReactNode;
   selectedDate: string;
   completionLog: CompletionLogEntry[];
   categories: Category[];
@@ -310,7 +359,9 @@ function RecurringTaskRow({
           disabled={readOnly}
           title={readOnly ? FUTURE_TITLE : undefined}
         />
+        {placeControl}
       </div>
+      {placePanel}
       {items && checklist.expanded && (
         <TaskChecklistPanel
           items={items}
@@ -334,6 +385,8 @@ function RecurringTaskRow({
 // then disappears from the day being viewed.
 function TaskRow({
   task,
+  placeControl,
+  placePanel,
   categories,
   isFuture,
   confirming,
@@ -346,6 +399,8 @@ function TaskRow({
   onConfirm,
 }: {
   task: SingleTask;
+  placeControl: ReactNode;
+  placePanel: ReactNode;
   categories: Category[];
   isFuture: boolean;
   confirming: boolean;
@@ -381,7 +436,9 @@ function TaskRow({
           checked={task.done}
           onChange={() => (askFirst ? onAskConfirm() : onToggle(task.id))}
         />
+        {placeControl}
       </div>
+      {placePanel}
       {task.checklist && checklist.expanded && (
         <TaskChecklistPanel
           items={task.checklist}
