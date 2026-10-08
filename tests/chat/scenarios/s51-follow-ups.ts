@@ -5,7 +5,7 @@ import type { AppData } from "../../../src/types/models.ts";
 import type { Scenario } from "../types.ts";
 import { all, check, describeRule, habitById, isWeekdays } from "./helpers.ts";
 
-const FROM_REPLY = /^modify \(from reply\)$/;
+const FROM_REPLY = /^edit \(from reply\)$/;
 const paused = (data: AppData, id: string) => (habitById(data, id)?.pauses ?? []).length > 0;
 
 export const scenarios: Scenario[] = [

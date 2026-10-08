@@ -8,7 +8,10 @@
 // risk-reducing: it only narrows payload when confident. (One deliberate
 // exception, §55: clearing a single field of an item — see FIELD_CLEAR_PATTERN.)
 
-export type IntentBucket = "create" | "delete" | "modify" | "checklist";
+// §58: what used to be one "modify" family is three — edit (the update tools), progress
+// (mark done, log an amount) and schedule (pause, resume, archive) — so that no single
+// family comes near Groq's free-tier request limit.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -26,9 +29,9 @@ function matchesAny(text: string, phrases: string[]): boolean {
 }
 
 const LIST_NOUNS = ["list", "checklist", "shopping list", "to-do list", "todo list", "grocery list"];
-// Deliberately does NOT include "mark ... done" — that phrasing means toggling
-// a single task's own done/not-done field (updateSingleTask.newDone, the
-// "modify" bucket), not checking off one item within a checklist.
+// Deliberately does NOT include "mark ... done" — that phrasing means marking a
+// whole item done (the "progress" bucket), not checking off one item within a
+// checklist.
 const CHECK_VERBS = ["check off", "uncheck", "tick off", "cross off"];
 
 const CREATE_VERBS = ["create", "add", "start", "new", "set up", "make", "schedule", "begin"];
@@ -44,9 +47,9 @@ const RECURRENCE_PATTERNS: RegExp[] = [
 
 const DELETE_VERBS = ["delete", "remove", "get rid of", "erase", "clear out", "wipe", "cancel", "toss", "scrap"];
 const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
-// §28: pausing/resuming. Both directions live in "modify"; pausing also joins "delete"
-// (below) because "stop my gym habit for two weeks" is a soft-stop phrasing that must
-// not be left with only the destructive tools in its payload.
+// §28: pausing/resuming, and archiving, are the "schedule" family. §59: on their own they no
+// longer bring the delete tools along — "pause my gym habit" names its action plainly, and
+// delete + edit together was too large for Groq's free tier.
 const PAUSE_VERBS = ["pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
 
 // §55: "remove the comments of the task X" / "clear the end date on gym" take one *field*
@@ -82,16 +85,21 @@ const REMOVAL_VERB_PATTERN = /\b(?:remove|delete|erase|scrap|drop|wipe|cancel|to
 
 const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal", "shift", "swap", "tweak", "revise", "move"];
 // "mark my dentist task as done" / "mark it not done" — a whole-item
-// done/not-done toggle, handled by updateSingleTask.newDone, not a checklist
-// item check. The gap between "mark" and "done" is why this needs a regex
-// rather than a fixed phrase in MODIFY_VERBS.
+// done/not-done toggle (the "progress" tools; the app finds the item whatever
+// its type), not a checklist item check. The gap between "mark" and "done" is
+// why this needs a regex rather than a fixed phrase.
 const MARK_DONE_PATTERN = /\bmark\b[\s\S]*\b(done|not done)\b/;
 
 // §54: placing an existing item in the day ("put reading in the evening"; "move" and
-// "shift" are already modify verbs) or flagging it ("gym is a top priority").
+// "shift" are already edit verbs) or flagging it ("gym is a top priority").
 const PLACE_IN_DAY_PATTERN =
   /\b(?:put|place)\b[\s\S]*\b(?:morning|afternoon|evening|bedtime|bed|wake-?up|work ?day|first thing|part of (?:the|my) day)\b/;
 const IMPORTANCE_WORDS = ["important", "top priority", "high priority", "must-do", "priority"];
+
+const CHECKLIST_MODE_PATTERN = /\b(?:reset|resets|carry over|carries over|same list|same checklist|every time|each time|start fresh)\b/;
+
+// §58: change verbs that, with an amount, may be reporting progress instead of editing.
+const AMOUNT_CHANGE_VERBS = ["increase", "decrease", "adjust", "update", "change"];
 
 const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with", "practiced", "studied", "tracked"];
 const DURATION_WORDS = ["minute", "minutes", "hour", "hours", "glass", "glasses", "page", "pages", "rep", "reps", "mile", "miles", "step", "steps", "cup", "cups", "time", "times"];
@@ -107,7 +115,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const hasRecurrence = RECURRENCE_PATTERNS.some((pattern) => pattern.test(text));
   // §55: with a field-clearing phrase taken out, is anything still asking to delete? If
   // not, the delete tools stay out of the payload — this is the one rule here that narrows
-  // instead of widening, because delete + modify together is too large for Groq's free
+  // instead of widening, because delete + edit together is too large for Groq's free
   // tier and the phrase is unambiguous. A looser mention of a field (below) only widens.
   const clearsField = FIELD_CLEAR_PATTERN.test(text);
   const mentionsDeleteVerb = matchesAny(clearsField ? text.replace(FIELD_CLEAR_PATTERN, " ") : text, DELETE_VERBS);
@@ -132,7 +140,8 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // edit tools ("add an important task to call the bank").
   const addsNewItem = matchesAny(text, ["add", "create", "new", "schedule", "start", "begin"]) && (hasCreateNoun || hasRecurrence);
   const placesItem = PLACE_IN_DAY_PATTERN.test(text) || (matchesAny(text, IMPORTANCE_WORDS) && !addsNewItem);
-  const hasModifyVerb = matchesAny(text, MODIFY_VERBS) || MARK_DONE_PATTERN.test(text) || placesItem;
+  const hasEditVerb = matchesAny(text, MODIFY_VERBS) || placesItem;
+  const marksDone = MARK_DONE_PATTERN.test(text);
   const hasLogVerb = matchesAny(text, LOG_VERBS);
   const hasNumberOrDuration = /\d/.test(text) || matchesAny(text, DURATION_WORDS);
 
@@ -149,24 +158,34 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   if (hasCreateVerb && (hasCreateNoun || hasRecurrence)) buckets.add("create");
 
   // Delete: archive tools are statically bundled into this bucket's tool set
-  // (see handleAgentRequest.ts's BUCKET_TOOL_NAMES) so a soft-delete phrasing
+  // (see handleAgentRequest.ts's TOOL_MANIFEST) so a soft-delete phrasing
   // ("remove my old gym habit" meaning "stop tracking it") still has the
   // non-destructive tool available even though only "delete" fired here.
-  if (hasDeleteVerb || hasArchiveVerb || hasPauseVerb) buckets.add("delete");
+  if (hasDeleteVerb) buckets.add("delete");
 
-  // Modify: update/archive/log-with-amount all live in one merged bucket
-  // (see Roadmap.md §24) because the system prompt cross-references them
-  // pairwise — splitting them would require conditionally rewriting that
-  // prose, which is exactly the kind of routing-induced fragility to avoid.
-  if (hasModifyVerb || hasArchiveVerb || hasPauseVerb || mentionsFieldToClear || (hasLogVerb && hasNumberOrDuration)) buckets.add("modify");
+  // Schedule: pause, resume and archive (§58/§59).
+  if (hasArchiveVerb || hasPauseVerb) buckets.add("schedule");
+
+  // Edit: the update tools — a change verb, clearing a field (§55), placing or flagging
+  // (§54), or changing what a recurring task's checklist does between occurrences (§42:
+  // "make the cleaning checklist reset every time", which is updateRecurringTask's job).
+  const changesChecklistMode = hasListNoun && CHECKLIST_MODE_PATTERN.test(text);
+  if (hasEditVerb || mentionsFieldToClear || changesChecklistMode) buckets.add("edit");
+
+  // Progress: marking done, or logging an amount. A change verb with an amount is either
+  // an edit or a log ("increase my water by 2 glasses"), so it gets both — unless it
+  // names the goal, which only an edit can change.
+  const amountWithChangeVerb =
+    matchesAny(text, AMOUNT_CHANGE_VERBS) && hasNumberOrDuration && !matchesAny(text, ["goal", "target"]);
+  if (marksDone || (hasLogVerb && hasNumberOrDuration) || amountWithChangeVerb) buckets.add("progress");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous
-  // between a Numeric/Timer habit (logHabitProgress, "modify") and a
-  // checklist-type habit's item ("checklist") — the router can't see the
-  // user's actual data to know which, so send both rather than guess.
+  // between marking a habit done ("progress") and a checklist-type habit's
+  // item ("checklist") — the router can't see the user's actual data to know
+  // which, so send both rather than guess.
   if (hasLogVerb && !hasNumberOrDuration && !hasListNoun && !hasCheckVerb) {
-    buckets.add("modify");
+    buckets.add("progress");
     buckets.add("checklist");
   }
 
@@ -194,9 +213,9 @@ const REPLY_MAX_WORDS = 8;
  * Classifies the latest user message; when it has no confident bucket of its own and is
  * short, falls back to what the assistant said just before it:
  * - an app reply to a tool call (a "which one?" list, or a confirmation inviting
- *   corrections): the tools that edit an existing item — after a creation too, since the
- *   follow-up corrects what was just made (plus the create tools if it has an add-type
- *   verb) — or that tool's own buckets if it isn't an editing one;
+ *   corrections): that tool's own family — the first one listed for it — since the answer
+ *   re-runs the same tool. After a creation it's the edit tools instead: the follow-up
+ *   corrects what was just made (plus the create tools if it has an add-type verb);
  * - the model's own question: whatever the user's previous message needed, since that
  *   request is still being answered.
  * `bucketsOfTool` is handleAgentRequest.ts's manifest lookup, passed in to keep this file
@@ -226,9 +245,9 @@ export function classifyTurn(
       // Usually a correction ("no, only on weekdays"), but an add-type verb may be asking
       // for one more ("add another for evenings"), so keep the create tools for that.
       const another = matchesAny(latest.toLowerCase(), CREATE_VERBS);
-      return { kind: "buckets", buckets: another ? ["create", "modify"] : ["modify"], fromReply: true };
+      return { kind: "buckets", buckets: another ? ["create", "edit"] : ["edit"], fromReply: true };
     }
-    return { kind: "buckets", buckets: buckets.includes("modify") ? ["modify"] : buckets, fromReply: true };
+    return { kind: "buckets", buckets: [buckets[0]], fromReply: true };
   }
 
   const asked = messages.slice(0, index).map((message) => message.role).lastIndexOf("user");
