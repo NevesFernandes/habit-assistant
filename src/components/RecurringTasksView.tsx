@@ -10,6 +10,7 @@ interface RecurringTasksViewProps {
   categories: Category[];
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
 }
 
 export default function RecurringTasksView({
@@ -17,6 +18,7 @@ export default function RecurringTasksView({
   categories,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
 }: RecurringTasksViewProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
@@ -29,6 +31,7 @@ export default function RecurringTasksView({
         categories={categories}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
+        onRemoveChecklistItem={onRemoveChecklistItem}
         onBack={() => setSelectedTaskId(null)}
       />
     );
@@ -77,12 +80,14 @@ function RecurringTaskDetail({
   categories,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
   onBack,
 }: {
   task: RecurringTask;
   categories: Category[];
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
@@ -156,6 +161,7 @@ function RecurringTaskDetail({
             items={recurringTaskChecklistOn(task, todayISO()) ?? []}
             onToggle={(itemId) => onToggleChecklistItem(task.id, itemId)}
             onAdd={(text) => onAddChecklistItem(task.id, text)}
+            onRemove={(itemId) => onRemoveChecklistItem(task.id, itemId)}
           />
         </DetailRow>
       </div>

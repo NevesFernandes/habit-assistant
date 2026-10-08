@@ -33,8 +33,10 @@ interface DayViewProps {
   /** §39: a task's attached checklist, editable from any day — it isn't completion status. */
   onToggleTaskChecklistItem: (taskId: string, itemId: string) => void;
   onAddTaskChecklistItem: (taskId: string, text: string) => void;
+  onRemoveTaskChecklistItem: (taskId: string, itemId: string) => void;
   onToggleRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
   onAddRecurringTaskChecklistItem: (taskId: string, text: string) => void;
+  onRemoveRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
 }
 
 function getItemsForDate(
@@ -71,8 +73,10 @@ export default function DayView({
   onCompleteFutureTask,
   onToggleTaskChecklistItem,
   onAddTaskChecklistItem,
+  onRemoveTaskChecklistItem,
   onToggleRecurringTaskChecklistItem,
   onAddRecurringTaskChecklistItem,
+  onRemoveRecurringTaskChecklistItem,
 }: DayViewProps) {
   const items = getItemsForDate(habits, singleTasks, recurringTasks, selectedDate);
   // §29: a day that hasn't happened yet is read-only for completion. One-off tasks are the
@@ -123,6 +127,7 @@ export default function DayView({
               onToggle={onToggleRecurringTask}
               onToggleChecklistItem={onToggleRecurringTaskChecklistItem}
               onAddChecklistItem={onAddRecurringTaskChecklistItem}
+              onRemoveChecklistItem={onRemoveRecurringTaskChecklistItem}
             />
           );
         }
@@ -136,6 +141,7 @@ export default function DayView({
             onToggle={onToggleTask}
             onToggleChecklistItem={onToggleTaskChecklistItem}
             onAddChecklistItem={onAddTaskChecklistItem}
+            onRemoveChecklistItem={onRemoveTaskChecklistItem}
             onAskConfirm={() => setConfirmingTaskId(entry.item.id)}
             onCancelConfirm={() => setConfirmingTaskId(null)}
             onConfirm={() => {
@@ -173,8 +179,8 @@ function HabitRow({
   const category = categories.find((c) => c.id === habit.categoryId);
   const entry = completionLog.find((e) => e.itemId === habit.id && e.date === selectedDate);
   const isDone = isHabitEntryComplete(habit, entry);
-  const checklistItems = habit.completionType === "checklist" ? checklistItemsForEntry(habit, entry) : [];
-  const progress = habit.completionType === "checklist" ? checklistProgress(habit, entry) : null;
+  const checklistItems = habit.completionType === "checklist" ? checklistItemsForEntry(habit, entry, selectedDate) : [];
+  const progress = habit.completionType === "checklist" ? checklistProgress(habit, entry, selectedDate) : null;
   return (
     <li
       className={`flex gap-3 rounded-md bg-slate-800 px-3 py-2 ${
@@ -246,6 +252,7 @@ function RecurringTaskRow({
   onToggle,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
 }: {
   task: RecurringTask;
   selectedDate: string;
@@ -255,6 +262,7 @@ function RecurringTaskRow({
   onToggle: (taskId: string) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
 }) {
   const weekStartsOn = useWeekStart();
   const category = categories.find((c) => c.id === task.categoryId);
@@ -293,6 +301,7 @@ function RecurringTaskRow({
           showDonePrompt={checklist.showDonePrompt}
           onToggleItem={(itemId) => checklist.onToggleItem(itemId, () => onToggleChecklistItem(task.id, itemId))}
           onAddItem={(text) => onAddChecklistItem(task.id, text)}
+          onRemoveItem={(itemId) => onRemoveChecklistItem(task.id, itemId)}
           onMarkDone={() => {
             checklist.dismissDonePrompt();
             onToggle(task.id);
@@ -315,6 +324,7 @@ function TaskRow({
   onToggle,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
   onAskConfirm,
   onCancelConfirm,
   onConfirm,
@@ -326,6 +336,7 @@ function TaskRow({
   onToggle: (taskId: string) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
   onAskConfirm: () => void;
   onCancelConfirm: () => void;
   onConfirm: () => void;
@@ -358,6 +369,7 @@ function TaskRow({
           showDonePrompt={checklist.showDonePrompt}
           onToggleItem={(itemId) => checklist.onToggleItem(itemId, () => onToggleChecklistItem(task.id, itemId))}
           onAddItem={(text) => onAddChecklistItem(task.id, text)}
+          onRemoveItem={(itemId) => onRemoveChecklistItem(task.id, itemId)}
           onMarkDone={() => {
             checklist.dismissDonePrompt();
             onToggle(task.id);
@@ -437,6 +449,7 @@ function TaskChecklistPanel({
   showDonePrompt,
   onToggleItem,
   onAddItem,
+  onRemoveItem,
   onMarkDone,
   onDismissDonePrompt,
 }: {
@@ -444,12 +457,13 @@ function TaskChecklistPanel({
   showDonePrompt: boolean;
   onToggleItem: (itemId: string) => void;
   onAddItem: (text: string) => void;
+  onRemoveItem: (itemId: string) => void;
   onMarkDone: () => void;
   onDismissDonePrompt: () => void;
 }) {
   return (
     <div className="flex flex-col gap-2 border-t border-slate-700 pt-2 pl-7 text-sm">
-      <Checklist items={items} onToggle={onToggleItem} onAdd={onAddItem} />
+      <Checklist items={items} onToggle={onToggleItem} onAdd={onAddItem} onRemove={onRemoveItem} />
       {showDonePrompt && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
           <span>All items checked. Mark the task done?</span>

@@ -99,8 +99,8 @@ function HabitDetail({
   const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
   const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
   const todayEntry = completionLog.find((e) => e.itemId === habit.id && e.date === todayISO());
-  const todayChecklistItems = checklistItemsForEntry(habit, todayEntry);
-  const todayEntryProgress = checklistProgress(habit, todayEntry);
+  const todayChecklistItems = checklistItemsForEntry(habit, todayEntry, todayISO());
+  const todayEntryProgress = checklistProgress(habit, todayEntry, todayISO());
 
   return (
     <div className="flex flex-col gap-3">

@@ -246,7 +246,7 @@
         </tr>
         <tr>
           <td>Use a list</td>
-          <td><span class="say">add milk and bread to my shopping list</span>, <span class="say">check off milk</span></td>
+          <td><span class="say">add milk and bread to my shopping list</span>, <span class="say">check off milk</span>, <span class="say">remove bread from my shopping list</span></td>
         </tr>
         <tr>
           <td>Change something</td>
@@ -285,7 +285,7 @@
         <li><strong>Task:</strong> a one-off to-do, like calling the dentist.</li>
       </ul>
       <p>Every item has a name, and can have a description, a priority (a number where higher shows first), a start date (today unless you say otherwise) and an end date. Habits always have a category: if you don't name one, the assistant picks the best fit, or <strong>Other</strong>. Tasks can have a category or none: name one when adding the task (<span class="say">add a task to pay rent, in Finance</span>) and it's saved with it.</p>
-      <p>To take something off an item without deleting it, say which part: <span class="say">remove the notes from the dentist task</span>, <span class="say">remove the end date from gym</span>, <span class="say">remove the category from the rent task</span>. "Notes", "comments" and "details" all mean the description. A habit always keeps a category, so removing it moves the habit to <strong>Other</strong>. A checklist, or an item on it, can't be removed through chat yet.</p>
+      <p>To take something off an item without deleting it, say which part: <span class="say">remove the notes from the dentist task</span>, <span class="say">remove the end date from gym</span>, <span class="say">remove the category from the rent task</span>. "Notes", "comments" and "details" all mean the description. A habit always keeps a category, so removing it moves the habit to <strong>Other</strong>. The same goes for a checklist: see <a href="#checklists">Checklists on tasks</a>.</p>
 
       <h3>How a habit is tracked</h3>
       <table>
@@ -313,7 +313,7 @@
         </figcaption>
       </figure>
 
-      <h3>Checklists on tasks</h3>
+      <h3 id="checklists">Checklists on tasks</h3>
       <p>
         Any task can carry a checklist, like a shopping list. In the Today tab, a task with a checklist shows a small
         <code>3/7</code> badge: tap it to open the list, tick items and add new ones. When you tick the last item, it
@@ -338,6 +338,27 @@
         <span class="say">let unticked items on my shopping list carry over</span>. To tick an item from an earlier day, say
         which day: <span class="say">I bought milk yesterday</span>. In the Recurring tasks page, the checklist shown is
         today's.
+      </p>
+      <p>
+        <strong>Taking things off a list.</strong> Ticking an item says it got done; removing it says it shouldn't be on
+        the list. Tap the small <strong>×</strong> next to an item, or say
+        <span class="say">remove milk from my shopping list</span> or
+        <span class="say">take eggs and bread off the shopping list</span>. The task itself is never deleted. On a
+        recurring task the item is gone from that day on, and earlier days keep it as it was. The same sentence takes a
+        step off a Checklist habit (<span class="say">remove floss from my morning routine</span>); a Checklist habit
+        always keeps at least one step.
+      </p>
+      <p>
+        <strong>Changing a Checklist habit's steps.</strong> Give the whole new list:
+        <span class="say">change the steps of my morning routine to stretch, meditate and journal</span>. Like a
+        removal, the change counts from today: every earlier day keeps the steps it had, whether you ticked them or not.
+        To make a change count from an earlier day, say so:
+        <span class="say">remove floss from my morning routine since Monday</span>. It can't start on a future day.
+      </p>
+      <p>
+        To take the whole checklist off a task, say <span class="say">remove the checklist from the shopping task</span>.
+        If the list still has items, the assistant shows them and asks first, because they are deleted with it. The task
+        stays, as a plain task with no badge. Adding an item later starts a new list.
       </p>
 
       <h2 id="schedules">3. Schedules</h2>

@@ -109,6 +109,10 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "checkHabitChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a checklist-type habit's checklist." },
   { name: "checkRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a recurring task's checklist." },
   { name: "checkSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a one-off task's checklist." },
+  // §56: also "delete" — "remove milk from shopping" has a delete verb and no list word, and
+  // must not be left with only the tools that delete the whole task.
+  { name: "removeChecklistItems", buckets: ["checklist", "delete"], listBlurb: "take one or more items off a task's or a checklist habit's checklist." },
+  { name: "removeTaskChecklist", buckets: ["checklist", "delete"], listBlurb: "remove the whole checklist from a task, leaving a plain task." },
 ];
 
 function activeManifestEntries(activeBuckets: IntentBucket[] | "all"): ToolManifestEntry[] {
@@ -142,7 +146,7 @@ If you don't have enough information to act — at minimum, a clear name, or for
 You cannot see the user's habits or tasks, so never ask which existing item they mean. For any tool that selects an existing item by name (update, archive, log progress, checklist), a word from the user's own message is enough (e.g. "log six glasses of water" → name: "water"): call the tool right away and the app finds the matches itself — if several match, it shows the user a numbered list to pick from.`;
 
 function buildDeleteProse(categoryList: string, todayISO: string): string {
-  return `Deleting is for whole items only. When the user wants one part of an item removed — its description (which they may call notes, comments or details), its end date, or a task's category — that is an edit: use the update tool with that field set to "", and never a delete tool. A task's checklist, or an item on it, can't be removed through chat yet: say so plainly rather than deleting the task.
+  return `Deleting is for whole items only. When the user wants one part of an item removed — its description (which they may call notes, comments or details), its end date, or a task's category — that is an edit: use the update tool with that field set to "", and never a delete tool. A task's checklist, or an item on it, is not a whole item either: use removeChecklistItems or removeTaskChecklist (below), never a delete tool, which would delete the task itself.
 
 For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express *what* to delete, via a filter object. Every filter field you set is combined with AND (e.g. categoryId + done together means "in that category AND not done"). You do NOT decide whether confirmation is needed, and you must NEVER ask a confirmation question yourself ("are you sure?", etc.) — the app resolves your filters against the user's real data (which you can't see) and handles confirmation deterministically. Just call the tool with your best-effort filters whenever the user is clearly asking to delete something. Leaving every field unset matches nothing — if the user means "delete everything", set all: true instead.
 - all: set true to match every item of that kind, ignoring every other field below.
@@ -167,7 +171,7 @@ const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resume
 Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
 
 function buildModifyProse(categoryList: string): string {
-  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, fully replaces the checklist rather than adding to it. Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 ${PICK_FROM_LIST_PROSE}
 
@@ -184,9 +188,16 @@ const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChec
 
 For checkHabitChecklistItem, checkRecurringTaskChecklistItem, and checkSingleTaskChecklistItem: name selects the habit/task (same fragment-matching as elsewhere), item is a text fragment to find which checklist item (e.g. "check off milk on my shopping list" → name: "shopping", item: "milk") — the app resolves both and tells you if either matched zero or more than one. checked defaults to true ("check off X", "I did X"); set it to false explicitly for "uncheck X", "actually I didn't do X". These are distinct from logHabitProgress (which is for a Numeric/Timer habit's logged number, not a checklist) and from setHabitDone (which marks a whole checklist habit done, e.g. "I did my morning routine" — use checkHabitChecklistItem only when the user names one item of it). checkHabitChecklistItem and checkRecurringTaskChecklistItem also take date, same as logHabitProgress: optional, defaults to today, resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first — each occurrence of a habit or recurring task has its own checklist. checkSingleTaskChecklistItem has no date — a one-off task's checklist is one list.
 
+To take an item off a list for good, use removeChecklistItems (below) — checking it off is for something that got done, removing is for something that shouldn't be on the list.
+
 To change whether a recurring task's checklist is the same list every time or carries unticked items over, use updateRecurringTask's newChecklistMode — not the add/check tools.
 
 ${PICK_FROM_LIST_PROSE}`;
+
+// §56: shared by the delete and checklist buckets, since both carry these two tools.
+const REMOVE_CHECKLIST_PROSE = `For removeChecklistItems: take items off a checklist for good — "remove milk from my shopping list" → name: "shopping", items: ["milk"]; "take eggs and bread off the list" → items: ["eggs", "bread"]; "delete 'mlik', I typed it wrong". name is a text fragment to find the task or habit, and items is every item to remove, one text fragment each. It works for a one-off task, a recurring task and a Checklist habit alike: the app finds which one it is, and tells you if an item matched nothing or more than one. On a recurring task or a habit the item is gone from today on and earlier days keep it; set date only when the user explicitly names an earlier day it should count from ("remove floss from my routine since Monday"). This is not checking off: "I bought milk", "cross off milk" mean it got done (the check tools); "remove", "delete", "take off", "I don't need … any more" mean it shouldn't be on the list.
+
+For removeTaskChecklist: remove the whole checklist from a one-off or recurring task, which stays as a plain task — "remove the checklist from the shopping task", "the dentist task doesn't need a list", and also "clear my shopping list" or "empty the list" (adding an item later starts a new list). name is a text fragment to find the task. The app asks the user to confirm when the list still has items, so never ask yourself. A Checklist habit's checklist is how the habit is tracked and can't be removed this way.`;
 
 function buildCreateProse(categoryList: string): string {
   return `For createSingleTask specifically:
@@ -239,6 +250,7 @@ function buildSystemPrompt(
   if (isBucketActive(activeBuckets, "modify")) chunks.push(buildModifyProse(categoryList));
   if (isBucketActive(activeBuckets, "modify") || isBucketActive(activeBuckets, "checklist")) chunks.push(SET_DONE_PROSE);
   if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
+  if (isBucketActive(activeBuckets, "checklist") || isBucketActive(activeBuckets, "delete")) chunks.push(REMOVE_CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
 
   chunks.push(
@@ -658,8 +670,13 @@ function buildTools(
           },
           newChecklistItems: {
             type: "array",
-            description: "Fully replaces the checklist sub-items (used with completionType checklist).",
+            description: "The habit's whole list of checklist steps from now on (used with completionType checklist).",
             items: { type: "string" },
+          },
+          newChecklistItemsFrom: {
+            type: "string",
+            description:
+              "ISO date (YYYY-MM-DD). Only when the user explicitly says the new steps count from an earlier day. Omit otherwise: they apply from today and earlier days keep theirs.",
           },
           newTarget: {
             type: "number",
@@ -946,6 +963,42 @@ function buildTools(
           },
         },
         required: ["name", "item"],
+      },
+    },
+    {
+      name: "removeChecklistItems",
+      description:
+        "Take one or more items off the checklist of a one-off task, a recurring task or a Checklist habit, for good. Use for phrases like 'remove milk from my shopping list' or 'take eggs and bread off the list'. Not for an item that got done — that's checking it off.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's or habit's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          items: {
+            type: "array",
+            description: "Every item to remove, one text fragment per item the user named (e.g. [\"milk\", \"bread\"]).",
+            items: { type: "string" },
+          },
+          date: {
+            type: "string",
+            description:
+              "ISO date (YYYY-MM-DD). Only when the user explicitly says the removal counts from an earlier day. Omit otherwise: it applies from today and earlier days keep the item.",
+          },
+        },
+        required: ["name", "items"],
+      },
+    },
+    {
+      name: "removeTaskChecklist",
+      description:
+        "Remove the whole checklist from a one-off or recurring task, leaving a plain task. Use for 'remove the checklist from the shopping task' or 'clear my shopping list'. The task itself is never deleted.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+        },
+        required: ["name"],
       },
     },
   ];

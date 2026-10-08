@@ -12,6 +12,7 @@ import type { Category, CompletionLogEntry, Habit, PausePeriod, RecurringTask, S
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
 import { describeRecurrence, isPaused, isPausedOn, nextOccurrence } from "./recurrence.ts";
 import { checklistModeOf, recurringTaskChecklistOn } from "./recurringChecklist.ts";
+import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -59,7 +60,7 @@ function describeTracking(habit: Pick<Habit, "completionType" | "target" | "unit
     case "timer":
       return `timer — goal ${habit.target !== undefined ? formatGoalMinutes(habit.target) : "?"}`;
     case "checklist": {
-      const items = (habit.checklist ?? []).map((item) => item.text);
+      const items = currentHabitChecklist(habit).map((item) => item.text);
       return items.length > 0 ? `checklist (${items.join(", ")})` : "checklist (no items yet)";
     }
   }
@@ -419,7 +420,7 @@ export function describeHabitMarkedDone(
       body = `Marked ${name} complete ${day} with ${amountText(habit, habit.target ?? 0)}, its full goal.`;
       break;
     case "checklist":
-      body = `Marked ${name} complete ${day} by marking all checklist items done: ${(habit.checklist ?? []).map((item) => item.text).join(", ")}.`;
+      body = `Marked ${name} complete ${day} by marking all checklist items done: ${habitChecklistOn(habit, dateISO).map((item) => item.text).join(", ")}.`;
       break;
     case "yesno":
       body = `Marked ${name} complete ${day}.`;

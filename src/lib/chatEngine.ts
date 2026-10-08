@@ -19,6 +19,11 @@ import {
   deleteHabits,
   deleteRecurringTasks,
   deleteSingleTasks,
+  removeHabitChecklistItem,
+  removeRecurringTaskChecklist,
+  removeRecurringTaskChecklistItem,
+  removeSingleTaskChecklist,
+  removeSingleTaskChecklistItem,
   resolveHabits,
   resolveRecurringTasks,
   resolveSingleTasks,
@@ -57,7 +62,8 @@ import {
 } from "./confirmations";
 import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
-import { recurringTaskChecklistOn } from "./recurringChecklist";
+import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "./recurringChecklist";
+import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -104,7 +110,9 @@ export type PendingConfirmation =
   | { type: "delete"; itemKind: ItemKind; ids: string[]; names: string[] }
   | { type: "create"; toolCall: CreateToolCall; userText: string }
   // §29: completing a future-dated one-off task, which also moves it to today.
-  | { type: "completeFutureTask"; taskId: string; name: string; startDate: string; patch: UpdatePatch };
+  | { type: "completeFutureTask"; taskId: string; name: string; startDate: string; patch: UpdatePatch }
+  // §56: removing a task's checklist while it still has items on it.
+  | { type: "removeChecklist"; itemKind: "recurringTask" | "singleTask"; taskId: string; name: string };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -124,11 +132,21 @@ function formatQuotedList(names: string[]): string {
 
 // Case-insensitive substring match against item text — same style as
 // matchesBaseCriteria's name filter in dataStore.ts — used to resolve which
-// checklist item a chat request ("check off milk") refers to.
+// checklist item a chat request ("check off milk") refers to. As with item names, an exact
+// match wins: "milk" means "milk" even with "oat milk" on the same list.
 function resolveChecklistItemMatches(checklist: ChecklistItem[] | undefined, fragment: string): ChecklistItem[] {
   const needle = fragment.trim().toLowerCase();
-  return (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
+  const matches = (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
+  const exact = matches.filter((item) => item.text.trim().toLowerCase() === needle);
+  return exact.length > 0 ? exact : matches;
 }
+
+// §56: a habit "has a checklist" when that's how it's tracked; a task, once it was given one (§39).
+function hasChecklist(item: Habit | RecurringTask | SingleTask): boolean {
+  return item.kind === "habit" ? item.completionType === "checklist" : item.checklist !== undefined;
+}
+
+const CHECKLIST_OWNER_KINDS: ItemKind[] = ["recurringTask", "singleTask", "habit"];
 
 /** "milk" / "milk" and "bread" / "milk", "eggs" and "bread" */
 function formatQuotedAnd(texts: string[]): string {
@@ -164,7 +182,7 @@ function buildDeleteConfirmationQuestion(
 
 /** Item types an update patch can apply to — e.g. newTarget only makes sense on a habit, newDone only on a one-off task. */
 function updateKindsFor(patch: UpdatePatch, isArchive: boolean): ItemKind[] {
-  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newTarget, patch.newUnit].some(
+  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newChecklistItemsFrom, patch.newTarget, patch.newUnit].some(
     (value) => value !== undefined,
   );
   const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
@@ -410,6 +428,10 @@ export class ChatSession {
       await this.handleCheckTaskChecklistItem("recurringTask", toolCall.input, toolCall);
     } else if (toolCall.name === "checkSingleTaskChecklistItem") {
       await this.handleCheckTaskChecklistItem("singleTask", toolCall.input, toolCall);
+    } else if (toolCall.name === "removeChecklistItems") {
+      await this.handleRemoveChecklistItems(toolCall.input, toolCall);
+    } else if (toolCall.name === "removeTaskChecklist") {
+      await this.handleRemoveTaskChecklist(toolCall.input, toolCall);
     }
   }
 
@@ -473,6 +495,20 @@ export class ChatSession {
       return;
     }
 
+    if (pending.type === "removeChecklist") {
+      if (!confirmed) {
+        this.pushAssistantMessage(`Okay, I left the checklist on "${pending.name}".`, toolCall);
+        return;
+      }
+      const saved = await this.deps.persist((current) =>
+        pending.itemKind === "recurringTask"
+          ? removeRecurringTaskChecklist(current, pending.taskId)
+          : removeSingleTaskChecklist(current, pending.taskId),
+      );
+      if (saved) this.pushAssistantMessage(`Removed the checklist from "${pending.name}". The task itself is unchanged.`, toolCall);
+      return;
+    }
+
     if (!confirmed) {
       this.pushAssistantMessage("Okay, I won't delete that.", toolCall);
       return;
@@ -521,6 +557,16 @@ export class ChatSession {
       return;
     }
 
+    // §56: a habit's steps change from a day on — today, or an earlier day the user named.
+    const stepsFrom = patch.newChecklistItemsFrom;
+    if (stepsFrom !== undefined && isFutureDate(stepsFrom, this.todayISO)) {
+      this.pushAssistantMessage(
+        `I can only change the steps of "${target.name}" from today or an earlier day, not from ${formatDate(stepsFrom, this.todayISO)}.`,
+        toolCall,
+      );
+      return;
+    }
+
     // §31: capture before/after inside the mutator so a §21 conflict-replay
     // describes what was actually written, not a stale copy.
     let before: Habit | RecurringTask | SingleTask | undefined;
@@ -542,7 +588,15 @@ export class ChatSession {
     } else if (actionVerb === "Archived") {
       this.pushAssistantMessage(describeArchive(after), toolCall);
     } else {
-      this.pushAssistantMessage(describeUpdate(before, after, data.categories, this.todayISO), toolCall);
+      const stepsText = (item: Habit | RecurringTask | SingleTask) =>
+        item.kind === "habit" ? currentHabitChecklist(item).map((step) => step.text).join("\n") : "";
+      const stepsNote =
+        patch.newChecklistItems === undefined || stepsText(before) === stepsText(after)
+          ? ""
+          : stepsFrom !== undefined && stepsFrom < this.todayISO
+            ? `\nThe new steps apply from ${formatDate(stepsFrom, this.todayISO)} on. Days before that keep their steps.`
+            : "\nThe new steps apply from today on. Earlier days keep their steps.";
+      this.pushAssistantMessage(describeUpdate(before, after, data.categories, this.todayISO) + stepsNote, toolCall);
     }
   }
 
@@ -841,7 +895,7 @@ export class ChatSession {
       );
       return;
     }
-    if (done && habit.completionType === "checklist" && (habit.checklist ?? []).length === 0) {
+    if (done && habit.completionType === "checklist" && currentHabitChecklist(habit).length === 0) {
       this.pushAssistantMessage(`"${habit.name}" has no checklist items yet, so there's nothing to mark done.`, toolCall);
       return;
     }
@@ -913,7 +967,8 @@ export class ChatSession {
           : `None of the habits matching "${input.name}" are tracked with a checklist.`,
     );
     if (!habit) return;
-    const itemMatches = resolveChecklistItemMatches(habit.checklist, input.item);
+    // §56: that day's steps, so a step removed since can still be ticked for an earlier day.
+    const itemMatches = resolveChecklistItemMatches(habitChecklistOn(habit, input.date ?? this.todayISO), input.item);
     if (!this.checkSingleChecklistMatch(itemMatches, input.item, habit.name, toolCall)) return;
     const checked = input.checked ?? true;
     const today = this.todayISO;
@@ -964,6 +1019,153 @@ export class ChatSession {
         toolCall,
       );
     }
+  }
+
+  // §56: the remove tools don't name an item type, so the app finds which one owns the
+  // list: the first type with a match that has a checklist, else the first with any match
+  // (so the reply can say it has no checklist). Null when nothing matches at all.
+  private resolveChecklistOwnerKind(selector: ItemSelector): ItemKind | null {
+    const forced = this.forcedPick;
+    if (forced) return forced.kind;
+    const data = this.deps.getData();
+    if (!data) return null;
+    const selectionOf = (kind: ItemKind) =>
+      selectOne<Habit | RecurringTask | SingleTask>(itemsOf(data, kind), selector, hasChecklist).kind;
+    return (
+      CHECKLIST_OWNER_KINDS.find((kind) => selectionOf(kind) === "one" || selectionOf(kind) === "many") ??
+      CHECKLIST_OWNER_KINDS.find((kind) => selectionOf(kind) === "ineligible") ??
+      null
+    );
+  }
+
+  private pickChecklistOwner(kind: ItemKind, selector: ItemSelector, toolCall: ToolCallRef) {
+    return this.pickItem(kind, selector, toolCall, hasChecklist, (items) =>
+      items.length === 1
+        ? `"${items[0].name}" doesn't have a checklist.`
+        : `None of the items matching "${selector.name}" have a checklist.`,
+    );
+  }
+
+  // §56: takes items off a checklist for good, from today on (or an earlier day the user
+  // named); the days before keep them. Each named item is resolved
+  // on its own: the ones found are removed, and the reply says which weren't.
+  private async handleRemoveChecklistItems(
+    input: ItemSelector & { items?: string[]; item?: string; date?: string },
+    toolCall: ToolCallRef,
+  ) {
+    const fragments = [...(input.items ?? []), ...(input.item ? [input.item] : [])]
+      .map((text) => text.trim())
+      .filter((text) => text.length > 0);
+    if (fragments.length === 0) {
+      this.pushAssistantMessage("Which item should I remove from the list?", toolCall);
+      return;
+    }
+    const kind = this.resolveChecklistOwnerKind(input);
+    if (!kind) {
+      this.pushAssistantMessage(`I couldn't find a task or habit matching "${input.name}".`, toolCall);
+      return;
+    }
+    const owner = this.pickChecklistOwner(kind, input, toolCall);
+    if (!owner) return;
+    const today = this.todayISO;
+    // From today on, unless the user named an earlier day. A one-off task has one list, so
+    // a day means nothing there.
+    const from = owner.kind === "singleTask" ? today : (input.date ?? today);
+    if (isFutureDate(from, today)) {
+      this.pushAssistantMessage(
+        `I can only take items off "${owner.name}" from today or an earlier day, not from ${formatDate(from, today)}.`,
+        toolCall,
+      );
+      return;
+    }
+    // §42: for a recurring task, that day's list — an item ticked off on an earlier day is
+    // already gone from it.
+    const listed =
+      owner.kind === "recurringTask"
+        ? removableRecurringTaskChecklistItems(owner, from)
+        : owner.kind === "habit"
+          ? currentHabitChecklist(owner)
+          : (owner.checklist ?? []);
+
+    const removed: ChecklistItem[] = [];
+    const problems: string[] = [];
+    for (const fragment of fragments) {
+      const matches = resolveChecklistItemMatches(listed, fragment);
+      if (matches.length === 0) {
+        problems.push(`I couldn't find "${fragment}" on "${owner.name}".`);
+      } else if (matches.length > 1) {
+        problems.push(
+          `More than one item on "${owner.name}" matches "${fragment}": ${formatQuotedList(matches.map((item) => item.text))}. Which one did you mean?`,
+        );
+      } else if (!removed.some((item) => item.id === matches[0].id)) {
+        removed.push(matches[0]);
+      }
+    }
+    if (removed.length === 0) {
+      this.pushAssistantMessage(problems.join(" "), toolCall);
+      return;
+    }
+    if (owner.kind === "habit" && removed.length === listed.length) {
+      this.pushAssistantMessage(
+        `"${owner.name}" is tracked with its checklist, so it needs at least one step. To stop tracking it that way, change how it's tracked instead (for example "track ${owner.name} as yes/no").`,
+        toolCall,
+      );
+      return;
+    }
+
+    const removeOne = (data: AppData, item: ChecklistItem) =>
+      owner.kind === "habit"
+        ? removeHabitChecklistItem(data, owner.id, item.id, from)
+        : owner.kind === "recurringTask"
+          ? removeRecurringTaskChecklistItem(data, owner.id, item.id, from)
+          : removeSingleTaskChecklistItem(data, owner.id, item.id);
+    const saved = await this.deps.persist((current) => removed.reduce(removeOne, current));
+    if (!saved) return;
+    const left = listed.filter((item) => !removed.includes(item)).map((item) => item.text);
+    this.pushAssistantMessage(
+      [
+        `Removed ${formatQuotedAnd(removed.map((item) => item.text))} from "${owner.name}"${from < today ? `, from ${formatDate(from, today)} on` : ""}.`,
+        left.length > 0 ? `Still on the list: ${left.join(", ")}.` : "The list is now empty.",
+        ...problems,
+      ].join(" "),
+      toolCall,
+    );
+  }
+
+  // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
+  // when the list still has items, since they go with it.
+  private async handleRemoveTaskChecklist(input: ItemSelector, toolCall: ToolCallRef) {
+    const kind = this.resolveChecklistOwnerKind(input);
+    if (!kind) {
+      this.pushAssistantMessage(`I couldn't find a task matching "${input.name}".`, toolCall);
+      return;
+    }
+    const owner = this.pickChecklistOwner(kind, input, toolCall);
+    if (!owner) return;
+    if (owner.kind === "habit") {
+      this.pushAssistantMessage(
+        `"${owner.name}" is a habit tracked with its checklist, so the checklist can't be removed on its own. You can take single steps off it, or change how it's tracked (for example "track ${owner.name} as yes/no").`,
+        toolCall,
+      );
+      return;
+    }
+    const today = this.todayISO;
+    const items = owner.kind === "recurringTask" ? removableRecurringTaskChecklistItems(owner, today) : (owner.checklist ?? []);
+    if (items.length > 0) {
+      this.pendingConfirmation = { type: "removeChecklist", itemKind: owner.kind, taskId: owner.id, name: owner.name };
+      const count = items.length === 1 ? "1 item" : `${items.length} items`;
+      this.pushAssistantMessage(
+        `Remove the checklist from "${owner.name}"? It has ${count} (${items.map((item) => item.text).join(", ")}), which will be deleted too. The task itself stays.`,
+        toolCall,
+      );
+      return;
+    }
+    const saved = await this.deps.persist((current) =>
+      owner.kind === "recurringTask"
+        ? removeRecurringTaskChecklist(current, owner.id)
+        : removeSingleTaskChecklist(current, owner.id),
+    );
+    if (saved) this.pushAssistantMessage(`Removed the checklist from "${owner.name}". The task itself is unchanged.`, toolCall);
   }
 
   /** Replies and returns false unless exactly one checklist item matched. */
