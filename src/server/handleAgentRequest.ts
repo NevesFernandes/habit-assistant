@@ -7,7 +7,7 @@
 // Provider-agnostic by design (see CLAUDE.md's "Cost model / provider
 // strategy"): a BYOK request uses the caller's own provider/key; otherwise
 // it falls back to the shared free trial configured via env vars.
-import { resolveProvider } from "./providers/index.ts";
+import { resolveProvider, type ProviderAdapter } from "./providers/index.ts";
 import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
@@ -71,14 +71,14 @@ export interface AgentResult {
 
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// Single source of truth for which bucket(s) each tool belongs to (see §24 in
-// Roadmap.md) and its one-line entry in the prompt's numbered action list.
-// archiveHabit/archiveRecurringTask deliberately belong to both "delete" and
-// "modify": their own prose is cross-referenced from both directions (delete
-// contrasts itself against archiving; modify offers newEndDate as the
-// alternative), and a soft-delete phrasing ("remove my old gym habit")
-// must not lose access to the non-destructive tool just because "delete"
-// fired alone.
+// Single source of truth for which family (bucket) each tool belongs to (see §24 in
+// Roadmap.md) and its one-line entry in the prompt's numbered action list. The first
+// family listed is the tool's own: a short reply to that tool's question is answered with
+// it (classifyTurn). §58 split the old "modify" family into edit / progress / schedule so
+// that none comes near Groq's free-tier request limit — payloadSize.test.ts holds each to
+// a budget. archiveHabit/archiveRecurringTask are also in "delete": a soft-delete phrasing
+// ("remove my old gym habit") must not lose the non-destructive tool just because only
+// "delete" fired.
 interface ToolManifestEntry {
   name: string;
   buckets: IntentBucket[];
@@ -92,19 +92,18 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "deleteSingleTasks", buckets: ["delete"], listBlurb: "delete one-off tasks matching filters you specify." },
   { name: "deleteHabits", buckets: ["delete"], listBlurb: "delete habits matching filters you specify." },
   { name: "deleteRecurringTasks", buckets: ["delete"], listBlurb: "delete recurring tasks matching filters you specify." },
-  { name: "updateSingleTask", buckets: ["modify"], listBlurb: "change one or more fields on an existing one-off task." },
-  { name: "updateHabit", buckets: ["modify"], listBlurb: "change one or more fields on an existing habit." },
-  // Also "checklist": §42's newChecklistMode is asked for in list words ("make the cleaning checklist reset every time").
-  { name: "updateRecurringTask", buckets: ["modify", "checklist"], listBlurb: "change one or more fields on an existing recurring task." },
-  { name: "archiveHabit", buckets: ["delete", "modify"], listBlurb: "archive an existing habit." },
-  { name: "archiveRecurringTask", buckets: ["delete", "modify"], listBlurb: "archive an existing recurring task." },
-  { name: "pauseHabit", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing habit, with or without a known resume date." },
-  { name: "pauseRecurringTask", buckets: ["delete", "modify"], listBlurb: "temporarily pause an existing recurring task, with or without a known resume date." },
-  { name: "resumeHabit", buckets: ["modify"], listBlurb: "resume a paused habit from today." },
-  { name: "resumeRecurringTask", buckets: ["modify"], listBlurb: "resume a paused recurring task from today." },
-  { name: "setHabitDone", buckets: ["modify", "checklist"], listBlurb: "mark a habit done (or not done) for a day." },
-  { name: "setRecurringTaskDone", buckets: ["modify", "checklist"], listBlurb: "mark a recurring task done (or not done) for a day." },
-  { name: "logHabitProgress", buckets: ["modify"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
+  { name: "updateSingleTask", buckets: ["edit"], listBlurb: "change one or more fields on an existing one-off task." },
+  { name: "updateHabit", buckets: ["edit"], listBlurb: "change one or more fields on an existing habit." },
+  { name: "updateRecurringTask", buckets: ["edit"], listBlurb: "change one or more fields on an existing recurring task." },
+  { name: "archiveHabit", buckets: ["schedule", "delete"], listBlurb: "archive an existing habit." },
+  { name: "archiveRecurringTask", buckets: ["schedule", "delete"], listBlurb: "archive an existing recurring task." },
+  { name: "pauseHabit", buckets: ["schedule"], listBlurb: "temporarily pause an existing habit, with or without a known resume date." },
+  { name: "pauseRecurringTask", buckets: ["schedule"], listBlurb: "temporarily pause an existing recurring task, with or without a known resume date." },
+  { name: "resumeHabit", buckets: ["schedule"], listBlurb: "resume a paused habit from today." },
+  { name: "resumeRecurringTask", buckets: ["schedule"], listBlurb: "resume a paused recurring task from today." },
+  { name: "setHabitDone", buckets: ["progress", "checklist"], listBlurb: "mark a habit done (or not done) for a day." },
+  { name: "setRecurringTaskDone", buckets: ["progress", "checklist"], listBlurb: "mark a recurring task done (or not done) for a day." },
+  { name: "logHabitProgress", buckets: ["progress"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
   { name: "addRecurringTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing recurring task's checklist." },
   { name: "addSingleTaskChecklistItem", buckets: ["checklist"], listBlurb: "add one or more items to an existing one-off task's checklist." },
   { name: "checkHabitChecklistItem", buckets: ["checklist"], listBlurb: "check or uncheck one item on a checklist-type habit's checklist." },
@@ -146,6 +145,12 @@ If you don't have enough information to act — at minimum, a clear name, or for
 
 You cannot see the user's habits or tasks, so never ask which existing item they mean. For any tool that selects an existing item by name (update, archive, log progress, checklist), a word from the user's own message is enough (e.g. "log six glasses of water" → name: "water"): call the tool right away and the app finds the matches itself — if several match, it shows the user a numbered list to pick from.`;
 
+// §58: said only on a narrowed request, where the action list is a part of what the app
+// can do and the rules may name tools that weren't sent this turn.
+export const ESCAPE_TOOL_NAME = "needOtherTools";
+
+const NARROWED_POLICY = `Your tools this turn are only the part of the app that seemed relevant to this message. If the user's request needs an action you have no tool for — even one the rules below mention — call ${ESCAPE_TOOL_NAME} with the kind of action needed, and you will get those tools. Never say something can't be done, and never substitute another tool, just because the right one is missing.`;
+
 function buildDeleteProse(categoryList: string, todayISO: string): string {
   return `Deleting is for whole items only. When the user wants one part of an item removed — its description (which they may call notes, comments or details), its end date, or a task's category — that is an edit: use the update tool with that field set to "", and never a delete tool. A task's checklist, or an item on it, is not a whole item either: use removeChecklistItems or removeTaskChecklist (below), never a delete tool, which would delete the task itself.
 
@@ -164,26 +169,30 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 const ARCHIVE_PROSE = `For archiveHabit and archiveRecurringTask: name is the same kind of text fragment used by delete/update to select the single item to archive — never a new value. Use these (not deleteHabits/deleteRecurringTasks) whenever the user says "archive", "retire", "stop tracking", or similar about an *existing* habit or recurring task they want to stop seeing going forward without losing its history — archiving sets its end date to today and keeps every completion already logged, whereas delete permanently erases that history too. If the user instead names a specific end date (not "today"), use updateHabit/updateRecurringTask's newEndDate rather than archive. You do NOT decide what happens if name matches zero items or more than one — same as update/delete, the app resolves that and asks a clarifying question itself if needed. Archiving and pausing exist only for habits and recurring tasks — a one-off task can be neither archived nor paused, so never offer that for one.`;
 
 // §28: pausing sits between "leave it running" and archiving — the user gets the habit
-// back. Kept in both the delete and modify buckets for the same reason archiving is:
-// "stop my gym habit for a couple of weeks" is a soft-stop phrasing.
+// back. §59: in the schedule family only; the delete tools no longer come with it.
 const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resumeRecurringTask: name selects the single item, the same text fragment used by update/archive. Use pause (not archive, and never delete) whenever the user wants to stop something *temporarily* — "pause my gym habit while I'm travelling", "suspend my reading habit for two weeks", "put my Spanish practice on hold". A paused item generates no occurrences for those days, and crucially those days count as neither done nor missed, so a pause protects the streak instead of breaking it.
 - from: ISO date (YYYY-MM-DD) of the first paused day. Omit for "starting now"; set it when the user names a later start ("pause it from next Monday"). It can never be in the past — the app refuses a backdated pause, so don't try to cover days that have already happened.
 - resumeOn: ISO date of the first day the item is due *again* — the day they're back, not the last day off. "Pause it until the 10th" and "pause for two weeks from today" both mean: work out that first-day-back date yourself and pass it. Omit resumeOn entirely for an open-ended pause ("pause it indefinitely", "until I say so"), which only ends when the user asks to resume.
 Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
 
-function buildModifyProse(categoryList: string): string {
+function buildEditProse(categoryList: string): string {
   return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newDayPart, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
-${PICK_FROM_LIST_PROSE}
+${PICK_FROM_LIST_PROSE}`;
+}
 
-For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).`;
+// §58: the progress family — logging an amount. Marking done is SET_DONE_PROSE.
+function buildLogProse(): string {
+  return `For logHabitProgress: name is the same kind of text fragment used elsewhere to select the single habit — never a new value; the app resolves it and tells you if it matched zero, more than one, or a habit that isn't tracked with a number or timer. date is optional and defaults to today — resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first, same as everywhere else. Set exactly one of value or delta, never both: value is an absolute total for that day (use for a stated total, e.g. "I read for 30 minutes today", "log 6 glasses of water"); delta adds to (or, if negative, subtracts from) whatever's already logged for that day (use for "add N", "increase by N", "do N more", e.g. "add 10 minutes to my reading time today"). If the phrasing is genuinely ambiguous between a total and an increment, ask rather than guessing. This only logs day-to-day progress — it never changes a habit's target or other settings (use updateHabit's newTarget/newUnit for that).
+
+${PICK_FROM_LIST_PROSE}`;
 }
 
 const PICK_FROM_LIST_PROSE = `If the app answered with a numbered "which one did you mean?" list and the user picks one (e.g. "the one in Nutrition"), call the same tool again with the same name plus categoryId set to that item's category id. categoryId only ever selects — to move an item to another category, use newCategoryId.`;
 
-// §41: shared by the modify and checklist buckets — "mark gym done" reads as a modify, "I did
+// §41: shared by the progress and checklist buckets — "mark gym done" reads as progress, "I did
 // my morning routine" as either.
-const SET_DONE_PROSE = `For setHabitDone and setRecurringTaskDone: mark one habit or recurring task done or not done for one day — "mark gym done", "I went to the gym today", "I did my stretching yesterday", "I took out the trash". name selects the item (same fragment-matching as elsewhere). date is optional and defaults to today; resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first. done defaults to true; set it to false for "mark it not done", "actually I didn't go", "undo that". Use these whatever the habit's completion type: for a Numeric or Timer habit the app logs its full goal, and for a Checklist habit it ticks every item. But when the user states an amount ("I read for 20 minutes", "drank 6 glasses"), use logHabitProgress instead, and when they name one checklist item, use checkHabitChecklistItem. For a one-off task, use updateSingleTask's newDone. The app refuses days that haven't happened yet and days the item isn't due, and says why.`;
+const SET_DONE_PROSE = `For setHabitDone and setRecurringTaskDone: mark one habit or recurring task done or not done for one day — "mark gym done", "I went to the gym today", "I did my stretching yesterday", "I took out the trash". name selects the item (same fragment-matching as elsewhere). date is optional and defaults to today; resolve any relative phrase ("yesterday", "last Tuesday") to an exact ISO date yourself first. done defaults to true; set it to false for "mark it not done", "actually I didn't go", "undo that". Use these whatever the habit's completion type: for a Numeric or Timer habit the app logs its full goal, and for a Checklist habit it ticks every item. But when the user states an amount ("I read for 20 minutes", "drank 6 glasses"), use logHabitProgress instead, and when they name one checklist item, use checkHabitChecklistItem. A one-off task is marked done with these too (either one): the app finds the item whatever its type. The app refuses days that haven't happened yet and days the item isn't due, and says why.`;
 
 const CHECKLIST_PROSE = `For addRecurringTaskChecklistItem and addSingleTaskChecklistItem: name is a text fragment to find the task, items is every item the user named, one entry each (e.g. "add milk to my shopping list" → name: "shopping", items: ["milk"]; "add milk, eggs and bread to the shopping list" → items: ["milk", "eggs", "bread"]). Never drop items: one call adds them all. These always *add* — they never see or replace the task's existing items, so don't use them to rewrite a whole list. Pick recurring vs. single-task by what you know about that task from earlier in the conversation (or the user's own wording, e.g. "my weekly shopping list" implies recurring); if you genuinely can't tell, ask rather than guessing. To give a *new* task a checklist, use createSingleTask/createRecurringTask's withChecklist/checklistItems instead.
 
@@ -195,7 +204,7 @@ To change whether a recurring task's checklist is the same list every time or ca
 
 ${PICK_FROM_LIST_PROSE}`;
 
-// §54: shared by the create and modify buckets.
+// §54: shared by the create and edit buckets.
 const DAY_PART_PROSE = `Every item belongs to one part of the day, which is where it shows in the day's list: wakeUp ("first thing", "when I get up"), morning, workDay ("at work", "during the day"), afternoon ("after lunch"), evening ("after work", "tonight"), bedtime ("before bed"). When creating, dayPart is required: use what the user said, otherwise pick the best fit from the item itself (brushing teeth → wakeUp, a work call → workDay, reading → evening) — never ask, the app's confirmation shows what was assumed. important is a yes/no flag for what the user calls important, a top priority or a must-do. On an existing item use the update tools' newDayPart and newImportant: "move reading to the evening"; "gym is a top priority" → newImportant: true; "remove the priority from gym" → newImportant: false. There are no priority numbers.`;
 
 // §56: shared by the delete and checklist buckets, since both carry these two tools.
@@ -230,11 +239,12 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 // prose to only what the classifier is confident the message needs — see
 // §24 in Roadmap.md. "all" (the classifier's fallback sentinel) sends every
 // chunk, i.e. today's exact pre-§24 behavior.
-function buildSystemPrompt(
+export function buildSystemPrompt(
   categories: Category[],
   todayISO: string,
   activeBuckets: IntentBucket[] | "all",
   weekStartsOn: WeekStart,
+  options: { escapeHatch?: boolean } = {},
 ): string {
   const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
   const todayWeekday = WEEKDAY_NAMES[new Date(`${todayISO}T00:00:00Z`).getUTCDay()];
@@ -245,17 +255,18 @@ function buildSystemPrompt(
     GENERAL_POLICY,
   ];
 
-  if (isBucketActive(activeBuckets, "delete")) chunks.push(buildDeleteProse(categoryList, todayISO));
-  if (isBucketActive(activeBuckets, "delete") || isBucketActive(activeBuckets, "modify")) {
-    chunks.push(ARCHIVE_PROSE);
-    chunks.push(PAUSE_PROSE);
-  }
-  if (isBucketActive(activeBuckets, "modify")) chunks.push(buildModifyProse(categoryList));
-  if (isBucketActive(activeBuckets, "modify") || isBucketActive(activeBuckets, "checklist")) chunks.push(SET_DONE_PROSE);
-  if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
-  if (isBucketActive(activeBuckets, "checklist") || isBucketActive(activeBuckets, "delete")) chunks.push(REMOVE_CHECKLIST_PROSE);
-  if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
-  if (isBucketActive(activeBuckets, "create") || isBucketActive(activeBuckets, "modify")) chunks.push(DAY_PART_PROSE);
+  const has = (bucket: IntentBucket) => isBucketActive(activeBuckets, bucket);
+  if (options.escapeHatch) chunks.push(NARROWED_POLICY);
+  if (has("delete")) chunks.push(buildDeleteProse(categoryList, todayISO));
+  if (has("delete") || has("schedule")) chunks.push(ARCHIVE_PROSE);
+  if (has("schedule")) chunks.push(PAUSE_PROSE);
+  if (has("edit")) chunks.push(buildEditProse(categoryList));
+  if (has("progress") || has("checklist")) chunks.push(SET_DONE_PROSE);
+  if (has("progress")) chunks.push(buildLogProse());
+  if (has("checklist")) chunks.push(CHECKLIST_PROSE);
+  if (has("checklist") || has("delete")) chunks.push(REMOVE_CHECKLIST_PROSE);
+  if (has("create")) chunks.push(buildCreateProse(categoryList));
+  if (has("create") || has("edit")) chunks.push(DAY_PART_PROSE);
 
   chunks.push(
     "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
@@ -312,10 +323,11 @@ const PAUSE_RESUME_FIELD = {
 // activeBuckets narrows the schemas sent to only what classifyIntent is
 // confident the message needs (see §24 in Roadmap.md); "all" (its fallback
 // sentinel) sends every schema, i.e. today's exact pre-§24 behavior.
-function buildTools(
+export function buildTools(
   categories: Category[],
   hasPendingConfirmation: boolean,
   activeBuckets: IntentBucket[] | "all",
+  options: { escapeHatch?: boolean } = {},
 ): ToolDefinition[] {
   const categoryList = categories.map((category) => `${category.id} (${category.name})`).join(", ");
 
@@ -1024,7 +1036,76 @@ function buildTools(
       (entry) => entry.name,
     ),
   );
-  return ALL_TOOLS.filter((tool) => activeNames.has(tool.name));
+  const narrowed = ALL_TOOLS.filter((tool) => activeNames.has(tool.name));
+  return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
+}
+
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist"];
+
+const FAMILY_BLURBS: Record<IntentBucket, string> = {
+  create: "add a new habit or task",
+  edit: "change an existing item's name, schedule, dates, category, part of day, importance, goal or notes",
+  progress: "mark something done or not done, or log an amount",
+  schedule: "pause, resume or archive",
+  delete: "delete whole habits or tasks",
+  checklist: "add, tick or remove checklist items, or remove a checklist",
+};
+
+const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");
+
+const FAMILIES_FIELD = {
+  type: "array",
+  description: `One or more of: ${FAMILIES.join(", ")}.`,
+  items: { type: "string" },
+} as const;
+
+// §58: the way out of a wrongly narrowed request. Deterministic, unlike guessing from a
+// reply's wording that the model felt stuck: it names the kinds of action it needs, and
+// the request is run again with those tools.
+const ESCAPE_TOOL: ToolDefinition = {
+  name: ESCAPE_TOOL_NAME,
+  description: `Call this when none of your other tools fits what the user asked for. Kinds of action:\n${FAMILY_LINES}`,
+  parameters: { type: "object", properties: { families: FAMILIES_FIELD }, required: ["families"] },
+};
+
+export const ROUTER_TOOL_NAME = "chooseActions";
+
+/** The valid families in a needOtherTools / chooseActions call, in the model's order, without repeats. */
+function familiesFrom(input: Record<string, unknown> | undefined): IntentBucket[] {
+  const raw = Array.isArray(input?.families) ? input.families : [];
+  return FAMILIES.filter((family) => raw.includes(family));
+}
+
+/**
+ * §58: the small first call used when a provider rejects a request as too large (Groq's
+ * free tier). The model only says which families the message needs — or answers in plain
+ * text when it needs none — and the real call then carries just those.
+ */
+export function buildRouterPayload(todayISO: string): { systemPrompt: string; tools: ToolDefinition[] } {
+  return {
+    systemPrompt: `You are the in-app assistant for Habit Assistant, a personal habit and task tracker the user controls entirely through conversation. Today's date is ${todayISO}.
+
+Decide which kinds of action the user's latest message needs, and call ${ROUTER_TOOL_NAME} with them. You are not carrying out the action yet. The kinds are:
+${FAMILY_LINES}
+
+Pick every kind the message needs, usually one. Pick from the meaning, not single words: "remove milk from my shopping list" is checklist, not delete; "I drank 6 glasses" is progress; "stop my gym habit for two weeks" is schedule. Only when the message asks for no action at all (a greeting, a question about how the app works) reply in brief plain text instead, with no markdown.`,
+    tools: [
+      {
+        name: ROUTER_TOOL_NAME,
+        description: "Say which kinds of action the user's latest message needs.",
+        parameters: {
+          type: "object",
+          properties: { families: FAMILIES_FIELD },
+          required: ["families"],
+        },
+      },
+    ],
+  };
+}
+
+/** A request's size, estimated at 4 characters a token (Groq's own count came out ~15% lower). History not included. */
+export function estimatePayloadTokens(payload: { systemPrompt: string; tools: ToolDefinition[] }): number {
+  return Math.round((payload.systemPrompt.length + JSON.stringify(payload.tools).length) / 4);
 }
 
 interface ProviderAttempt {
@@ -1170,6 +1251,11 @@ function resolveRecurrenceToolCall(result: ProviderResult): ProviderResult {
   return { ...result, toolCall: { ...toolCall, input: { ...toolCall.input, [field]: parsed.rule } } };
 }
 
+/** Groq answers 413 when one request alone is over its tokens-per-minute limit. */
+function isRequestTooLarge(err: unknown): boolean {
+  return err instanceof ProviderRequestError && (err.status === 413 || /request too large/i.test(err.message));
+}
+
 export async function handleAgentRequest(
   messages: AgentHistoryMessage[],
   env: AgentEnv,
@@ -1177,6 +1263,8 @@ export async function handleAgentRequest(
   categories: Category[] = [],
   hasPendingConfirmation = false,
   weekStartsOn: WeekStart = 0,
+  // Tests only: a stand-in for the provider registry.
+  options: { resolveProvider?: (id: string) => ProviderAdapter } = {},
 ): Promise<AgentResult> {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { status: 400, body: { error: "Expected a non-empty `messages` array." } };
@@ -1214,19 +1302,35 @@ export async function handleAgentRequest(
     console.log(`[classifyIntent] ${bucketLabel}`);
   }
 
-  const tools = buildTools(availableCategories, hasPendingConfirmation, activeBuckets);
-  const toolNames = tools.map((tool) => tool.name);
-  const systemPrompt = hasPendingConfirmation
-    ? buildConfirmationSystemPrompt(todayISO)
-    : buildSystemPrompt(availableCategories, todayISO, activeBuckets, weekStartsOn);
+  // §58: what is sent to the model for one call. `narrowed` payloads carry the escape tool.
+  interface Payload {
+    systemPrompt: string;
+    tools: ToolDefinition[];
+    label: string;
+    narrowed: boolean;
+  }
+  const payloadFor = (buckets: IntentBucket[] | "all", label: string, escapeHatch: boolean): Payload => ({
+    tools: buildTools(availableCategories, false, buckets, { escapeHatch }),
+    systemPrompt: buildSystemPrompt(availableCategories, todayISO, buckets, weekStartsOn, { escapeHatch }),
+    label,
+    narrowed: escapeHatch,
+  });
+  const initialPayload: Payload = hasPendingConfirmation
+    ? {
+        tools: buildTools(availableCategories, true, "all"),
+        systemPrompt: buildConfirmationSystemPrompt(todayISO),
+        label: bucketLabel,
+        narrowed: false,
+      }
+    : payloadFor(activeBuckets, bucketLabel, activeBuckets !== "all");
 
   providerLoop: for (let i = 0; i < chain.length; i++) {
     const attempt = chain[i];
     const isLastAttempt = i === chain.length - 1;
 
-    let provider;
+    let provider: ProviderAdapter;
     try {
-      provider = resolveProvider(attempt.providerId);
+      provider = (options.resolveProvider ?? resolveProvider)(attempt.providerId);
     } catch (err) {
       return { status: 400, body: { error: err instanceof Error ? err.message : "Unknown provider." } };
     }
@@ -1236,6 +1340,8 @@ export async function handleAgentRequest(
     // retry-once pattern.
     for (let retry = 1; retry <= 2; retry++) {
       const startedAt = Date.now();
+      // The payload of the latest call to this provider — what the debug entry describes.
+      let used = initialPayload;
       const buildDebugEntry = (result: { reply?: string; toolCallName?: string } | { error: string }): AgentDebugEntry => ({
         timestamp: new Date().toISOString(),
         providerId: attempt.providerId,
@@ -1244,18 +1350,19 @@ export async function handleAgentRequest(
         latencyMs: Date.now() - startedAt,
         attempt: i + 1,
         retryCount: retry,
-        bucket: bucketLabel,
-        requestSummary: { lastUserMessage: latestUserMessage?.content ?? "", toolNames },
+        bucket: used.label,
+        requestSummary: { lastUserMessage: latestUserMessage?.content ?? "", toolNames: used.tools.map((tool) => tool.name) },
         result,
       });
-      try {
-        const result = resolveRecurrenceToolCall(
+      const send = async (payload: Payload): Promise<ProviderResult> => {
+        used = payload;
+        return resolveRecurrenceToolCall(
           await withTimeout(
             (signal) =>
               provider.send({
                 messages,
-                tools,
-                systemPrompt,
+                tools: payload.tools,
+                systemPrompt: payload.systemPrompt,
                 apiKey: attempt.apiKey,
                 model: attempt.model,
                 accountId: attempt.accountId,
@@ -1264,6 +1371,44 @@ export async function handleAgentRequest(
             attempt.timeoutMs ?? PROVIDER_TIMEOUT_MS,
           ),
         );
+      };
+      // §58: a provider that rejects the request as too large (Groq's free tier) gets it
+      // again in two small steps — the model first says which families the message needs,
+      // then gets only those. One level only: nothing in here routes a second time, so a
+      // request that still doesn't fit ends as the same "too large" error as before.
+      const sendRouted = async (tooLarge: unknown): Promise<ProviderResult> => {
+        const from = used.label;
+        const choice = await send({ ...buildRouterPayload(todayISO), label: `${from} → router`, narrowed: false });
+        if (choice.toolCall?.name !== ROUTER_TOOL_NAME) {
+          if (choice.reply) return { reply: choice.reply };
+          throw tooLarge;
+        }
+        const families = familiesFrom(choice.toolCall.input);
+        if (families.length === 0) throw tooLarge;
+        return send(payloadFor(families, `${from} → routed:${families.join(",")}`, false));
+      };
+      const sendOrRoute = async (payload: Payload): Promise<ProviderResult> => {
+        try {
+          return await send(payload);
+        } catch (err) {
+          if (hasPendingConfirmation || !isRequestTooLarge(err)) throw err;
+          return sendRouted(err);
+        }
+      };
+      try {
+        let result = await sendOrRoute(initialPayload);
+        // §58: the model says the narrowed tools don't cover the request. Run it once more
+        // with the families it named, or with everything if it named none.
+        if (initialPayload.narrowed && result.toolCall?.name === ESCAPE_TOOL_NAME) {
+          const families = familiesFrom(result.toolCall.input);
+          result = await sendOrRoute(
+            families.length > 0
+              ? payloadFor(families, `${initialPayload.label} → asked:${families.join(",")}`, false)
+              : payloadFor("all", `${initialPayload.label} → asked:full`, false),
+          );
+        }
+        // Neither helper tool is ever an answer for the app to act on.
+        if (result.toolCall?.name === ESCAPE_TOOL_NAME || result.toolCall?.name === ROUTER_TOOL_NAME) result = {};
         const toolCall = result.toolCall
           ? { id: result.toolCall.id ?? crypto.randomUUID(), name: result.toolCall.name, input: result.toolCall.input }
           : undefined;

@@ -66,7 +66,7 @@ npm run typecheck
 npm run build
 ```
 
-**Unit tests** are plain scripts, one per area: `test:classify`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`. Run them with, for example, `npm run test:pause`.
+**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`. Run them with, for example, `npm run test:pause`.
 
 **Chat scenario tests** play scripted conversations against a *real* model with no browser and no Google login. They drive the same chat engine the app uses (`src/lib/chatEngine.ts`), with fixture data from `tests/chat/fixtures/*.json`.
 
@@ -104,7 +104,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 | `src/lib/recurrence.ts` | `occursOn()`: the single answer to "is this item due on this date?" |
 | `src/lib/habitStats.ts` | Streaks, completion %, period counts, heatmap data |
 | `src/server/handleAgentRequest.ts` | Tool schemas, system prompt, provider failover chain |
-| `src/server/classifyIntent.ts` | Narrows which tools are sent to the model, per message |
+| `src/server/classifyIntent.ts` | Narrows which tool families are sent to the model, per message (sizes: `npm run measure:payload`) |
 | `src/server/providers/` | One adapter per LLM provider |
 | `src/types/models.ts` | The data model: items, recurrence rules, completion log |
 | `branding/` | The logo (`logo.svg`, the one source file) and the rejected concepts. `npm run icons` regenerates every icon in `public/` from it; commit the output |
