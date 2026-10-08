@@ -25,16 +25,14 @@
   // Secrets (TRIAL_API_KEY, TRIAL_FALLBACK_API_KEY, STT_TRIAL_API_KEY) stay
   // dashboard/CI-managed only — never put real key values in this file.
   //
-  // TRIAL_FALLBACK_PROVIDER/TRIAL_FALLBACK_API_KEY: §23's automatic
-  // cross-provider failover (handleAgentRequest.ts) supports a second
-  // trial provider, but deliberately NOT enabled here yet. Verified
-  // 2026-09-04: every current Groq model with tool-calling support (its
-  // only realistic candidate) hard-rejects this app's full tool-schema
-  // payload on its free tier (7,000-8,000 TPM/ITPM vs. an ~8,670-10,550
-  // token request) — see groq.ts's defaultModel comment. §24 (closed
-  // 2026-09-04) narrowed the payload for confidently-classified messages,
-  // which should help, but this needs re-verification against Groq's real
-  // tokenizer before enabling — not just assumed fixed.
+  // TRIAL_FALLBACK_PROVIDER: §23's automatic cross-provider failover
+  // (handleAgentRequest.ts). Groq, enabled 2026-10-08 after §58/§59 made
+  // every request fit its free tier (8,000 tokens a minute per key; verified
+  // live that day, including the two-step route for an unclassified
+  // message). It takes effect only once TRIAL_FALLBACK_API_KEY exists as a
+  // dashboard secret; without it this tier is skipped. Capacity is small:
+  // one key for all trial users, so roughly one or two messages a minute
+  // while Gemini is down.
   //
   // WORKERS_AI_ACCOUNT_ID/WORKERS_AI_API_TOKEN/WORKERS_AI_MODEL: §26's
   // third, last-resort tier (Cloudflare Workers AI). Verified end-to-end
@@ -45,7 +43,8 @@
   // API token — never in this file). See .env.example for what each var
   // does.
   "vars": {
-    "TRIAL_PROVIDER": "gemini"
+    "TRIAL_PROVIDER": "gemini",
+    "TRIAL_FALLBACK_PROVIDER": "groq"
   },
   // Enabled 2026-09-03 while debugging the Gemini tool-schema rejection —
   // without this, provider error bodies (logged via console.error in
