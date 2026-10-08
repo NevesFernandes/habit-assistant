@@ -182,7 +182,7 @@ function buildDeleteConfirmationQuestion(
 
 /** Item types an update patch can apply to — e.g. newTarget only makes sense on a habit, newDone only on a one-off task. */
 function updateKindsFor(patch: UpdatePatch, isArchive: boolean): ItemKind[] {
-  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newTarget, patch.newUnit].some(
+  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newChecklistItemsFrom, patch.newTarget, patch.newUnit].some(
     (value) => value !== undefined,
   );
   const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
@@ -557,6 +557,16 @@ export class ChatSession {
       return;
     }
 
+    // §56: a habit's steps change from a day on — today, or an earlier day the user named.
+    const stepsFrom = patch.newChecklistItemsFrom;
+    if (stepsFrom !== undefined && isFutureDate(stepsFrom, this.todayISO)) {
+      this.pushAssistantMessage(
+        `I can only change the steps of "${target.name}" from today or an earlier day, not from ${formatDate(stepsFrom, this.todayISO)}.`,
+        toolCall,
+      );
+      return;
+    }
+
     // §31: capture before/after inside the mutator so a §21 conflict-replay
     // describes what was actually written, not a stale copy.
     let before: Habit | RecurringTask | SingleTask | undefined;
@@ -578,7 +588,15 @@ export class ChatSession {
     } else if (actionVerb === "Archived") {
       this.pushAssistantMessage(describeArchive(after), toolCall);
     } else {
-      this.pushAssistantMessage(describeUpdate(before, after, data.categories, this.todayISO), toolCall);
+      const stepsText = (item: Habit | RecurringTask | SingleTask) =>
+        item.kind === "habit" ? currentHabitChecklist(item).map((step) => step.text).join("\n") : "";
+      const stepsNote =
+        patch.newChecklistItems === undefined || stepsText(before) === stepsText(after)
+          ? ""
+          : stepsFrom !== undefined && stepsFrom < this.todayISO
+            ? `\nThe new steps apply from ${formatDate(stepsFrom, this.todayISO)} on. Days before that keep their steps.`
+            : "\nThe new steps apply from today on. Earlier days keep their steps.";
+      this.pushAssistantMessage(describeUpdate(before, after, data.categories, this.todayISO) + stepsNote, toolCall);
     }
   }
 
@@ -1028,10 +1046,11 @@ export class ChatSession {
     );
   }
 
-  // §56: takes items off a checklist for good, from today on. Each named item is resolved
+  // §56: takes items off a checklist for good, from today on (or an earlier day the user
+  // named); the days before keep them. Each named item is resolved
   // on its own: the ones found are removed, and the reply says which weren't.
   private async handleRemoveChecklistItems(
-    input: ItemSelector & { items?: string[]; item?: string },
+    input: ItemSelector & { items?: string[]; item?: string; date?: string },
     toolCall: ToolCallRef,
   ) {
     const fragments = [...(input.items ?? []), ...(input.item ? [input.item] : [])]
@@ -1049,11 +1068,21 @@ export class ChatSession {
     const owner = this.pickChecklistOwner(kind, input, toolCall);
     if (!owner) return;
     const today = this.todayISO;
-    // §42: for a recurring task, today's list — an item ticked off on an earlier day is
+    // From today on, unless the user named an earlier day. A one-off task has one list, so
+    // a day means nothing there.
+    const from = owner.kind === "singleTask" ? today : (input.date ?? today);
+    if (isFutureDate(from, today)) {
+      this.pushAssistantMessage(
+        `I can only take items off "${owner.name}" from today or an earlier day, not from ${formatDate(from, today)}.`,
+        toolCall,
+      );
+      return;
+    }
+    // §42: for a recurring task, that day's list — an item ticked off on an earlier day is
     // already gone from it.
     const listed =
       owner.kind === "recurringTask"
-        ? removableRecurringTaskChecklistItems(owner, today)
+        ? removableRecurringTaskChecklistItems(owner, from)
         : owner.kind === "habit"
           ? currentHabitChecklist(owner)
           : (owner.checklist ?? []);
@@ -1086,16 +1115,16 @@ export class ChatSession {
 
     const removeOne = (data: AppData, item: ChecklistItem) =>
       owner.kind === "habit"
-        ? removeHabitChecklistItem(data, owner.id, item.id, today)
+        ? removeHabitChecklistItem(data, owner.id, item.id, from)
         : owner.kind === "recurringTask"
-          ? removeRecurringTaskChecklistItem(data, owner.id, item.id, today)
+          ? removeRecurringTaskChecklistItem(data, owner.id, item.id, from)
           : removeSingleTaskChecklistItem(data, owner.id, item.id);
     const saved = await this.deps.persist((current) => removed.reduce(removeOne, current));
     if (!saved) return;
     const left = listed.filter((item) => !removed.includes(item)).map((item) => item.text);
     this.pushAssistantMessage(
       [
-        `Removed ${formatQuotedAnd(removed.map((item) => item.text))} from "${owner.name}".`,
+        `Removed ${formatQuotedAnd(removed.map((item) => item.text))} from "${owner.name}"${from < today ? `, from ${formatDate(from, today)} on` : ""}.`,
         left.length > 0 ? `Still on the list: ${left.join(", ")}.` : "The list is now empty.",
         ...problems,
       ].join(" "),

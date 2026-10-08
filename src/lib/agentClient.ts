@@ -134,7 +134,7 @@ export interface CheckSingleTaskChecklistItemToolCall {
 // §56: one tool for all three item types — the app finds which one owns the list.
 export interface RemoveChecklistItemsToolCall {
   name: "removeChecklistItems";
-  input: { name: string; categoryId?: string; items?: string[]; item?: string };
+  input: { name: string; categoryId?: string; items?: string[]; item?: string; date?: string };
 }
 
 export interface RemoveTaskChecklistToolCall {

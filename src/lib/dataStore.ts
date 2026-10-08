@@ -24,7 +24,7 @@ import {
   withRecurringTaskChecklistItemChecked,
   withRecurringTaskChecklistItemRemoved,
 } from "./recurringChecklist";
-import { habitChecklistOn } from "./habitChecklist";
+import { habitChecklistOn, withHabitStepRemoved, withHabitStepsReplaced } from "./habitChecklist";
 
 export interface CreateSingleTaskInput {
   name: string;
@@ -406,7 +406,8 @@ export interface UpdatePatch {
   newPersistency?: boolean; // SingleTask only
   newRecurrence?: RecurrenceRule; // Habit + RecurringTask — fully replaces the existing rule
   newCompletionType?: CompletionType; // Habit only
-  newChecklistItems?: string[]; // Habit only — full replace, fresh ids, unchecked
+  newChecklistItems?: string[]; // Habit only — the whole list of steps, from newChecklistItemsFrom on
+  newChecklistItemsFrom?: string; // Habit only (§56) — ISO date, absent = today; earlier days keep their steps
   newChecklistMode?: ChecklistMode; // RecurringTask only (§42)
   newTarget?: number; // Habit only — meaningful when completionType is "value" or "timer"
   newUnit?: string; // Habit only — meaningful when completionType is "value"
@@ -499,9 +500,12 @@ export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch):
 }
 
 export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppData {
-  return {
-    ...data,
-    habits: data.habits.map((habit) => {
+  // §56: new steps apply from a day on (today unless an earlier one is named, never a
+  // future one). That day's and later days' saved snapshots follow, keeping the ticks of
+  // steps that are still on the list.
+  const stepsFrom = patch.newChecklistItemsFrom !== undefined && patch.newChecklistItemsFrom < today() ? patch.newChecklistItemsFrom : today();
+  let newSteps: ChecklistItem[] | undefined;
+  const habits = data.habits.map((habit) => {
       if (habit.id !== id) return habit;
       const base = applyBaseItemPatch(habit, patch);
       const categoryId =
@@ -515,7 +519,7 @@ export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppD
         completionType !== "checklist"
           ? undefined
           : patch.newChecklistItems !== undefined
-            ? patch.newChecklistItems.map((text) => ({ id: crypto.randomUUID(), text, checked: false }))
+            ? replaceSteps(habit, patch.newChecklistItems)
             : (habit.checklist ?? []);
       const target =
         completionType === "value" || completionType === "timer"
@@ -531,6 +535,23 @@ export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppD
         target,
         unit,
       };
+  });
+  function replaceSteps(habit: Habit, texts: string[]): ChecklistItem[] {
+    const replaced = withHabitStepsReplaced(habit, texts, stepsFrom, () => crypto.randomUUID());
+    newSteps = replaced.steps;
+    return replaced.stored;
+  }
+  const steps = newSteps;
+  if (!steps) return { ...data, habits };
+  return {
+    ...data,
+    habits,
+    completionLog: data.completionLog.flatMap((entry) => {
+      if (entry.itemId !== id || entry.date < stepsFrom || !entry.checklist) return [entry];
+      // By text, not id: a reworded or reordered step is stored as a new one (habitChecklist.ts).
+      const ticked = new Set(entry.checklist.filter((item) => item.checked).map((item) => item.text.trim().toLowerCase()));
+      const checklist = steps.map((item) => ({ id: item.id, text: item.text, checked: ticked.has(item.text.trim().toLowerCase()) }));
+      return checklist.length > 0 ? [{ ...entry, checklist }] : [];
     }),
   };
 }
@@ -706,21 +727,15 @@ export function removeSingleTaskChecklistItem(data: AppData, taskId: string, ite
 // A habit's checklist is a template plus one snapshot per logged day. The step leaves the
 // snapshots from `dateISO` on, and stays in the template marked `removedOn`, because an
 // earlier day nobody touched has no snapshot and is shown from the template
-// (habitChecklist.ts) — dropping the step would take it off those days too. A habit that
-// only starts on `dateISO` has no earlier days, so there it's dropped outright. A snapshot
+// (habitChecklist.ts) — dropping the step would take it off those days too. A snapshot
 // left with no items is dropped, like an occurrence nobody touched.
 export function removeHabitChecklistItem(data: AppData, habitId: string, itemId: string, dateISO: string): AppData {
   const keep = (item: ChecklistItem) => item.id !== itemId;
-  const withStepRemoved = (h: Habit): Habit => ({
-    ...h,
-    checklist:
-      h.startDate >= dateISO
-        ? (h.checklist ?? []).filter(keep)
-        : (h.checklist ?? []).map((item) => (keep(item) || item.removedOn !== undefined ? item : { ...item, removedOn: dateISO })),
-  });
   return {
     ...data,
-    habits: data.habits.map((h) => (h.id === habitId && h.checklist ? withStepRemoved(h) : h)),
+    habits: data.habits.map((h) =>
+      h.id === habitId && h.checklist ? { ...h, checklist: withHabitStepRemoved(h, itemId, dateISO) } : h,
+    ),
     completionLog: data.completionLog.flatMap((entry) => {
       if (entry.itemId !== habitId || entry.date < dateISO || !entry.checklist) return [entry];
       const checklist = entry.checklist.filter(keep);

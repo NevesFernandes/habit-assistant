@@ -16,6 +16,7 @@ import {
   removeSingleTaskChecklistItem,
   setHabitChecklistItemChecked,
   setRecurringTaskChecklistItemChecked,
+  updateHabit,
   updateRecurringTask,
 } from "./dataStore.ts";
 import { recurringTaskChecklistOn } from "./recurringChecklist.ts";
@@ -27,6 +28,7 @@ import { DEFAULT_CATEGORIES, type AppData, type ChecklistMode, type Habit, type 
 const SUN1 = "2026-09-27";
 const WED = "2026-09-30";
 const SUN2 = "2026-10-04";
+const MON = "2026-10-05"; // between SUN2 and SUN3, and before the real today
 const SUN3 = "2026-10-11";
 
 const empty: AppData = { categories: DEFAULT_CATEGORIES, habits: [], recurringTasks: [], singleTasks: [], completionLog: [] };
@@ -166,6 +168,43 @@ const routine: Habit = {
   assert.deepEqual(fresh.habits[0].checklist!.map((item) => item.text), ["stretch"]);
 }
 
+// Replacing a habit's whole step list: the same rule. From that day on the list is the new
+// one; earlier days keep the old one, ticked or not. A step that stays keeps its ticks.
+{
+  let d: AppData = { ...empty, habits: [routine] };
+  const entryOn = (date: string) => d.completionLog.find((e) => e.date === date);
+  const shown = (date: string) => checklistItemsForEntry(d.habits[0], entryOn(date), date).map((item) => `${item.checked ? "x" : " "} ${item.text}`);
+  d = setHabitChecklistItemChecked(d, "routine", "s2", true, SUN1);
+  d = setHabitChecklistItemChecked(d, "routine", "s1", true, SUN2);
+  d = updateHabit(d, "routine", { newChecklistItems: ["Stretch", "meditate"], newChecklistItemsFrom: SUN2 });
+  assert.deepEqual(currentHabitChecklist(d.habits[0]).map((item) => item.text), ["Stretch", "meditate"]);
+  assert.deepEqual(shown(SUN1), ["  stretch", "x floss"], "a ticked earlier day is untouched");
+  assert.deepEqual(shown(WED), ["  stretch", "  floss"], "an untouched earlier day keeps the old steps");
+  assert.deepEqual(shown(SUN2), ["x Stretch", "  meditate"], "that day's record follows, keeping the tick");
+  assert.deepEqual(shown(SUN3), ["  Stretch", "  meditate"]);
+
+  // An unchanged step stays the same step; a reordered list is stored as a new one, and
+  // either way the earlier days look exactly as they did.
+  const stretchId = currentHabitChecklist(d.habits[0])[0].id;
+  d = updateHabit(d, "routine", { newChecklistItems: ["Stretch", "meditate", "floss"], newChecklistItemsFrom: SUN3 });
+  assert.equal(currentHabitChecklist(d.habits[0])[0].id, stretchId);
+  d = updateHabit(d, "routine", { newChecklistItems: ["floss", "meditate", "Stretch"], newChecklistItemsFrom: SUN3 });
+  assert.deepEqual(shown(SUN3), ["  floss", "  meditate", "  Stretch"]);
+  assert.deepEqual(shown(SUN2), ["x Stretch", "  meditate"]);
+  assert.deepEqual(shown(MON), ["  Stretch", "  meditate"]);
+  assert.deepEqual(shown(WED), ["  stretch", "  floss"]);
+
+  // No day named: from today (the real one, later than every date here) and no earlier.
+  d = updateHabit(d, "routine", { newChecklistItems: ["read"] });
+  assert.deepEqual(shown(WED), ["  stretch", "  floss"]);
+  assert.deepEqual(shown(MON), ["  Stretch", "  meditate"]);
+  assert.deepEqual(shown("2099-01-01"), ["  read"]);
+  // A future day is never honoured: it means today.
+  d = updateHabit(d, "routine", { newChecklistItems: ["write"], newChecklistItemsFrom: "2098-01-01" });
+  assert.deepEqual(shown("2097-01-01"), ["  write"]);
+  assert.deepEqual(shown(MON), ["  Stretch", "  meditate"]);
+}
+
 // --- The chat engine, with the model's tool call scripted. ---
 async function chat(start: AppData, turns: { user: string; call: { name: string; input: Record<string, unknown> } }[]) {
   let data = start;
@@ -233,6 +272,20 @@ const world: AppData = { ...shopping(["milk", "eggs", "bread"]), singleTasks: [e
   assert.equal(r.replies[0], 'Removed "floss" from "Morning routine". Still on the list: stretch.');
   assert.match(r.replies[1], /needs at least one step/);
   assert.deepEqual(currentHabitChecklist(r.data().habits[0]).map((item) => item.text), ["stretch"]);
+}
+
+// An earlier day, when the user names one; never a future one.
+{
+  const r = await chat(world, [
+    { user: "remove floss from my morning routine since last Wednesday", call: { name: "removeChecklistItems", input: { name: "morning routine", items: ["floss"], date: WED } } },
+    { user: "remove stretch from next Sunday", call: { name: "removeChecklistItems", input: { name: "morning routine", items: ["stretch"], date: SUN3 } } },
+  ]);
+  assert.equal(r.replies[0], 'Removed "floss" from "Morning routine", from Wed 30 Sep on. Still on the list: stretch.');
+  const habit = r.data().habits[0];
+  assert.deepEqual(checklistItemsForEntry(habit, undefined, SUN1).map((item) => item.text), ["stretch", "floss"]);
+  assert.deepEqual(checklistItemsForEntry(habit, undefined, WED).map((item) => item.text), ["stretch"]);
+  assert.match(r.replies[1], /from today or an earlier day/);
+  assert.equal(currentHabitChecklist(r.data().habits[0]).length, 1);
 }
 
 // Not found, and found but without a checklist.

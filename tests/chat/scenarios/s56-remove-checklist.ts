@@ -1,11 +1,15 @@
 // §56: chat can take an item off a checklist, or the checklist off a task, without
 // deleting the task or habit that owns it — and "remove" isn't mistaken for "check off".
+import { addDays } from "../../../src/lib/recurrence.ts";
+import { currentHabitChecklist, habitChecklistOn } from "../../../src/lib/habitChecklist.ts";
 import { recurringTaskChecklistOn } from "../../../src/lib/recurringChecklist.ts";
 import type { AppData } from "../../../src/types/models.ts";
 import type { Scenario } from "../types.ts";
 import { all, check, todayISO } from "./helpers.ts";
 
 const TODAY = todayISO();
+const YESTERDAY = addDays(TODAY, -1);
+const LAST_WEEK = addDays(TODAY, -7);
 
 const setup = (data: AppData): AppData => ({
   ...data,
@@ -32,7 +36,7 @@ const setup = (data: AppData): AppData => ({
   ],
   habits: [
     {
-      kind: "habit", id: "h-routine", name: "Morning routine", categoryId: "health", priority: 1, startDate: TODAY,
+      kind: "habit", id: "h-routine", name: "Morning routine", categoryId: "health", priority: 1, startDate: LAST_WEEK,
       recurrence: { type: "daily" }, completionType: "checklist",
       checklist: [
         { id: "s1", text: "stretch", checked: false },
@@ -111,7 +115,33 @@ export const scenarios: Scenario[] = [
         user: "remove floss from my morning routine",
         expect: {
           toolCall: "removeChecklistItems",
-          data: (data) => all(intact(data), check(texts(routine(data)?.checklist) === "stretch,meditate", `steps are ${texts(routine(data)?.checklist)}`)),
+          data: (data) =>
+            all(
+              intact(data),
+              check(texts(currentHabitChecklist(routine(data)!)) === "stretch,meditate", `steps are ${texts(currentHabitChecklist(routine(data)!))}`),
+              check(texts(habitChecklistOn(routine(data)!, YESTERDAY)) === "stretch,floss,meditate", "yesterday lost a step"),
+            ),
+        },
+      },
+    ],
+  },
+  {
+    // A whole new list of steps counts from today; the days before keep the old one.
+    name: "s56-replace-habit-steps",
+    fixture: "empty",
+    setup,
+    turns: [
+      {
+        user: "change the steps of my morning routine to stretch, meditate and journal",
+        expect: {
+          toolCall: "updateHabit",
+          reply: /apply from today on/,
+          data: (data) =>
+            all(
+              intact(data),
+              check(texts(currentHabitChecklist(routine(data)!)) === "stretch,meditate,journal", `steps are ${texts(currentHabitChecklist(routine(data)!))}`),
+              check(texts(habitChecklistOn(routine(data)!, YESTERDAY)) === "stretch,floss,meditate", "yesterday's steps changed"),
+            ),
         },
       },
     ],
