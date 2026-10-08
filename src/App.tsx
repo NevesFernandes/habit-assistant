@@ -638,7 +638,8 @@ export default function App() {
               // different device's entry.
               void persist((current) => ({
                 ...current,
-                byokSettings: exportByokState(),
+                // §47: the Drive copy is passed in for the choices a device-only key keeps local.
+                byokSettings: exportByokState(current.byokSettings),
                 ttsEnabledByDevice: { ...current.ttsEnabledByDevice, [getDeviceId()]: getTtsEnabled() },
               }));
             }}
