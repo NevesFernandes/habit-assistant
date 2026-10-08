@@ -87,6 +87,12 @@ const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase"
 // rather than a fixed phrase in MODIFY_VERBS.
 const MARK_DONE_PATTERN = /\bmark\b[\s\S]*\b(done|not done)\b/;
 
+// §54: placing an existing item in the day ("put reading in the evening"; "move" and
+// "shift" are already modify verbs) or flagging it ("gym is a top priority").
+const PLACE_IN_DAY_PATTERN =
+  /\b(?:put|place)\b[\s\S]*\b(?:morning|afternoon|evening|bedtime|bed|wake-?up|work ?day|first thing|part of (?:the|my) day)\b/;
+const IMPORTANCE_WORDS = ["important", "top priority", "high priority", "must-do", "priority"];
+
 const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with", "practiced", "studied", "tracked"];
 const DURATION_WORDS = ["minute", "minutes", "hour", "hours", "glass", "glasses", "page", "pages", "rep", "reps", "mile", "miles", "step", "steps", "cup", "cups", "time", "times"];
 
@@ -121,7 +127,12 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const mentionsFieldToClear =
     clearsField || TAKE_FIELD_OFF_PATTERN.test(text) || ((matchesAny(text, DELETE_VERBS) || matchesAny(text, CLEAR_ONLY_VERBS)) && matchesAny(text, FIELD_WORDS));
   const hasArchiveVerb = matchesAny(text, ARCHIVE_VERBS);
-  const hasModifyVerb = matchesAny(text, MODIFY_VERBS) || MARK_DONE_PATTERN.test(text);
+  // §54: an importance word is an edit ("make my reading habit important"), except with
+  // a plainly adding verb, where it's just a field of the new item and doesn't need the
+  // edit tools ("add an important task to call the bank").
+  const addsNewItem = matchesAny(text, ["add", "create", "new", "schedule", "start", "begin"]) && (hasCreateNoun || hasRecurrence);
+  const placesItem = PLACE_IN_DAY_PATTERN.test(text) || (matchesAny(text, IMPORTANCE_WORDS) && !addsNewItem);
+  const hasModifyVerb = matchesAny(text, MODIFY_VERBS) || MARK_DONE_PATTERN.test(text) || placesItem;
   const hasLogVerb = matchesAny(text, LOG_VERBS);
   const hasNumberOrDuration = /\d/.test(text) || matchesAny(text, DURATION_WORDS);
 

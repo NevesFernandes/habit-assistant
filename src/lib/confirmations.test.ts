@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   describeArchive,
   describeCandidates,
+  describeChanges,
   describeCreatedHabit,
   describeCreatedRecurringTask,
   describeCreatedSingleTask,
@@ -83,7 +84,7 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
   assert.doesNotMatch(text, /Assumed: every day/);
 }
 
-// Timer + end date + priority.
+// Timer + end date + a legacy priority number.
 {
   const text = describeCreatedHabit(
     habit({ completionType: "timer", target: 90, endDate: "2026-12-31", priority: 3 }),
@@ -94,7 +95,7 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
   );
   assert.match(text, /Tracking: timer — goal 1 h 30 min/);
   assert.match(text, /Ends: Thu 31 Dec/);
-  assert.match(text, /Priority: 3/);
+  assert.match(text, /Important: yes/); // a number above 1 from before §54 reads as important
 }
 
 // Recurring task with no category.
@@ -122,7 +123,7 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
 // Single task.
 {
   const task: SingleTask = { kind: "singleTask", id: "s1", name: "Buy milk", priority: 0, startDate: TODAY, done: false, persistency: true };
-  const text = describeCreatedSingleTask(task, { name: "Buy milk" }, categories, TODAY);
+  const text = describeCreatedSingleTask(task, { name: "Buy milk" }, categories, "add a task", TODAY);
   assert.match(text, /Date: today/);
   assert.doesNotMatch(text, /Category/);
   assert.match(text, /carries over/);
@@ -133,7 +134,7 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
 // §57: a day given by weekday is a given date, so nothing was assumed.
 {
   const task: SingleTask = { kind: "singleTask", id: "s1", name: "Beacons", priority: 0, startDate: "2026-09-24", done: false, persistency: false };
-  const text = describeCreatedSingleTask(task, { name: "Beacons", startWeekday: 4, startWeekdayMode: "next", persistency: false }, categories, TODAY);
+  const text = describeCreatedSingleTask(task, { name: "Beacons", startWeekday: 4, startWeekdayMode: "next", persistency: false }, categories, "add a task", TODAY);
   assert.match(text, /• Date: Thu 24 Sep/);
   assert.match(text, /dropped at the end of the day/);
   assert.doesNotMatch(text, /Assumed/);
@@ -142,16 +143,16 @@ assert.equal(formatDate("2027-01-04", TODAY), "Mon 4 Jan 2027");
 // §53: a one-off task shows its category when it has one, first in the list.
 {
   const task: SingleTask = { kind: "singleTask", id: "s1", name: "Run 5k", categoryId: "sports", priority: 0, startDate: TODAY, done: false, persistency: true };
-  const text = describeCreatedSingleTask(task, { name: "Run 5k", categoryId: "sports" }, categories, TODAY);
+  const text = describeCreatedSingleTask(task, { name: "Run 5k", categoryId: "sports" }, categories, "add a task", TODAY);
   assert.match(text, /^Added task "Run 5k":\n• Category: Sports\n• Date: today/);
 }
 
 // §39: a task created with a checklist says so, empty or not.
 {
   const base: SingleTask = { kind: "singleTask", id: "s1", name: "Go shopping", priority: 0, startDate: TODAY, done: false, persistency: true };
-  assert.match(describeCreatedSingleTask({ ...base, checklist: [] }, { name: "Go shopping" }, categories, TODAY), /• Checklist: empty for now/);
+  assert.match(describeCreatedSingleTask({ ...base, checklist: [] }, { name: "Go shopping" }, categories, "add a task", TODAY), /• Checklist: empty for now/);
   const withItems = { ...base, checklist: [{ id: "a", text: "milk", checked: false }, { id: "b", text: "eggs", checked: false }] };
-  assert.match(describeCreatedSingleTask(withItems, { name: "Go shopping" }, categories, TODAY), /• Checklist: milk, eggs/);
+  assert.match(describeCreatedSingleTask(withItems, { name: "Go shopping" }, categories, "add a task", TODAY), /• Checklist: milk, eggs/);
 }
 
 // Updates list only changed fields.
@@ -283,6 +284,35 @@ assert.match(describeArchive(habit()), /^Archived "Read"/);
   const task: SingleTask = { kind: "singleTask", id: "s1", name: "Buy milk", priority: 0, startDate: TODAY, done: false, persistency: true };
   assert.equal(itemDetails(task, categories, TODAY), "today (Fri 18 Sep) · not done");
   assert.match(itemDetails(habit({ endDate: "2026-09-01" }), categories, TODAY), /· archived$/);
+}
+
+
+// §54: the part of the day is always shown, flagged as assumed only when the user's own
+// message named no time of day; "important" shows when set; edits read as a diff.
+{
+  const placed = habit({ dayPart: "bedtime", important: true });
+  const input = { name: "Read", categoryId: "study", recurrence: { type: "daily" as const }, dayPart: "bedtime" as const };
+  const guessed = describeCreatedHabit(placed, input, categories, "add a habit to read", TODAY);
+  assert.match(guessed, /• Part of day: Bedtime\n• Important: yes/);
+  assert.match(guessed, /Assumed: every day, Study, yes\/no, starting today, part of day Bedtime\./);
+  const stated = describeCreatedHabit(placed, input, categories, "add a habit to read every day before bed", TODAY);
+  assert.match(stated, /• Part of day: Bedtime/);
+  assert.doesNotMatch(stated, /part of day Bedtime/);
+  // An item the model gave no part: said plainly, nothing to flag as assumed.
+  const unplaced = describeCreatedHabit(habit(), { name: "Read", categoryId: "study", recurrence: { type: "daily" } }, categories, "add a habit to read", TODAY);
+  assert.match(unplaced, /• Part of day: Not placed yet/);
+  assert.doesNotMatch(unplaced, /Important/);
+
+  const task: SingleTask = { kind: "singleTask", id: "s1", name: "Call the bank", dayPart: "workDay", startDate: TODAY, done: false, persistency: true };
+  assert.match(describeCreatedSingleTask(task, { name: "Call the bank", dayPart: "workDay" }, categories, "add a task to call the bank", TODAY), /Assumed: due today, part of day Work day\.\nNeed any changes\?$/);
+
+  assert.deepEqual(describeChanges(habit({ dayPart: "morning" }), habit({ dayPart: "evening", important: true }), categories, TODAY), [
+    "Part of day: Morning → Evening",
+    "Important: no → yes",
+  ]);
+  assert.deepEqual(describeChanges(habit(), habit({ dayPart: "wakeUp" }), categories, TODAY), ["Part of day: Not placed yet → Wake-up"]);
+  // The legacy number counts as "yes" until the flag is set.
+  assert.deepEqual(describeChanges(habit({ priority: 4 }), habit({ priority: 4, important: false }), categories, TODAY), ["Important: yes → no"]);
 }
 
 console.log("confirmations.test.ts: all passed");

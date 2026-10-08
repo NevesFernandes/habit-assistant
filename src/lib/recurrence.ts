@@ -11,6 +11,7 @@ import type {
   RecurringTask,
   WeekStart,
 } from "../types/models";
+import { compareForDay } from "./dayParts.ts";
 
 // occursOn only ever reads startDate/endDate/recurrence — fields Habit and
 // RecurringTask both carry — so it's typed structurally rather than to Habit
@@ -205,14 +206,14 @@ export function getHabitsForDate(habits: Habit[], dateISO: string): Habit[] {
   return habits
     .filter((habit) => occursOn(habit, dateISO))
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 }
 
 export function getRecurringTasksForDate(tasks: RecurringTask[], dateISO: string): RecurringTask[] {
   return tasks
     .filter((task) => occursOn(task, dateISO))
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 }
 
 export function todayISO(): string {

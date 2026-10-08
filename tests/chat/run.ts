@@ -39,12 +39,13 @@ import { scenarios as s42 } from "./scenarios/s42-checklist-modes.ts";
 import { scenarios as s43 } from "./scenarios/s43-week-start.ts";
 import { scenarios as s50 } from "./scenarios/s50-first-due.ts";
 import { scenarios as s53 } from "./scenarios/s53-task-category.ts";
+import { scenarios as s54 } from "./scenarios/s54-day-parts.ts";
 import { scenarios as s55 } from "./scenarios/s55-clear-fields.ts";
 import { scenarios as s51 } from "./scenarios/s51-follow-ups.ts";
 import { scenarios as s56 } from "./scenarios/s56-remove-checklist.ts";
 import { scenarios as s57 } from "./scenarios/s57-task-weekday.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s55, ...s56, ...s57];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

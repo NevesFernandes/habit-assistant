@@ -3,11 +3,14 @@ import type { Category, RecurringTask } from "../types/models";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistModeOf, recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
+import DayPartPicker, { type PlacementPatch } from "./DayPartPicker";
+import { compareForDay } from "../lib/dayParts";
 import Checklist from "./Checklist";
 
 interface RecurringTasksViewProps {
   recurringTasks: RecurringTask[];
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
@@ -16,6 +19,7 @@ interface RecurringTasksViewProps {
 export default function RecurringTasksView({
   recurringTasks,
   categories,
+  onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -29,6 +33,7 @@ export default function RecurringTasksView({
       <RecurringTaskDetail
         task={selectedTask}
         categories={categories}
+        onPlace={onPlace}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
         onRemoveChecklistItem={onRemoveChecklistItem}
@@ -39,7 +44,7 @@ export default function RecurringTasksView({
 
   const sortedTasks = recurringTasks
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 
   if (sortedTasks.length === 0) {
     return <p className="text-sm text-slate-500">No recurring tasks yet.</p>;
@@ -78,6 +83,7 @@ export default function RecurringTasksView({
 function RecurringTaskDetail({
   task,
   categories,
+  onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -85,6 +91,7 @@ function RecurringTaskDetail({
 }: {
   task: RecurringTask;
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
@@ -119,8 +126,8 @@ function RecurringTaskDetail({
           <span>{category?.name ?? "None"}</span>
         </DetailRow>
 
-        <DetailRow label="Priority">
-          <span>{task.priority}</span>
+        <DetailRow label="Part of day">
+          <DayPartPicker item={task} onChange={(patch) => onPlace(task.id, patch)} />
         </DetailRow>
 
         <DetailRow label="Start date">

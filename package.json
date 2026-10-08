@@ -22,6 +22,7 @@
     "test:recurringChecklist": "tsx src/lib/recurringChecklist.test.ts",
     "test:checklistRemoval": "tsx src/lib/checklistRemoval.test.ts",
     "test:deviceOnlyKeys": "tsx src/lib/deviceOnlyKeys.test.ts",
+    "test:dayParts": "tsx src/lib/dayParts.test.ts",
     "test:driveToken": "tsx src/lib/driveToken.test.ts",
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
     "test:trialHint": "tsx src/lib/trialHint.test.ts",

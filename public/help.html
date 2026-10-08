@@ -249,6 +249,10 @@
           <td><span class="say">add milk and bread to my shopping list</span>, <span class="say">check off milk</span>, <span class="say">remove bread from my shopping list</span></td>
         </tr>
         <tr>
+          <td>Order your day</td>
+          <td><span class="say">move reading to the evening</span>, <span class="say">put flossing just before bed</span>, <span class="say">gym is a top priority</span></td>
+        </tr>
+        <tr>
           <td>Change something</td>
           <td><span class="say">move gym to Mondays and Thursdays</span>, <span class="say">rename reading to evening reading</span>, <span class="say">change my water goal to 10 glasses</span>, <span class="say">remove the end date from gym</span></td>
         </tr>
@@ -284,8 +288,40 @@
         <li><strong>Recurring task:</strong> a chore that repeats, like taking out the trash. It's just done or not done each time, with no stats.</li>
         <li><strong>Task:</strong> a one-off to-do, like calling the dentist.</li>
       </ul>
-      <p>Every item has a name, and can have a description, a priority (a number where higher shows first), a start date (today unless you say otherwise) and an end date. Habits always have a category: if you don't name one, the assistant picks the best fit, or <strong>Other</strong>. Tasks can have a category or none: name one when adding the task (<span class="say">add a task to pay rent, in Finance</span>) and it's saved with it.</p>
+      <p>Every item has a name and a <a href="#dayparts">part of the day</a>, and can have a description, a start date (today unless you say otherwise) and an end date. Habits always have a category: if you don't name one, the assistant picks the best fit, or <strong>Other</strong>. Tasks can have a category or none: name one when adding the task (<span class="say">add a task to pay rent, in Finance</span>) and it's saved with it.</p>
       <p>To take something off an item without deleting it, say which part: <span class="say">remove the notes from the dentist task</span>, <span class="say">remove the end date from gym</span>, <span class="say">remove the category from the rent task</span>. "Notes", "comments" and "details" all mean the description. A habit always keeps a category, so removing it moves the habit to <strong>Other</strong>. The same goes for a checklist: see <a href="#checklists">Checklists on tasks</a>.</p>
+
+      <h3 id="dayparts">Parts of the day</h3>
+      <p>
+        Every habit and task belongs to one part of the day, and the Today tab lists them in that order, so it reads
+        from top to bottom like your day:
+      </p>
+      <table>
+        <tr><th>Part</th><th>For example, say</th></tr>
+        <tr><td>Wake-up</td><td><span class="say">first thing</span>, <span class="say">when I get up</span></td></tr>
+        <tr><td>Morning</td><td><span class="say">in the morning</span></td></tr>
+        <tr><td>Work day</td><td><span class="say">at work</span>, <span class="say">during the day</span></td></tr>
+        <tr><td>Afternoon</td><td><span class="say">after lunch</span>, <span class="say">in the afternoon</span></td></tr>
+        <tr><td>Evening</td><td><span class="say">after work</span>, <span class="say">tonight</span></td></tr>
+        <tr><td>Bedtime</td><td><span class="say">before bed</span></td></tr>
+      </table>
+      <p>
+        Say when something belongs as you add it: <span class="say">add a habit to floss every night before bed</span>.
+        If you don't, the assistant picks the part that fits best and tells you what it assumed, so you can correct
+        it. To move something later, say <span class="say">move reading to the evening</span>, or open the item in the
+        <strong>View</strong> tab and tap one of the six buttons under <strong>Part of day</strong>.
+      </p>
+      <p>
+        Inside a part, items are listed by name. To put one first, mark it important:
+        <span class="say">gym is a top priority</span>, or the <strong>Mark as important</strong> button on the item's
+        page. Important items get a star and come first in their part. To undo it:
+        <span class="say">gym isn't a priority any more</span>. There are no priority numbers.
+      </p>
+      <p>
+        Items you created before parts of the day existed show under <strong>Not placed yet</strong> at the bottom of
+        the Today tab until you place them. Something you do twice a day, like brushing your teeth in the morning and
+        before bed, is two habits, one in each part.
+      </p>
 
       <h3>How a habit is tracked</h3>
       <table>
@@ -410,9 +446,9 @@
       <p>The row of buttons under the title, from left to right:</p>
       <ul>
         <li><strong>Chat</strong> (speech bubble): talk to the assistant.</li>
-        <li><strong>Today</strong> (calendar): what's due on a day, with checkboxes. Pick another day from the strip of days (or its arrows); <strong>Today</strong> jumps back.</li>
+        <li><strong>Today</strong> (calendar): what's due on a day, grouped by <a href="#dayparts">part of the day</a>, with checkboxes. Pick another day from the strip of days (or its arrows); <strong>Today</strong> jumps back.</li>
         <li><strong>Categories</strong> (tag): add, rename or remove categories, and see stats per category. Every habit has a category (Other if nothing fits); tasks don't need one.</li>
-        <li><strong>View</strong> (list): all habits, recurring tasks and tasks. Tap a habit for its details, stats and history.</li>
+        <li><strong>View</strong> (list): all habits, recurring tasks and tasks. Tap a habit for its details, stats and history, or any item to change its part of the day.</li>
         <li><strong>Stats</strong> (bar chart): overall progress, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
         <li><strong>Timer</strong> (stopwatch): a stopwatch or countdown you can save to a Timer habit.</li>
       </ul>

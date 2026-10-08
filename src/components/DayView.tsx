@@ -7,6 +7,8 @@ import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from 
 import { useWeekStart } from "../lib/weekStartContext";
 import { recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
+import { ImportantMark } from "./DayPartPicker";
+import { groupByDayPart, isImportant, type DayPartGroup } from "../lib/dayParts";
 import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
 import { formatDurationMinutes } from "../lib/duration";
@@ -53,9 +55,12 @@ function getItemsForDate(
     kind: "recurringTask",
     item,
   }));
-  return [...habitItems, ...taskItems, ...recurringTaskItems].sort(
-    (a, b) => b.item.priority - a.item.priority || a.item.name.localeCompare(b.item.name),
-  );
+  return [...habitItems, ...taskItems, ...recurringTaskItems];
+}
+
+// §54: the day's items under a heading per part of the day, in day order.
+function getGroupsForDate(...args: Parameters<typeof getItemsForDate>): DayPartGroup<DayItem>[] {
+  return groupByDayPart(getItemsForDate(...args), (entry) => entry.item);
 }
 
 export default function DayView({
@@ -78,13 +83,13 @@ export default function DayView({
   onAddRecurringTaskChecklistItem,
   onRemoveRecurringTaskChecklistItem,
 }: DayViewProps) {
-  const items = getItemsForDate(habits, singleTasks, recurringTasks, selectedDate);
+  const groups = getGroupsForDate(habits, singleTasks, recurringTasks, selectedDate);
   // §29: a day that hasn't happened yet is read-only for completion. One-off tasks are the
   // exception — they can be done early, after confirming the move to today.
   const isFuture = isFutureDate(selectedDate, todayISO);
   const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
 
-  if (items.length === 0) {
+  if (groups.length === 0) {
     return (
       <p className="text-sm text-slate-500">
         Nothing for this date — ask the assistant to add a habit or task.
@@ -99,8 +104,11 @@ export default function DayView({
           This day hasn't happened yet — you can plan here, but completion can only be ticked on the day itself.
         </p>
       )}
+      {groups.map((group) => (
+      <section key={group.part ?? "unplaced"} className="flex flex-col gap-2">
+      <h3 className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-400">{group.label}</h3>
       <ul className="flex flex-col gap-2">
-      {items.map((entry) => {
+      {group.items.map((entry) => {
         if (entry.kind === "habit") {
           return (
             <HabitRow
@@ -152,6 +160,8 @@ export default function DayView({
         );
       })}
       </ul>
+      </section>
+      ))}
     </div>
   );
 }
@@ -190,7 +200,10 @@ function HabitRow({
       <div className="flex w-full items-center gap-3">
         <CategoryIcon name={category?.icon} className="h-4 w-4 shrink-0" />
         <div className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""}`}>
-          <div>{habit.name}</div>
+          <div>
+            {habit.name}
+            {isImportant(habit) && <ImportantMark />}
+          </div>
           {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
           {habit.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
@@ -278,7 +291,10 @@ function RecurringTaskRow({
           className={`flex-1 ${isDone ? "text-slate-500 line-through" : ""} ${items ? "cursor-pointer" : ""}`}
           onClick={checklist.toggleExpanded}
         >
-          <div>{task.name}</div>
+          <div>
+            {task.name}
+            {isImportant(task) && <ImportantMark />}
+          </div>
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
           {task.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
@@ -352,7 +368,10 @@ function TaskRow({
           className={`flex-1 ${task.done ? "text-slate-500 line-through" : ""} ${task.checklist ? "cursor-pointer" : ""}`}
           onClick={checklist.toggleExpanded}
         >
-          <div>{task.name}</div>
+          <div>
+            {task.name}
+            {isImportant(task) && <ImportantMark />}
+          </div>
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
         </div>
         {task.checklist && (

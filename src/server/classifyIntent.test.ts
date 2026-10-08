@@ -77,6 +77,15 @@ const cases: Case[] = [
   ["clear my shopping list", ["checklist"]],
   // A real deletion alongside it: the delete tools stay.
   ["delete my gym habit and remove milk from my shopping list", ["delete", "checklist"]],
+  // §54: placing an item in the day, or flagging it, is an edit.
+  ["put reading in the evening", ["modify"]],
+  ["move meditation to bedtime", ["modify"]],
+  ["gym is a top priority", ["modify"]],
+  ["make my reading habit important", ["create", "modify"]], // "make … habit" also reads as creating: both
+  ["brush teeth isn't that important any more", ["modify"]],
+  // While creating, importance is just a field of the new item.
+  ["add an important task to call the bank", ["create"]],
+  ["add a habit to stretch every morning", ["create"]],
   // §55 still wins for a field: an edit, with no checklist tools.
   ["remove the notes from my shopping list", ["modify"]],
 ];
