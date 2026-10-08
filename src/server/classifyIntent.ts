@@ -68,6 +68,18 @@ const FIELD_CLEAR_PATTERN = new RegExp(
 const TAKE_FIELD_OFF_PATTERN =
   /\btake\s+(?:(?:the|its|their|my|that|this)\s+)*(?:descriptions?|notes?|comments?|details|end date|deadline|category|priority)\s+(?:off|away)\b/;
 
+// §56: "remove milk from my shopping list" / "take eggs off the list" take an item off a
+// checklist, and "remove the checklist from the shopping task" takes the checklist off a
+// task. Neither deletes an item, so both go to the checklist tools.
+const REMOVE_FROM_LIST_PATTERN =
+  /\b(?:remove|delete|erase|scrap|drop|strike|take|get rid of|cross out)\b[\s\S]*?\b(?:from|off|out of)\b[\s\S]*?\b(?:list|checklist)\b/;
+const REMOVE_CHECKLIST_PATTERN =
+  /\b(?:remove|delete|erase|scrap|drop|take|get rid of)\s+(?:(?:the|its|my|that|this|whole|entire)\s+)*checklist\s+(?:from|of|on|off|in)\b/;
+// With one of these in the message, "list" may mean the user's tasks or habits as a whole
+// ("remove the dentist task from my to-do list"), so the delete tools stay available.
+const WHOLE_ITEM_WORDS = ["habit", "habits", "task", "tasks", "to-do list", "todo list"];
+const REMOVAL_VERB_PATTERN = /\b(?:remove|delete|erase|scrap|drop|wipe|cancel|toss|clear|get rid of)\b/g;
+
 const MODIFY_VERBS = ["change", "update", "edit", "rename", "adjust", "increase", "decrease", "postpone", "reschedule", "extend", "target", "goal", "shift", "swap", "tweak", "revise", "move"];
 // "mark my dentist task as done" / "mark it not done" — a whole-item
 // done/not-done toggle, handled by updateSingleTask.newDone, not a checklist
@@ -92,7 +104,20 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // instead of widening, because delete + modify together is too large for Groq's free
   // tier and the phrase is unambiguous. A looser mention of a field (below) only widens.
   const clearsField = FIELD_CLEAR_PATTERN.test(text);
-  const hasDeleteVerb = matchesAny(clearsField ? text.replace(FIELD_CLEAR_PATTERN, " ") : text, DELETE_VERBS);
+  const mentionsDeleteVerb = matchesAny(clearsField ? text.replace(FIELD_CLEAR_PATTERN, " ") : text, DELETE_VERBS);
+  // §56: taking something off a checklist. Like §55 above, an unambiguous phrasing narrows:
+  // the delete tools are left out, so the model can't delete the task instead. That needs
+  // the message to ask for one removal only, of something that isn't a task or a habit;
+  // any looser mix of a delete verb and a list word gets both families.
+  const removesChecklist = !clearsField && REMOVE_CHECKLIST_PATTERN.test(text);
+  const removesFromList = !clearsField && REMOVE_FROM_LIST_PATTERN.test(text);
+  const onlyChecklistRemoval =
+    (removesChecklist || (removesFromList && !matchesAny(text, WHOLE_ITEM_WORDS))) &&
+    (text.match(REMOVAL_VERB_PATTERN)?.length ?? 0) <= 1;
+  const hasDeleteVerb = mentionsDeleteVerb && !onlyChecklistRemoval;
+  // "clear my shopping list" / "empty the list" have no delete verb of their own.
+  const emptiesList = !clearsField && hasListNoun && matchesAny(text, ["clear", "empty"]);
+  const touchesChecklistRemoval = removesChecklist || removesFromList || emptiesList || (mentionsDeleteVerb && hasListNoun);
   const mentionsFieldToClear =
     clearsField || TAKE_FIELD_OFF_PATTERN.test(text) || ((matchesAny(text, DELETE_VERBS) || matchesAny(text, CLEAR_ONLY_VERBS)) && matchesAny(text, FIELD_WORDS));
   const hasArchiveVerb = matchesAny(text, ARCHIVE_VERBS);
@@ -106,7 +131,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // with a list noun (this is what routes "add milk to my shopping list" to
   // checklist rather than create — the list-noun match wins over the bare
   // presence of "add").
-  if (hasCheckVerb || (hasCreateVerb && hasListNoun)) buckets.add("checklist");
+  if (hasCheckVerb || (hasCreateVerb && hasListNoun) || touchesChecklistRemoval) buckets.add("checklist");
 
   // Create: an add-family verb paired with an item-type noun or a recurrence
   // phrase — both needed, so "add milk..." above doesn't also fire this.

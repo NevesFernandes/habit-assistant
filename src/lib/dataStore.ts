@@ -19,8 +19,10 @@ import { resolveWeekdayDate } from "./recurrence";
 import {
   isRecurringTaskChecklistItemChecked,
   withChecklistMode,
+  withoutChecklist,
   withRecurringTaskChecklistItemAdded,
   withRecurringTaskChecklistItemChecked,
+  withRecurringTaskChecklistItemRemoved,
 } from "./recurringChecklist";
 
 export interface CreateSingleTaskInput {
@@ -681,6 +683,49 @@ export function addSingleTaskChecklistItem(data: AppData, taskId: string, text: 
     singleTasks: data.singleTasks.map((t) =>
       t.id === taskId ? { ...t, checklist: appendChecklistItemState(t.checklist, text) } : t,
     ),
+  };
+}
+
+// §56: taking an item off a checklist, from the UI's × button or from chat. A removed item
+// is gone, not ticked: it doesn't count towards the badge or towards "all items checked".
+export function removeRecurringTaskChecklistItem(data: AppData, taskId: string, itemId: string, dateISO: string): AppData {
+  return mapRecurringTask(data, taskId, (t) => withRecurringTaskChecklistItemRemoved(t, itemId, dateISO));
+}
+
+export function removeSingleTaskChecklistItem(data: AppData, taskId: string, itemId: string): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((t) =>
+      t.id === taskId && t.checklist ? { ...t, checklist: t.checklist.filter((item) => item.id !== itemId) } : t,
+    ),
+  };
+}
+
+// A habit's checklist is a template plus one snapshot per logged day. The item leaves the
+// template and the snapshots from `dateISO` on; earlier days keep what was recorded. A
+// snapshot left with no items is dropped, like an occurrence nobody touched.
+export function removeHabitChecklistItem(data: AppData, habitId: string, itemId: string, dateISO: string): AppData {
+  const keep = (item: ChecklistItem) => item.id !== itemId;
+  return {
+    ...data,
+    habits: data.habits.map((h) => (h.id === habitId && h.checklist ? { ...h, checklist: h.checklist.filter(keep) } : h)),
+    completionLog: data.completionLog.flatMap((entry) => {
+      if (entry.itemId !== habitId || entry.date < dateISO || !entry.checklist) return [entry];
+      const checklist = entry.checklist.filter(keep);
+      return checklist.length > 0 ? [{ ...entry, checklist }] : [];
+    }),
+  };
+}
+
+// §56: back to a plain task with no badge — the "has a checklist" marker (§39) is the array itself.
+export function removeRecurringTaskChecklist(data: AppData, taskId: string): AppData {
+  return mapRecurringTask(data, taskId, withoutChecklist);
+}
+
+export function removeSingleTaskChecklist(data: AppData, taskId: string): AppData {
+  return {
+    ...data,
+    singleTasks: data.singleTasks.map((t) => (t.id === taskId ? { ...t, checklist: undefined } : t)),
   };
 }
 

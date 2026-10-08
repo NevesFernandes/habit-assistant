@@ -1,6 +1,6 @@
 // §55: "remove the comments of the task …" takes one field off an item — an edit, not a
 // deletion and not a refusal. Users say notes/comments/details for the description. One
-// scenario per clearable field and item type, plus the two things that can't be cleared.
+// scenario per clearable field and item type, plus the one thing that can't be cleared.
 import { addDays } from "../../../src/lib/recurrence.ts";
 import type { AppData } from "../../../src/types/models.ts";
 import type { Scenario } from "../types.ts";
@@ -137,23 +137,6 @@ export const scenarios: Scenario[] = [
               intact(data),
               check(["sports", "other"].includes(run(data)?.categoryId ?? ""), `unexpected category ${run(data)?.categoryId}`),
             ),
-        },
-      },
-    ],
-  },
-  {
-    // No tool removes a task's checklist: say so, don't delete the task or offer the impossible.
-    name: "s55-task-checklist-not-removable",
-    fixture: "empty",
-    setup,
-    turns: [
-      {
-        user: "remove the checklist from the go shopping task",
-        expect: {
-          toolCall: null,
-          notReply: /archive/i,
-          data: (data) =>
-            all(intact(data), check(data.singleTasks.find((task) => task.id === "t-shop")?.checklist?.length === 1, "the checklist changed")),
         },
       },
     ],

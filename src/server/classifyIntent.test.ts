@@ -65,6 +65,20 @@ const cases: Case[] = [
   // No field word: unchanged.
   ["remove my gym habit", ["delete"]],
   ["clear out my old tasks", ["delete"]],
+  // §56: taking something off a checklist goes to the checklist tools, without the delete tools.
+  ["remove milk from my shopping list", ["checklist"]],
+  ["delete eggs and bread from the grocery list", ["checklist"]],
+  ["take milk off my shopping list", ["checklist"]],
+  ["remove the checklist from the go shopping task", ["checklist"]],
+  ["get rid of the checklist on my cleaning routine", ["checklist"]],
+  // "list" may mean the user's tasks as a whole, or the list may be a task's name: both families.
+  ["remove the dentist task from my to-do list", ["delete", "checklist"]],
+  ["delete my shopping list", ["delete", "checklist"]],
+  ["clear my shopping list", ["checklist"]],
+  // A real deletion alongside it: the delete tools stay.
+  ["delete my gym habit and remove milk from my shopping list", ["delete", "checklist"]],
+  // §55 still wins for a field: an edit, with no checklist tools.
+  ["remove the notes from my shopping list", ["modify"]],
 ];
 
 let failures = 0;
@@ -89,6 +103,7 @@ for (const [text, expected] of cases) {
     archiveHabit: ["delete", "modify"],
     setHabitDone: ["modify", "checklist"],
     addSingleTaskChecklistItem: ["checklist"],
+    removeChecklistItems: ["checklist", "delete"],
     deleteHabits: ["delete"],
   };
   const user = (content: string) => ({ role: "user" as const, content });
@@ -107,6 +122,7 @@ for (const [text, expected] of cases) {
     ["archive list", [user("archive read"), ...app("archiveHabit", "I found 2 habits"), user("the study one")], ["modify"], true],
     ["mark-done list", [user("I did read"), ...app("setHabitDone", "I found 2 habits"), user("the second, I think")], ["modify"], true],
     ["checklist list", [user("add milk to my shopping list"), ...app("addSingleTaskChecklistItem", "I found 2 tasks"), user("the Friday one")], ["checklist"], true],
+    ["which checklist item", [user("remove milk from my shopping list"), ...app("removeChecklistItems", "More than one item matches"), user("the oat one")], ["checklist", "delete"], true],
     ["answer to the model's question", [user("add a habit to drink water"), model("How many glasses a day?"), user("eight glasses")], ["create"], true],
     ["model's question after a vague request", [user("handle my stuff"), model("What would you like to do?"), user("the usual")], "fallback", false],
     ["first message", [user("the usual")], "fallback", false],

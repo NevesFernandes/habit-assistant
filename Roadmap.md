@@ -57,18 +57,10 @@ Questions to bring to the session (not decisions):
 - **Display:** a number, a colour, a flag icon, or only position in the list.
 - **Migration:** existing items' numbers in users' Drive files must map cleanly to whatever replaces them.
 
-### §56 — Remove a checklist, or one item from it, through chat
-Found while fixing §55: chat can add items to a task's checklist and tick them, but nothing can take an item off again, or remove the checklist from a task ("remove milk from my shopping list", "remove the checklist from the shopping task"). `Checklist.tsx` has no delete control either, so a mistyped item stays forever. Today the assistant says it can't (§55 added that wording so it doesn't delete the task instead).
-
-- Tools to remove one or more items from a Single or Recurring Task's checklist, and to remove the checklist itself (back to a plain task, no badge). Decide what removing an item means in each recurring mode (§42): in *carry over* the item just ends; in *same list* it leaves the routine from that day on, keeping earlier days' ticks.
-- A Checklist habit already replaces its whole list through `updateHabit`'s `newChecklistItems`; consider a remove-one-item path there too.
-- `classifyIntent`: "remove … from my … list" should reach the checklist tools, not the delete tools. Consider a delete control in `Checklist.tsx` as well.
-- Update `help.html`, which currently says this can't be done through chat.
-
 ### §58 — Shrink the full tool list to fit Groq's free tier
 A message `classifyIntent` can't place still gets every tool and every prompt rule: about 14,900 tokens (estimated at 4 characters per token; Groq counted 12,828 for it on 2026-10-05), against the 8,000 tokens a minute of Groq's free tier. §51 made this rarer (short replies are classified by what they answer, and several items can be picked without a model call) and gave a user on their own Groq key a clear "too large" message, but the full list itself is unchanged. It is the last blocker for `TRIAL_FALLBACK_PROVIDER=groq` (CLAUDE.md).
 
-- Sizes measured 2026-10-05, estimated tokens: full ~14,900; edit ~7,500; create ~4,400; delete ~4,400. The edit set alone is close to the limit, so a Groq user gets about one edit a minute; delete + edit together doesn't fit.
+- Sizes measured 2026-10-05, estimated tokens: full ~14,900; edit ~7,500; create ~4,400; delete ~4,400. §56 (2026-10-08) then added about 650 to the full, delete and checklist sets for its two remove tools and their rules (not re-measured: full ~15,500, delete ~5,050). The edit set alone is close to the limit, so a Groq user gets about one edit a minute; delete + edit together doesn't fit.
 - Options to weigh: a first small call that only chooses the tool family (two calls per unclassified message); trimming the prompt rules, which are most of the size; splitting the edit set (update vs. log/mark done vs. pause/archive); or a cheaper model on Groq with higher limits.
 - Related safety net to consider: when the model was given a narrowed tool set and says it can't do what was asked, retry once with the full list. That would have caught §55's wrong refusal, and covers a short follow-up that §51 routes to the wrong family.
 - Whatever is chosen changes how every unclassified message is handled on every provider, so it needs the chat scenarios run broadly, not just targeted ones.

@@ -47,6 +47,8 @@ import {
   rolloverPersistentTasks,
   setHabitValue,
   SHARED_KEY_MESSAGE_CAP,
+  removeRecurringTaskChecklistItem,
+  removeSingleTaskChecklistItem,
   toggleHabitChecklistItem,
   toggleHabitCompletion,
   toggleRecurringTaskChecklistItem,
@@ -524,6 +526,17 @@ export default function App() {
     void persist((current) => addSingleTaskChecklistItem(current, taskId, text));
   }
 
+  // §56: the × next to a checklist item. On a recurring task it's gone from that day on.
+  function handleRecurringTaskChecklistRemove(taskId: string, itemId: string, dateISO: string) {
+    if (!data) return;
+    void persist((current) => removeRecurringTaskChecklistItem(current, taskId, itemId, dateISO));
+  }
+
+  function handleSingleTaskChecklistRemove(taskId: string, itemId: string) {
+    if (!data) return;
+    void persist((current) => removeSingleTaskChecklistItem(current, taskId, itemId));
+  }
+
   // §19 in Roadmap.md: saving a stopped timer session adds to (not overwrites) whatever's
   // already logged for that habit today — same delta-inside-the-mutator pattern as
   // handleLogHabitProgress above, so a conflict-retry replay re-derives against fresh data.
@@ -686,10 +699,14 @@ export default function App() {
                 onCompleteFutureTask={handleFutureTaskComplete}
                 onToggleTaskChecklistItem={handleSingleTaskChecklistToggle}
                 onAddTaskChecklistItem={handleSingleTaskChecklistAdd}
+                onRemoveTaskChecklistItem={handleSingleTaskChecklistRemove}
                 onToggleRecurringTaskChecklistItem={(taskId, itemId) =>
                   handleRecurringTaskChecklistToggle(taskId, itemId, selectedDate)
                 }
                 onAddRecurringTaskChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, selectedDate)}
+                onRemoveRecurringTaskChecklistItem={(taskId, itemId) =>
+                  handleRecurringTaskChecklistRemove(taskId, itemId, selectedDate)
+                }
               />
             </div>
           )}
@@ -740,6 +757,7 @@ export default function App() {
                   categories={data.categories}
                   onToggleChecklistItem={handleSingleTaskChecklistToggle}
                   onAddChecklistItem={handleSingleTaskChecklistAdd}
+                  onRemoveChecklistItem={handleSingleTaskChecklistRemove}
                 />
               )}
 
@@ -749,6 +767,7 @@ export default function App() {
                   categories={data.categories}
                   onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
                   onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
+                  onRemoveChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistRemove(taskId, itemId, todayISO())}
                 />
               )}
             </div>

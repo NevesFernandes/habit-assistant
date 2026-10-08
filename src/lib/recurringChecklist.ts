@@ -7,7 +7,8 @@
 // - sameList: the stored items are a routine; which of them are ticked is kept per date in
 //   `checklistDoneByDate`, so every occurrence starts with all items unticked.
 //
-// Either way an item added on some date never shows on earlier occurrences.
+// Either way an item added on some date never shows on earlier occurrences, and one removed
+// on some date (§56, `removedOn`) keeps showing on the occurrences before it.
 import type { ChecklistItem, ChecklistMode, RecurringTask } from "../types/models";
 
 export function checklistModeOf(task: RecurringTask): ChecklistMode {
@@ -16,6 +17,10 @@ export function checklistModeOf(task: RecurringTask): ChecklistMode {
 
 function belongsFrom(item: ChecklistItem, dateISO: string): boolean {
   return item.addedOn === undefined || item.addedOn <= dateISO;
+}
+
+function belongsOn(item: ChecklistItem, dateISO: string): boolean {
+  return belongsFrom(item, dateISO) && (item.removedOn === undefined || dateISO < item.removedOn);
 }
 
 // Items from before §42 carry `checked: true` without a `doneOn`: they were ticked at
@@ -30,13 +35,13 @@ export function recurringTaskChecklistOn(task: RecurringTask, dateISO: string): 
   if (checklistModeOf(task) === "sameList") {
     const ticked = new Set(task.checklistDoneByDate?.[dateISO] ?? []);
     return task.checklist
-      .filter((item) => belongsFrom(item, dateISO))
+      .filter((item) => belongsOn(item, dateISO))
       .map((item) => ({ id: item.id, text: item.text, checked: ticked.has(item.id) }));
   }
   return task.checklist
     .filter((item) => {
       const doneOn = carryOverDoneOn(item);
-      return belongsFrom(item, dateISO) && (doneOn === undefined || doneOn >= dateISO);
+      return belongsOn(item, dateISO) && (doneOn === undefined || doneOn >= dateISO);
     })
     .map((item) => ({ id: item.id, text: item.text, checked: carryOverDoneOn(item) === dateISO }));
 }
@@ -78,6 +83,40 @@ export function withRecurringTaskChecklistItemAdded(task: RecurringTask, text: s
 }
 
 /**
+ * §56: what a removal on `dateISO` can name — that day's list, plus items only added for a
+ * later day (from a future day's view), which aren't on any list yet.
+ */
+export function removableRecurringTaskChecklistItems(task: RecurringTask, dateISO: string): ChecklistItem[] {
+  const later = (task.checklist ?? [])
+    .filter((item) => !belongsFrom(item, dateISO))
+    .map((item) => ({ id: item.id, text: item.text, checked: false }));
+  return [...(recurringTaskChecklistOn(task, dateISO) ?? []), ...later];
+}
+
+/**
+ * §56: takes an item off the list from `dateISO` on, in either mode. Earlier occurrences
+ * keep it, with their ticks, so the past doesn't change; an item that never showed before
+ * `dateISO` (added that day or later) is dropped outright.
+ */
+export function withRecurringTaskChecklistItemRemoved(task: RecurringTask, itemId: string, dateISO: string): RecurringTask {
+  if (!task.checklist) return task;
+  return {
+    ...task,
+    checklist: task.checklist.flatMap((item) => {
+      if (item.id !== itemId) return [item];
+      if (item.addedOn !== undefined && item.addedOn >= dateISO) return [];
+      if (item.removedOn !== undefined && item.removedOn <= dateISO) return [item];
+      return [{ ...item, removedOn: dateISO }];
+    }),
+  };
+}
+
+/** §56: back to a plain task — the list, its mode and every occurrence's ticks all go. */
+export function withoutChecklist(task: RecurringTask): RecurringTask {
+  return { ...task, checklist: undefined, checklistMode: undefined, checklistDoneByDate: undefined };
+}
+
+/**
  * Switches mode, keeping what's current from `todayISO` on. Older days' checklist history
  * is not preserved across a switch (rare, and said in the reply):
  * - to sameList: the routine is the items still on the list from today; today's ticks stay.
@@ -97,6 +136,7 @@ export function withChecklistMode(task: RecurringTask, mode: ChecklistMode, toda
     text: stored.text,
     checked: false,
     ...(stored.addedOn !== undefined ? { addedOn: stored.addedOn } : {}),
+    ...(stored.removedOn !== undefined ? { removedOn: stored.removedOn } : {}),
   });
   if (mode === "sameList") {
     const tickedToday = kept.filter((k) => k.checked).map((k) => k.stored.id);

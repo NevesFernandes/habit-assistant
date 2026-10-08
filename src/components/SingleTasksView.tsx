@@ -8,6 +8,7 @@ interface SingleTasksViewProps {
   categories: Category[];
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
 }
 
 export default function SingleTasksView({
@@ -15,6 +16,7 @@ export default function SingleTasksView({
   categories,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
 }: SingleTasksViewProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
@@ -27,6 +29,7 @@ export default function SingleTasksView({
         categories={categories}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
+        onRemoveChecklistItem={onRemoveChecklistItem}
         onBack={() => setSelectedTaskId(null)}
       />
     );
@@ -75,12 +78,14 @@ function SingleTaskDetail({
   categories,
   onToggleChecklistItem,
   onAddChecklistItem,
+  onRemoveChecklistItem,
   onBack,
 }: {
   task: SingleTask;
   categories: Category[];
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
+  onRemoveChecklistItem: (taskId: string, itemId: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
@@ -143,6 +148,7 @@ function SingleTaskDetail({
             items={task.checklist ?? []}
             onToggle={(itemId) => onToggleChecklistItem(task.id, itemId)}
             onAdd={(text) => onAddChecklistItem(task.id, text)}
+            onRemove={(itemId) => onRemoveChecklistItem(task.id, itemId)}
           />
         </DetailRow>
       </div>

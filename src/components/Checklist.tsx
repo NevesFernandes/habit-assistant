@@ -1,16 +1,18 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import type { ChecklistItem } from "../types/models";
 
 interface ChecklistProps {
   items: ChecklistItem[];
   onToggle: (itemId: string) => void;
   onAdd?: (text: string) => void; // omit to disable "add item" UI — a Habit's completion-type role has no add interaction
+  onRemove?: (itemId: string) => void; // §56: omit for no × button — a Habit's steps are changed through chat
   /** §29: read-only, for a habit occurrence on a day that hasn't happened yet. */
   disabled?: boolean;
   title?: string;
 }
 
-export default function Checklist({ items, onToggle, onAdd, disabled = false, title }: ChecklistProps) {
+export default function Checklist({ items, onToggle, onAdd, onRemove, disabled = false, title }: ChecklistProps) {
   const [draft, setDraft] = useState("");
 
   function submitDraft() {
@@ -34,7 +36,17 @@ export default function Checklist({ items, onToggle, onAdd, disabled = false, ti
               title={title}
               className={`h-4 w-4 shrink-0 ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
             />
-            <span className={item.checked ? "text-slate-500 line-through" : ""}>{item.text}</span>
+            <span className={`flex-1 ${item.checked ? "text-slate-500 line-through" : ""}`}>{item.text}</span>
+            {onRemove && (
+              <button
+                onClick={() => onRemove(item.id)}
+                aria-label={`Remove ${item.text}`}
+                title="Remove from the list"
+                className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-700 hover:text-slate-300"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            )}
           </li>
         ))}
       </ul>

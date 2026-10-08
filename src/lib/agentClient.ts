@@ -131,6 +131,17 @@ export interface CheckSingleTaskChecklistItemToolCall {
   input: { name: string; categoryId?: string; item: string; checked?: boolean };
 }
 
+// §56: one tool for all three item types — the app finds which one owns the list.
+export interface RemoveChecklistItemsToolCall {
+  name: "removeChecklistItems";
+  input: { name: string; categoryId?: string; items?: string[]; item?: string };
+}
+
+export interface RemoveTaskChecklistToolCall {
+  name: "removeTaskChecklist";
+  input: { name: string; categoryId?: string };
+}
+
 // §41: set (not toggle) whether an occurrence is done; done defaults to true.
 export interface SetDoneInput {
   name: string;
@@ -172,6 +183,8 @@ export type AgentToolCall =
   | CheckHabitChecklistItemToolCall
   | CheckRecurringTaskChecklistItemToolCall
   | CheckSingleTaskChecklistItemToolCall
+  | RemoveChecklistItemsToolCall
+  | RemoveTaskChecklistToolCall
   | SetHabitDoneToolCall
   | SetRecurringTaskDoneToolCall;
 
