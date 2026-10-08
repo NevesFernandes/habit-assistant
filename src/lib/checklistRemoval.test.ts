@@ -19,7 +19,8 @@ import {
   updateRecurringTask,
 } from "./dataStore.ts";
 import { recurringTaskChecklistOn } from "./recurringChecklist.ts";
-import { isHabitEntryComplete } from "./habitStats.ts";
+import { checklistItemsForEntry, checklistProgress, isHabitEntryComplete } from "./habitStats.ts";
+import { currentHabitChecklist } from "./habitChecklist.ts";
 import { DEFAULT_CATEGORIES, type AppData, type ChecklistMode, type Habit, type RecurringTask, type SingleTask } from "../types/models.ts";
 
 // Weekly on Sundays.
@@ -133,18 +134,36 @@ const routine: Habit = {
   ],
 };
 
-// Checklist habit: the step leaves the template and that day's record; earlier days keep it.
+// Checklist habit: the step is gone from that day on; every earlier day keeps it — both a
+// day with a saved record (something was ticked) and a day nobody touched, which is shown
+// from the habit's own steps.
 {
   let d: AppData = { ...empty, habits: [routine] };
+  const entryOn = (date: string) => d.completionLog.find((e) => e.date === date);
+  const shown = (date: string) => checklistItemsForEntry(d.habits[0], entryOn(date), date).map((item) => `${item.checked ? "x" : " "} ${item.text}`);
   d = setHabitChecklistItemChecked(d, "routine", "s1", true, SUN1);
   d = setHabitChecklistItemChecked(d, "routine", "s1", true, SUN2);
-  assert.equal(isHabitEntryComplete(d.habits[0], d.completionLog.find((e) => e.date === SUN2)), false);
+  assert.equal(isHabitEntryComplete(d.habits[0], entryOn(SUN2)), false);
   d = removeHabitChecklistItem(d, "routine", "s2", SUN2);
-  assert.deepEqual(d.habits[0].checklist!.map((item) => item.text), ["stretch"]);
-  assert.equal(d.completionLog.find((e) => e.date === SUN1)!.checklist!.length, 2);
-  assert.equal(d.completionLog.find((e) => e.date === SUN2)!.checklist!.length, 1);
+  assert.deepEqual(currentHabitChecklist(d.habits[0]).map((item) => item.text), ["stretch"]);
+  assert.deepEqual(shown(SUN1), ["x stretch", "  floss"]);
+  assert.deepEqual(shown(WED), ["  stretch", "  floss"], "an untouched earlier day keeps the removed step");
+  assert.deepEqual(checklistProgress(d.habits[0], entryOn(WED), WED), { checked: 0, total: 2 });
+  assert.deepEqual(shown(SUN2), ["x stretch"]);
+  assert.deepEqual(shown(SUN3), ["  stretch"]);
   // The only step left that day was already ticked, so the day now counts as done.
-  assert.equal(isHabitEntryComplete(d.habits[0], d.completionLog.find((e) => e.date === SUN2)), true);
+  assert.equal(isHabitEntryComplete(d.habits[0], entryOn(SUN2)), true);
+
+  // Ticking on an earlier untouched day afterwards records that day's steps, the removed one included.
+  d = setHabitChecklistItemChecked(d, "routine", "s2", true, WED);
+  assert.deepEqual(shown(WED), ["  stretch", "x floss"]);
+  // A new day starts without it.
+  d = setHabitChecklistItemChecked(d, "routine", "s1", true, SUN3);
+  assert.deepEqual(shown(SUN3), ["x stretch"]);
+
+  // A habit that only starts today has no earlier days: a mistyped step is dropped outright.
+  const fresh = removeHabitChecklistItem({ ...empty, habits: [{ ...routine, startDate: SUN2 }] }, "routine", "s2", SUN2);
+  assert.deepEqual(fresh.habits[0].checklist!.map((item) => item.text), ["stretch"]);
 }
 
 // --- The chat engine, with the model's tool call scripted. ---
@@ -213,7 +232,7 @@ const world: AppData = { ...shopping(["milk", "eggs", "bread"]), singleTasks: [e
   ]);
   assert.equal(r.replies[0], 'Removed "floss" from "Morning routine". Still on the list: stretch.');
   assert.match(r.replies[1], /needs at least one step/);
-  assert.deepEqual(r.data().habits[0].checklist!.map((item) => item.text), ["stretch"]);
+  assert.deepEqual(currentHabitChecklist(r.data().habits[0]).map((item) => item.text), ["stretch"]);
 }
 
 // Not found, and found but without a checklist.

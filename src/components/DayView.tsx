@@ -179,8 +179,8 @@ function HabitRow({
   const category = categories.find((c) => c.id === habit.categoryId);
   const entry = completionLog.find((e) => e.itemId === habit.id && e.date === selectedDate);
   const isDone = isHabitEntryComplete(habit, entry);
-  const checklistItems = habit.completionType === "checklist" ? checklistItemsForEntry(habit, entry) : [];
-  const progress = habit.completionType === "checklist" ? checklistProgress(habit, entry) : null;
+  const checklistItems = habit.completionType === "checklist" ? checklistItemsForEntry(habit, entry, selectedDate) : [];
+  const progress = habit.completionType === "checklist" ? checklistProgress(habit, entry, selectedDate) : null;
   return (
     <li
       className={`flex gap-3 rounded-md bg-slate-800 px-3 py-2 ${

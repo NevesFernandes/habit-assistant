@@ -20,8 +20,8 @@ export interface ChecklistItem {
   // ticked. There `checked` is derived per date, not stored.
   addedOn?: string;
   doneOn?: string;
-  // §56, Recurring Task checklists only: the first occurrence date the item is gone from,
-  // after being removed. Earlier occurrences keep showing it.
+  // §56, on a Recurring Task's checklist or a Checklist habit's steps (habitChecklist.ts):
+  // the first date the item is gone from, after being removed. Earlier days keep showing it.
   removedOn?: string;
 }
 

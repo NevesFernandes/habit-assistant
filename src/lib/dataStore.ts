@@ -24,6 +24,7 @@ import {
   withRecurringTaskChecklistItemChecked,
   withRecurringTaskChecklistItemRemoved,
 } from "./recurringChecklist";
+import { habitChecklistOn } from "./habitChecklist";
 
 export interface CreateSingleTaskInput {
   name: string;
@@ -578,7 +579,8 @@ function withHabitChecklistEntry(
   update: (checklist: ChecklistItem[]) => ChecklistItem[],
 ): AppData {
   const existing = data.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO);
-  const baseChecklist = existing?.checklist ?? (habit.checklist ?? []).map((item) => ({ ...item, checked: false }));
+  const baseChecklist =
+    existing?.checklist ?? habitChecklistOn(habit, dateISO).map((item) => ({ id: item.id, text: item.text, checked: false }));
   const updatedChecklist = update(baseChecklist);
   if (existing) {
     return {
@@ -701,14 +703,24 @@ export function removeSingleTaskChecklistItem(data: AppData, taskId: string, ite
   };
 }
 
-// A habit's checklist is a template plus one snapshot per logged day. The item leaves the
-// template and the snapshots from `dateISO` on; earlier days keep what was recorded. A
-// snapshot left with no items is dropped, like an occurrence nobody touched.
+// A habit's checklist is a template plus one snapshot per logged day. The step leaves the
+// snapshots from `dateISO` on, and stays in the template marked `removedOn`, because an
+// earlier day nobody touched has no snapshot and is shown from the template
+// (habitChecklist.ts) — dropping the step would take it off those days too. A habit that
+// only starts on `dateISO` has no earlier days, so there it's dropped outright. A snapshot
+// left with no items is dropped, like an occurrence nobody touched.
 export function removeHabitChecklistItem(data: AppData, habitId: string, itemId: string, dateISO: string): AppData {
   const keep = (item: ChecklistItem) => item.id !== itemId;
+  const withStepRemoved = (h: Habit): Habit => ({
+    ...h,
+    checklist:
+      h.startDate >= dateISO
+        ? (h.checklist ?? []).filter(keep)
+        : (h.checklist ?? []).map((item) => (keep(item) || item.removedOn !== undefined ? item : { ...item, removedOn: dateISO })),
+  });
   return {
     ...data,
-    habits: data.habits.map((h) => (h.id === habitId && h.checklist ? { ...h, checklist: h.checklist.filter(keep) } : h)),
+    habits: data.habits.map((h) => (h.id === habitId && h.checklist ? withStepRemoved(h) : h)),
     completionLog: data.completionLog.flatMap((entry) => {
       if (entry.itemId !== habitId || entry.date < dateISO || !entry.checklist) return [entry];
       const checklist = entry.checklist.filter(keep);

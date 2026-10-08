@@ -1,4 +1,5 @@
 import type { ChecklistItem, CompletionLogEntry, Habit, WeekStart } from "../types/models";
+import { habitChecklistOn } from "./habitChecklist";
 import { addDays, completionsInPeriod, dayOfWeek, occursOn, startOfMonth, startOfWeek, startOfYear } from "./recurrence";
 
 export interface HabitStats {
@@ -32,9 +33,10 @@ export function isHabitEntryComplete(habit: Habit, entry: CompletionLogEntry | u
 
 // "N of M items checked" for a checklist habit's given date. Falls back to the habit's
 // template item set (all unchecked) when that date has no logged entry yet, so a
-// never-touched occurrence reads as "0/<item count>" rather than "0/0".
-export function checklistProgress(habit: Habit, entry: CompletionLogEntry | undefined): { checked: number; total: number } {
-  const items = entry?.checklist ?? habit.checklist ?? [];
+// never-touched occurrence reads as "0/<item count>" rather than "0/0". The template is
+// the one for `dateISO` (§56): a step removed since still counts on the days before.
+export function checklistProgress(habit: Habit, entry: CompletionLogEntry | undefined, dateISO: string): { checked: number; total: number } {
+  const items = entry?.checklist ?? habitChecklistOn(habit, dateISO);
   return { checked: items.filter((item) => item.checked).length, total: items.length };
 }
 
@@ -50,7 +52,7 @@ export function habitCompletionRatio(habit: Habit, entry: CompletionLogEntry | u
     return Math.min(1, Math.max(0, (entry.value ?? 0) / habit.target));
   }
   if (habit.completionType === "checklist") {
-    const { checked, total } = checklistProgress(habit, entry);
+    const { checked, total } = checklistProgress(habit, entry, entry.date);
     return total === 0 ? 0 : checked / total;
   }
   return isHabitEntryComplete(habit, entry) ? 1 : 0;
@@ -59,8 +61,8 @@ export function habitCompletionRatio(habit: Habit, entry: CompletionLogEntry | u
 // The full per-item state to render for a checklist habit on a given date: the logged
 // entry's snapshot if one exists, else the template mapped to all-unchecked (matching
 // what a freshly created entry for that date would contain).
-export function checklistItemsForEntry(habit: Habit, entry: CompletionLogEntry | undefined): ChecklistItem[] {
-  return entry?.checklist ?? (habit.checklist ?? []).map((item) => ({ ...item, checked: false }));
+export function checklistItemsForEntry(habit: Habit, entry: CompletionLogEntry | undefined, dateISO: string): ChecklistItem[] {
+  return entry?.checklist ?? habitChecklistOn(habit, dateISO).map((item) => ({ id: item.id, text: item.text, checked: false }));
 }
 
 function isCompletedOn(habit: Habit, completionLog: CompletionLogEntry[], dateISO: string): boolean {

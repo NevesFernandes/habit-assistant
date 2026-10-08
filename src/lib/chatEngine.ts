@@ -63,6 +63,7 @@ import {
 import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "./recurringChecklist";
+import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -876,7 +877,7 @@ export class ChatSession {
       );
       return;
     }
-    if (done && habit.completionType === "checklist" && (habit.checklist ?? []).length === 0) {
+    if (done && habit.completionType === "checklist" && currentHabitChecklist(habit).length === 0) {
       this.pushAssistantMessage(`"${habit.name}" has no checklist items yet, so there's nothing to mark done.`, toolCall);
       return;
     }
@@ -948,7 +949,8 @@ export class ChatSession {
           : `None of the habits matching "${input.name}" are tracked with a checklist.`,
     );
     if (!habit) return;
-    const itemMatches = resolveChecklistItemMatches(habit.checklist, input.item);
+    // §56: that day's steps, so a step removed since can still be ticked for an earlier day.
+    const itemMatches = resolveChecklistItemMatches(habitChecklistOn(habit, input.date ?? this.todayISO), input.item);
     if (!this.checkSingleChecklistMatch(itemMatches, input.item, habit.name, toolCall)) return;
     const checked = input.checked ?? true;
     const today = this.todayISO;
@@ -1049,7 +1051,12 @@ export class ChatSession {
     const today = this.todayISO;
     // §42: for a recurring task, today's list — an item ticked off on an earlier day is
     // already gone from it.
-    const listed = owner.kind === "recurringTask" ? removableRecurringTaskChecklistItems(owner, today) : (owner.checklist ?? []);
+    const listed =
+      owner.kind === "recurringTask"
+        ? removableRecurringTaskChecklistItems(owner, today)
+        : owner.kind === "habit"
+          ? currentHabitChecklist(owner)
+          : (owner.checklist ?? []);
 
     const removed: ChecklistItem[] = [];
     const problems: string[] = [];
