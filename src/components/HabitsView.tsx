@@ -5,6 +5,8 @@ import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "..
 import { useWeekStart } from "../lib/weekStartContext";
 import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
+import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
+import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
 import StatTile from "./StatTile";
 import HabitHeatmap from "./HabitHeatmap";
@@ -12,6 +14,7 @@ import HabitHeatmap from "./HabitHeatmap";
 interface HabitsViewProps {
   habits: Habit[];
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   completionLog: CompletionLogEntry[];
   onToggleChecklistItem: (habitId: string, itemId: string) => void;
 }
@@ -23,7 +26,7 @@ const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
   checklist: "Checklist",
 };
 
-export default function HabitsView({ habits, categories, completionLog, onToggleChecklistItem }: HabitsViewProps) {
+export default function HabitsView({ habits, categories, onPlace, completionLog, onToggleChecklistItem }: HabitsViewProps) {
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
@@ -33,6 +36,7 @@ export default function HabitsView({ habits, categories, completionLog, onToggle
       <HabitDetail
         habit={selectedHabit}
         categories={categories}
+        onPlace={onPlace}
         completionLog={completionLog}
         onToggleChecklistItem={onToggleChecklistItem}
         onBack={() => setSelectedHabitId(null)}
@@ -42,7 +46,7 @@ export default function HabitsView({ habits, categories, completionLog, onToggle
 
   const sortedHabits = habits
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 
   if (sortedHabits.length === 0) {
     return <p className="text-sm text-slate-500">No habits yet.</p>;
@@ -62,6 +66,7 @@ export default function HabitsView({ habits, categories, completionLog, onToggle
               <div className="flex-1">
                 <div>
                   {habit.name}
+                  {isImportant(habit) && <ImportantMark />}
                   {isArchived(habit) && <span className="ml-2 text-xs text-amber-400">Archived</span>}
                   {!isArchived(habit) && currentPause(habit, todayISO()) && (
                     <span className="ml-2 text-xs text-sky-400">Paused</span>
@@ -81,12 +86,14 @@ export default function HabitsView({ habits, categories, completionLog, onToggle
 function HabitDetail({
   habit,
   categories,
+  onPlace,
   completionLog,
   onToggleChecklistItem,
   onBack,
 }: {
   habit: Habit;
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   completionLog: CompletionLogEntry[];
   onToggleChecklistItem: (habitId: string, itemId: string) => void;
   onBack: () => void;
@@ -127,8 +134,8 @@ function HabitDetail({
           <span>{category?.name ?? "None"}</span>
         </DetailRow>
 
-        <DetailRow label="Priority">
-          <span>{habit.priority}</span>
+        <DetailRow label="Part of day">
+          <DayPartPicker item={habit} onChange={(patch) => onPlace(habit.id, patch)} />
         </DetailRow>
 
         <DetailRow label="Start date">

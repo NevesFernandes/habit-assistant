@@ -65,7 +65,7 @@ export const scenarios: Scenario[] = [
     fixture: "baseline",
     turns: [
       {
-        user: "change the priority of drink water to 3",
+        user: "move drink water to the evening",
         expect: { toolCall: "updateHabit", reply: /I found 2 habits matching/ },
       },
       {
@@ -73,11 +73,11 @@ export const scenarios: Scenario[] = [
         expect: {
           toolCall: "updateHabit",
           bucket: FROM_REPLY,
-          reply: /Priority: 1 → 3/,
+          reply: /Part of day: Not placed yet → Evening/,
           data: (data) =>
             all(
-              check(habitById(data, "water-nutrition")?.priority === 3, `water-nutrition priority is ${habitById(data, "water-nutrition")?.priority}`),
-              check(habitById(data, "water-sports")?.priority === 1, "water-sports should be untouched"),
+              check(habitById(data, "water-nutrition")?.dayPart === "evening", `water-nutrition is in ${habitById(data, "water-nutrition")?.dayPart}`),
+              check(habitById(data, "water-sports")?.dayPart === undefined, "water-sports should be untouched"),
             ),
         },
       },

@@ -13,6 +13,7 @@ import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput 
 import { describeRecurrence, isPaused, isPausedOn, nextOccurrence } from "./recurrence.ts";
 import { checklistModeOf, recurringTaskChecklistOn } from "./recurringChecklist.ts";
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist.ts";
+import { dayPartLabel, isImportant } from "./dayParts.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -74,7 +75,7 @@ function recurrenceText(item: Pick<Habit, "recurrence">): string {
 
 // Assumed-field detection. Only the user's own message is evidence of what
 // they asked for — the model filling in a field doesn't mean the user said it.
-type AssumedField = "recurrence" | "category" | "tracking" | "startDate" | "checklistMode";
+type AssumedField = "recurrence" | "category" | "tracking" | "startDate" | "checklistMode" | "dayPart";
 
 // Deliberately no "say e.g. ..." examples — the bullet labels above the hint
 // already show which settings exist, so the hint just names what was assumed.
@@ -84,6 +85,7 @@ const ASSUMED_LABELS: Record<AssumedField, (value: string) => string> = {
   tracking: (v) => v,
   startDate: (v) => v,
   checklistMode: () => "unticked checklist items carry over",
+  dayPart: (v) => `part of day ${v}`,
 };
 
 const ASSUMED_FOLLOW_UP = "Need any changes?";
@@ -104,6 +106,23 @@ function mentionsCategory(categoryId: string | undefined, categories: Category[]
   if (!category) return false;
   const lower = userText.toLowerCase();
   return lower.includes(category.name.toLowerCase()) || lower.includes(category.id.toLowerCase());
+}
+
+// §54: any wording that places something in the day. Without one, the part of the day was
+// the assistant's own pick.
+const MENTIONS_TIME_OF_DAY =
+  /\b(morning|mornings|afternoon|afternoons|evening|evenings|night|nights|nightly|tonight|bed|bedtime|sleep|wake|waking|wake-up|get up|getting up|first thing|at work|work day|workday|working hours|office|lunch|noon|midday|breakfast|dinner|supper)\b/i;
+
+type Placeable = Pick<Habit, "dayPart" | "important" | "priority">;
+
+/** "Part of day" always (so a missing one is visible too), "Important" only when set. */
+function placementLines(item: Placeable): string[] {
+  return [`Part of day: ${dayPartLabel(item.dayPart)}`, ...(isImportant(item) ? ["Important: yes"] : [])];
+}
+
+function assumedDayPart(item: Placeable, userText: string): { field: AssumedField; value: string }[] {
+  if (item.dayPart === undefined || MENTIONS_TIME_OF_DAY.test(userText)) return [];
+  return [{ field: "dayPart", value: dayPartLabel(item.dayPart) }];
 }
 
 function buildHint(assumed: { field: AssumedField; value: string }[]): string | null {
@@ -174,8 +193,8 @@ export function describeCreatedHabit(
     `Category: ${category}`,
     `Tracking: ${describeTracking(habit)}`,
     ...datesLines(habit, todayISO),
+    ...placementLines(habit),
   ];
-  if (habit.priority > 1) lines.push(`Priority: ${habit.priority}`);
   if (habit.description) lines.push(`Note: ${habit.description}`);
 
   const assumed: { field: AssumedField; value: string }[] = [];
@@ -183,6 +202,7 @@ export function describeCreatedHabit(
   if (!mentionsCategory(habit.categoryId, categories, userText)) assumed.push({ field: "category", value: category });
   if (input.completionType === undefined) assumed.push({ field: "tracking", value: "yes/no" });
   if (!startDateGiven(input)) assumed.push({ field: "startDate", value: assumedStartText(habit, todayISO) });
+  assumed.push(...assumedDayPart(habit, userText));
 
   return withHint(`Added habit "${habit.name}":\n${bullets(lines)}`, buildHint(assumed));
 }
@@ -199,15 +219,16 @@ export function describeCreatedRecurringTask(
     `Repeats: ${recurrenceText(task)}`,
     `Category: ${category}`,
     ...datesLines(task, todayISO),
+    ...placementLines(task),
     ...taskChecklistLines(task, todayISO),
   ];
-  if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
 
   const assumed: { field: AssumedField; value: string }[] = [];
   if (isRecurrenceAssumed(task, userText)) assumed.push({ field: "recurrence", value: recurrenceText(task) });
   if (!mentionsCategory(task.categoryId, categories, userText)) assumed.push({ field: "category", value: category });
   if (!startDateGiven(input)) assumed.push({ field: "startDate", value: assumedStartText(task, todayISO) });
+  assumed.push(...assumedDayPart(task, userText));
   if (task.checklist && input.checklistMode === undefined) assumed.push({ field: "checklistMode", value: "" });
 
   return withHint(`Added recurring task "${task.name}":\n${bullets(lines)}`, buildHint(assumed));
@@ -217,6 +238,7 @@ export function describeCreatedSingleTask(
   task: SingleTask,
   input: CreateSingleTaskInput,
   categories: Category[],
+  userText: string,
   todayISO: string,
 ): string {
   const lines = [
@@ -224,13 +246,15 @@ export function describeCreatedSingleTask(
     ...(task.categoryId ? [`Category: ${categoryName(task.categoryId, categories)}`] : []),
     `Date: ${formatDate(task.startDate, todayISO)}`,
     task.persistency ? "If not done: carries over to the next day" : "If not done: dropped at the end of the day",
+    ...placementLines(task),
     ...taskChecklistLines(task, todayISO),
   ];
-  if (task.priority > 1) lines.push(`Priority: ${task.priority}`);
   if (task.description) lines.push(`Note: ${task.description}`);
 
-  const hint = startDateGiven(input) ? null : `Assumed: due today.\n${ASSUMED_FOLLOW_UP}`;
-  return withHint(`Added task "${task.name}":\n${bullets(lines)}`, hint);
+  const assumed: { field: AssumedField; value: string }[] = [];
+  if (!startDateGiven(input)) assumed.push({ field: "startDate", value: "due today" });
+  assumed.push(...assumedDayPart(task, userText));
+  return withHint(`Added task "${task.name}":\n${bullets(lines)}`, buildHint(assumed));
 }
 
 type AnyItem = Habit | RecurringTask | SingleTask;
@@ -246,7 +270,8 @@ export function describeChanges(before: AnyItem, after: AnyItem, categories: Cat
   add("Name", `"${before.name}"`, `"${after.name}"`);
   add("Note", before.description ?? "none", after.description ?? "none");
   add("Category", categoryName(before.categoryId, categories), categoryName(after.categoryId, categories));
-  add("Priority", String(before.priority), String(after.priority));
+  add("Part of day", dayPartLabel(before.dayPart), dayPartLabel(after.dayPart));
+  add("Important", isImportant(before) ? "yes" : "no", isImportant(after) ? "yes" : "no");
   add("Starts", date(before.startDate), date(after.startDate));
   add("Ends", date(before.endDate), date(after.endDate));
 
@@ -301,13 +326,19 @@ export function describeArchive(item: AnyItem): string {
   return `Archived "${item.name}" — no more occurrences after today, and its completion history is kept.`;
 }
 
+// §54: the part of the day tells apart e.g. a morning and a bedtime "Brush teeth". Left out
+// for an item nobody has placed.
+function placedIn(item: AnyItem): string[] {
+  return item.dayPart ? [dayPartLabel(item.dayPart)] : [];
+}
+
 // §32: enough detail to tell same-named items apart (category first, since
 // that's what the model can pass back as a selector).
 export function itemDetails(item: AnyItem, categories: Category[], todayISO: string): string {
   if (item.kind === "singleTask") {
-    return [formatDate(item.startDate, todayISO), item.done ? "done" : "not done"].join(" · ");
+    return [formatDate(item.startDate, todayISO), item.done ? "done" : "not done", ...placedIn(item)].join(" · ");
   }
-  const parts = [categoryName(item.categoryId, categories), recurrenceText(item)];
+  const parts = [categoryName(item.categoryId, categories), recurrenceText(item), ...placedIn(item)];
   if (item.kind === "habit") {
     parts.push(item.completionType === "yesno" ? "yes/no" : describeTracking(item).replace(" — ", ", "));
   }

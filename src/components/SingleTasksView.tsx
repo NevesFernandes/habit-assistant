@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from "react";
 import type { Category, SingleTask } from "../types/models";
 import CategoryIcon from "./CategoryIcon";
+import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
+import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
 
 interface SingleTasksViewProps {
   singleTasks: SingleTask[];
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
@@ -14,6 +17,7 @@ interface SingleTasksViewProps {
 export default function SingleTasksView({
   singleTasks,
   categories,
+  onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -27,6 +31,7 @@ export default function SingleTasksView({
       <SingleTaskDetail
         task={selectedTask}
         categories={categories}
+        onPlace={onPlace}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
         onRemoveChecklistItem={onRemoveChecklistItem}
@@ -37,7 +42,7 @@ export default function SingleTasksView({
 
   const sortedTasks = singleTasks
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 
   if (sortedTasks.length === 0) {
     return <p className="text-sm text-slate-500">No tasks yet.</p>;
@@ -57,6 +62,7 @@ export default function SingleTasksView({
               <div className="flex-1">
                 <div>
                   <span className={task.done ? "text-slate-500 line-through" : ""}>{task.name}</span>
+                  {isImportant(task) && <ImportantMark />}
                   {task.done && <span className="ml-2 text-xs text-emerald-400">Done</span>}
                 </div>
                 {task.description && (
@@ -76,6 +82,7 @@ export default function SingleTasksView({
 function SingleTaskDetail({
   task,
   categories,
+  onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -83,6 +90,7 @@ function SingleTaskDetail({
 }: {
   task: SingleTask;
   categories: Category[];
+  onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
@@ -115,8 +123,8 @@ function SingleTaskDetail({
           <span>{category?.name ?? "None"}</span>
         </DetailRow>
 
-        <DetailRow label="Priority">
-          <span>{task.priority}</span>
+        <DetailRow label="Part of day">
+          <DayPartPicker item={task} onChange={(patch) => onPlace(task.id, patch)} />
         </DetailRow>
 
         <DetailRow label="Start date">

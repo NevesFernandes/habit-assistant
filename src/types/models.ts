@@ -31,12 +31,21 @@ export interface ChecklistItem {
 // sameList: a fixed routine; every item starts unticked each occurrence.
 export type ChecklistMode = "carryOver" | "sameList";
 
+// §54: where in the day an item belongs (src/lib/dayParts.ts has the order and labels).
+export type DayPart = "wakeUp" | "morning" | "workDay" | "afternoon" | "evening" | "bedtime";
+
 export interface BaseItem {
   id: string;
   name: string;
   description?: string;
   categoryId?: string;
-  priority: number;
+  // §54: display order is part of the day, then important first, then name. An item
+  // saved before §54 has neither field and shows as "not placed yet".
+  dayPart?: DayPart;
+  important?: boolean;
+  // Legacy, from before §54: an open-ended number that set sort order. Nothing writes it
+  // any more; it is only read as "important" when above 1 (see isImportant).
+  priority?: number;
   startDate: string; // ISO date, defaults to today
   endDate?: string; // ISO date
 }

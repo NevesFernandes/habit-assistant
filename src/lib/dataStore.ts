@@ -9,6 +9,7 @@ import type {
   ChecklistMode,
   CompletionLogEntry,
   CompletionType,
+  DayPart,
   Habit,
   PausePeriod,
   RecurrenceRule,
@@ -25,12 +26,14 @@ import {
   withRecurringTaskChecklistItemRemoved,
 } from "./recurringChecklist";
 import { habitChecklistOn, withHabitStepRemoved, withHabitStepsReplaced } from "./habitChecklist";
+import { isDayPart, isImportant } from "./dayParts";
 
 export interface CreateSingleTaskInput {
   name: string;
   description?: string;
   categoryId?: string;
-  priority?: number;
+  dayPart?: DayPart; // §54; the assistant always picks one
+  important?: boolean;
   startDate?: string;
   // §57: same deterministic weekday resolution as habits and recurring tasks — without
   // these, "a task for next Thursday" had nowhere to go and landed on today.
@@ -58,7 +61,7 @@ export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppD
     name: input.name,
     description: input.description,
     categoryId: resolveCategoryId(data, input.categoryId),
-    priority: input.priority ?? 0,
+    ...placement(input),
     startDate,
     originalStartDate: startDate,
     done: false,
@@ -99,7 +102,8 @@ export interface CreateHabitInput {
   name: string;
   description?: string;
   categoryId?: string;
-  priority?: number;
+  dayPart?: DayPart; // §54; the assistant always picks one
+  important?: boolean;
   startDate?: string;
   // Preferred over startDate when the user named a start day by weekday
   // rather than an absolute date (e.g. "next Tuesday") — resolved
@@ -141,10 +145,13 @@ function patchedTaskCategoryId(data: AppData, current: string | undefined, patch
   return resolveCategoryId(data, patch.newCategoryId) ?? current;
 }
 
-/** Positive integer, defaulting to 1 (the lowest priority) — never 0 or negative. */
-function normalizePriority(priority: number | undefined): number {
-  if (priority === undefined || !Number.isFinite(priority) || priority < 1) return 1;
-  return Math.round(priority);
+// §54: what's stored for a new item. A part the model left out or got wrong is stored as
+// nothing (the item then shows as "not placed yet") rather than guessed here.
+function placement(input: { dayPart?: DayPart; important?: boolean }): { dayPart?: DayPart; important?: boolean } {
+  return {
+    ...(isDayPart(input.dayPart) ? { dayPart: input.dayPart } : {}),
+    ...(input.important ? { important: true } : {}),
+  };
 }
 
 /** Defaults to today; a past date is clamped forward rather than accepted as-is. */
@@ -176,7 +183,7 @@ export function addHabit(data: AppData, input: CreateHabitInput): AppData {
     name: input.name,
     description: input.description,
     categoryId,
-    priority: normalizePriority(input.priority),
+    ...placement(input),
     startDate: resolveStartDate(input),
     endDate: input.endDate,
     recurrence: input.recurrence,
@@ -235,7 +242,8 @@ export interface CreateRecurringTaskInput {
   name: string;
   description?: string;
   categoryId?: string;
-  priority?: number;
+  dayPart?: DayPart; // §54; the assistant always picks one
+  important?: boolean;
   startDate?: string;
   startWeekday?: number;
   startWeekdayMode?: "closest" | "next";
@@ -253,7 +261,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     name: input.name,
     description: input.description,
     categoryId: resolveCategoryId(data, input.categoryId),
-    priority: normalizePriority(input.priority),
+    ...placement(input),
     startDate: resolveStartDate(input),
     endDate: input.endDate,
     recurrence: input.recurrence,
@@ -291,8 +299,8 @@ export interface DeleteCriteria {
   categoryIds?: string[];
   startDateFrom?: string; // ISO date, inclusive lower bound on startDate
   startDateTo?: string; // ISO date, inclusive upper bound on startDate
-  priorityMin?: number;
-  priorityMax?: number;
+  dayPart?: DayPart; // §54
+  important?: boolean; // §54
   done?: boolean; // SingleTask only
   completionType?: CompletionType; // Habit only
   neverCompleted?: boolean; // Habit + RecurringTask: zero completionLog entries ever
@@ -308,8 +316,8 @@ function matchesBaseCriteria(item: BaseItem, criteria: DeleteCriteria): boolean 
   }
   if (criteria.startDateFrom && item.startDate < criteria.startDateFrom) return false;
   if (criteria.startDateTo && item.startDate > criteria.startDateTo) return false;
-  if (criteria.priorityMin !== undefined && item.priority < criteria.priorityMin) return false;
-  if (criteria.priorityMax !== undefined && item.priority > criteria.priorityMax) return false;
+  if (criteria.dayPart !== undefined && item.dayPart !== criteria.dayPart) return false;
+  if (criteria.important !== undefined && isImportant(item) !== criteria.important) return false;
   return true;
 }
 
@@ -395,7 +403,8 @@ export interface UpdatePatch {
   newName?: string;
   newDescription?: string;
   newCategoryId?: string;
-  newPriority?: number;
+  newDayPart?: DayPart; // §54
+  newImportant?: boolean; // §54
   newStartDate?: string;
   // Same deterministic weekday resolution as creation's startWeekday — preferred
   // over newStartDate when the user names the new start day by weekday.
@@ -418,7 +427,8 @@ function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T 
     ...item,
     name: patch.newName?.trim() ? patch.newName.trim() : item.name,
     description: patch.newDescription !== undefined ? patch.newDescription || undefined : item.description,
-    priority: patch.newPriority !== undefined ? normalizePriority(patch.newPriority) : item.priority,
+    dayPart: isDayPart(patch.newDayPart) ? patch.newDayPart : item.dayPart,
+    important: patch.newImportant !== undefined ? patch.newImportant : item.important,
     startDate:
       patch.newStartWeekday !== undefined
         ? resolveStartDate({ startWeekday: patch.newStartWeekday, startWeekdayMode: patch.newStartWeekdayMode })

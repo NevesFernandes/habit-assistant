@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
+import { compareForDay } from "../lib/dayParts";
 import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
 import { useWeekStart } from "../lib/weekStartContext";
@@ -20,7 +21,7 @@ interface DashboardProps {
 
 export default function Dashboard({ habits, categories, completionLog, onViewCategories }: DashboardProps) {
   const today = todayISO();
-  const sortedHabits = habits.slice().sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+  const sortedHabits = habits.slice().sort(compareForDay);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(sortedHabits[0]?.id ?? null);
   const selectedHabit = sortedHabits.find((h) => h.id === selectedHabitId) ?? sortedHabits[0];
   const weekStartsOn = useWeekStart();

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Habit } from "../types/models";
+import { compareForDay } from "../lib/dayParts";
 import type { TimerMode } from "../lib/timerStore";
 import type { UseTimerSession } from "../lib/useTimerSession";
 
@@ -23,7 +24,7 @@ function timerHabits(habits: Habit[]): Habit[] {
   return habits
     .filter((habit) => habit.completionType === "timer")
     .slice()
-    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name));
+    .sort(compareForDay);
 }
 
 export default function TimerView({ habits, timer, onSave }: TimerViewProps) {

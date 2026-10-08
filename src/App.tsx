@@ -5,6 +5,7 @@ import Chat from "./components/Chat";
 import DayStrip from "./components/DayStrip";
 import DayView from "./components/DayView";
 import SettingsPanel from "./components/Settings";
+import type { PlacementPatch } from "./components/DayPartPicker";
 import CategoriesView from "./components/CategoriesView";
 import HabitsView from "./components/HabitsView";
 import SingleTasksView from "./components/SingleTasksView";
@@ -56,6 +57,8 @@ import {
   toggleSingleTaskChecklistItem,
   toggleSingleTaskDone,
   updateCategory,
+  updateHabit,
+  updateRecurringTask,
   updateSingleTask,
   type CreateCategoryInput,
   type UpdateCategoryPatch,
@@ -526,6 +529,18 @@ export default function App() {
     void persist((current) => addSingleTaskChecklistItem(current, taskId, text));
   }
 
+  // §54: the part-of-day picker and the Important toggle on an item's own page.
+  function handlePlaceItem(kind: "habit" | "recurringTask" | "singleTask", id: string, patch: PlacementPatch) {
+    if (!data) return;
+    void persist((current) =>
+      kind === "habit"
+        ? updateHabit(current, id, patch)
+        : kind === "recurringTask"
+          ? updateRecurringTask(current, id, patch)
+          : updateSingleTask(current, id, patch),
+    );
+  }
+
   // §56: the × next to a checklist item. On a recurring task it's gone from that day on.
   function handleRecurringTaskChecklistRemove(taskId: string, itemId: string, dateISO: string) {
     if (!data) return;
@@ -708,6 +723,7 @@ export default function App() {
                 onRemoveRecurringTaskChecklistItem={(taskId, itemId) =>
                   handleRecurringTaskChecklistRemove(taskId, itemId, selectedDate)
                 }
+                onPlaceItem={handlePlaceItem}
               />
             </div>
           )}
@@ -747,6 +763,7 @@ export default function App() {
                 <HabitsView
                   habits={data.habits}
                   categories={data.categories}
+                  onPlace={(id, patch) => handlePlaceItem("habit", id, patch)}
                   completionLog={data.completionLog}
                   onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
                 />
@@ -756,6 +773,7 @@ export default function App() {
                 <SingleTasksView
                   singleTasks={data.singleTasks}
                   categories={data.categories}
+                  onPlace={(id, patch) => handlePlaceItem("singleTask", id, patch)}
                   onToggleChecklistItem={handleSingleTaskChecklistToggle}
                   onAddChecklistItem={handleSingleTaskChecklistAdd}
                   onRemoveChecklistItem={handleSingleTaskChecklistRemove}
@@ -766,6 +784,7 @@ export default function App() {
                 <RecurringTasksView
                   recurringTasks={data.recurringTasks}
                   categories={data.categories}
+                  onPlace={(id, patch) => handlePlaceItem("recurringTask", id, patch)}
                   onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
                   onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
                   onRemoveChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistRemove(taskId, itemId, todayISO())}

@@ -11,6 +11,7 @@ import { resolveProvider } from "./providers/index.ts";
 import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
+import { DAY_PARTS } from "../lib/dayParts.ts";
 import { classifyTurn, type IntentBucket } from "./classifyIntent.ts";
 import { isKeyRejected, providerErrorMessage } from "./providerErrorMessage.ts";
 import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
@@ -153,7 +154,7 @@ For deleteSingleTasks, deleteHabits, and deleteRecurringTasks: you only express 
 - name: a text fragment to match against the item's name (e.g. "delete the gym habit" → name: "gym").
 - categoryIds: one or more category ids from this list: ${categoryList} (e.g. "delete my Health and Finance tasks" → categoryIds: ["health", "finance"]).
 - startDateFrom / startDateTo: an inclusive ISO date range on the item's start date — e.g. "delete tasks from last week" → resolve that phrase to explicit from/to dates yourself, same as you do for other relative dates. "delete all tasks for today" → startDateFrom and startDateTo both "${todayISO}".
-- priorityMin / priorityMax: an inclusive numeric range on priority (e.g. "delete my low priority tasks" only if the user has given you a sense of what counts as low — otherwise ask).
+- dayPart: one part of the day (e.g. "delete my bedtime habits" → dayPart: "bedtime"). important: true for "my important tasks", false for the ones not flagged.
 - done (deleteSingleTasks only): true = only completed tasks, false = only not-yet-done tasks.
 - completionType (deleteHabits only): "yesno" | "value" | "timer" | "checklist" — only when the user explicitly refers to how a habit is tracked.
 - neverCompleted (deleteHabits and deleteRecurringTasks): true = only items with zero completions ever recorded (e.g. "delete habits I've never actually done").
@@ -171,7 +172,7 @@ const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resume
 Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
 
 function buildModifyProse(categoryList: string): string {
-  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newPriority, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newDayPart, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 ${PICK_FROM_LIST_PROSE}
 
@@ -194,6 +195,9 @@ To change whether a recurring task's checklist is the same list every time or ca
 
 ${PICK_FROM_LIST_PROSE}`;
 
+// §54: shared by the create and modify buckets.
+const DAY_PART_PROSE = `Every item belongs to one part of the day, which is where it shows in the day's list: wakeUp ("first thing", "when I get up"), morning, workDay ("at work", "during the day"), afternoon ("after lunch"), evening ("after work", "tonight"), bedtime ("before bed"). When creating, dayPart is required: use what the user said, otherwise pick the best fit from the item itself (brushing teeth → wakeUp, a work call → workDay, reading → evening) — never ask, the app's confirmation shows what was assumed. important is a yes/no flag for what the user calls important, a top priority or a must-do. On an existing item use the update tools' newDayPart and newImportant: "move reading to the evening"; "gym is a top priority" → newImportant: true; "remove the priority from gym" → newImportant: false. There are no priority numbers.`;
+
 // §56: shared by the delete and checklist buckets, since both carry these two tools.
 const REMOVE_CHECKLIST_PROSE = `For removeChecklistItems: take items off a checklist for good — "remove milk from my shopping list" → name: "shopping", items: ["milk"]; "take eggs and bread off the list" → items: ["eggs", "bread"]; "delete 'mlik', I typed it wrong". name is a text fragment to find the task or habit, and items is every item to remove, one text fragment each. It works for a one-off task, a recurring task and a Checklist habit alike: the app finds which one it is, and tells you if an item matched nothing or more than one. On a recurring task or a habit the item is gone from today on and earlier days keep it; set date only when the user explicitly names an earlier day it should count from ("remove floss from my routine since Monday"). This is not checking off: "I bought milk", "cross off milk" mean it got done (the check tools); "remove", "delete", "take off", "I don't need … any more" mean it shouldn't be on the list.
 
@@ -207,14 +211,13 @@ function buildCreateProse(categoryList: string): string {
 
 For createHabit specifically:
 - categoryId is required. Pick the best match from this list: ${categoryList}. If nothing fits, use "other" — don't ask the user to pick a category unless they seem to care about it.
-- priority is a positive whole number; higher means more important. Default to 1 (the lowest priority) unless the user signals otherwise (e.g. "this is really important" → a higher number).
 - startDate must be today or a future date (never in the past). If unspecified, it defaults to today automatically — leave it out. If the user explicitly asks for a start date that's already in the past, ask them to confirm what they actually meant rather than silently picking a different date.
 - recurrence: how often it repeats, in the compact format described in the recurrence field's own description above. If the user gives no frequency at all (e.g. "add a habit to read"), use "daily" and create it right away — do NOT ask; the app's confirmation shows the user every assumed default and how to change it. Only if the frequency is stated but vague (e.g. "sometimes", "regularly") ask a clarifying question instead of guessing. If the user names specific weekdays — even several of them, even most of the week — use "days:<list>" with exactly those weekdays; do not simplify that to "daily".
 - completionType defaults to "yesno" (simple done/not-done) unless the user describes tracking a number (→ "value"), a duration (→ "timer"), or a checklist of sub-items to complete (→ "checklist", with checklistItems as the list of item names). Never ask how the user wants to track a habit if they haven't described an amount, duration, or checklist — just use "yesno". A "value" or "timer" habit always needs a target greater than 0 — completion means reaching 100% of it, so there's no such thing as tracking one without a goal. If the user states a specific amount (e.g. "drink 8 glasses of water" → target 8, unit "glasses"; "meditate for 10 minutes" → target 10, minutes are implicit for timer so no unit needed), set target (and unit, for "value" only) to match. If they haven't given a specific amount, ask a short clarifying question for it rather than guessing or leaving it unset.
 
 For createRecurringTask specifically:
 - categoryId is optional. Always set it when the user names a category for the task (e.g. "a recurring Home task to water the plants every week") — use its id from this list: ${categoryList}. When the user names no category, set it only if one of them is a clear match; otherwise leave it out rather than guessing or asking.
-- priority, startDate/startWeekday/startWeekdayMode, and recurrence all work exactly as they do for createHabit — see above.
+- startDate/startWeekday/startWeekdayMode and recurrence work exactly as they do for createHabit — see above.
 - There is no completion type: tracking is always simple done/not-done, so never set anything completion-related for this tool.
 - checklistMode (only with a checklist): each occurrence of a recurring task has its own checklist. Leave checklistMode out by default — unticked items then carry over to the next occurrence, which suits a running list like shopping. Set "sameList" only when the user says the list is the same every time or should reset each time (e.g. "a cleaning routine with the same checklist every week"). Never ask about this; the confirmation states it.
 
@@ -252,6 +255,7 @@ function buildSystemPrompt(
   if (isBucketActive(activeBuckets, "checklist")) chunks.push(CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "checklist") || isBucketActive(activeBuckets, "delete")) chunks.push(REMOVE_CHECKLIST_PROSE);
   if (isBucketActive(activeBuckets, "create")) chunks.push(buildCreateProse(categoryList));
+  if (isBucketActive(activeBuckets, "create") || isBucketActive(activeBuckets, "modify")) chunks.push(DAY_PART_PROSE);
 
   chunks.push(
     "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
@@ -276,6 +280,20 @@ const CATEGORY_SELECTOR_FIELD = {
   type: "string",
   description:
     "Optional. Only to pick between same-named items the app listed for the user: that item's category id. Never a new value.",
+} as const;
+
+// §54: the same two fields on all three create tools.
+const DAY_PART_IDS = DAY_PARTS.map((part) => part.id);
+
+const DAY_PART_FIELD = {
+  type: "string",
+  enum: DAY_PART_IDS,
+  description: "Part of the day the item belongs to. Use what the user said; otherwise pick the best fit yourself. Never ask.",
+} as const;
+
+const IMPORTANT_FIELD = {
+  type: "boolean",
+  description: "true only when the user calls it important, a top priority or a must-do.",
 } as const;
 
 // §28: shared by pauseHabit and pauseRecurringTask.
@@ -336,10 +354,8 @@ function buildTools(
             description: "Optional. The category the user named for this task; omit when they named none.",
             enum: categories.map((category) => category.id),
           },
-          priority: {
-            type: "number",
-            description: "Optional numeric priority; higher values show first.",
-          },
+          dayPart: DAY_PART_FIELD,
+          important: IMPORTANT_FIELD,
           startDate: {
             type: "string",
             description:
@@ -372,7 +388,7 @@ function buildTools(
             items: { type: "string" },
           },
         },
-        required: ["name"],
+        required: ["name", "dayPart"],
       },
     },
     {
@@ -388,10 +404,8 @@ function buildTools(
             description: "Best-fit category id for this habit.",
             enum: categories.map((category) => category.id),
           },
-          priority: {
-            type: "number",
-            description: "Positive whole number; higher means more important. Defaults to 1.",
-          },
+          dayPart: DAY_PART_FIELD,
+          important: IMPORTANT_FIELD,
           startDate: {
             type: "string",
             description:
@@ -433,7 +447,7 @@ function buildTools(
             description: "Used when completionType is value: a short label for the number, e.g. \"glasses\", \"pages\", \"reps\".",
           },
         },
-        required: ["name", "categoryId", "recurrence"],
+        required: ["name", "categoryId", "recurrence", "dayPart"],
       },
     },
     {
@@ -450,10 +464,8 @@ function buildTools(
             description: "Optional. The category the user named for this task, or else a clear best fit; omit when neither applies.",
             enum: categories.map((category) => category.id),
           },
-          priority: {
-            type: "number",
-            description: "Positive whole number; higher means more important. Defaults to 1.",
-          },
+          dayPart: DAY_PART_FIELD,
+          important: IMPORTANT_FIELD,
           startDate: {
             type: "string",
             description:
@@ -492,7 +504,7 @@ function buildTools(
             enum: ["carryOver", "sameList"],
           },
         },
-        required: ["name", "recurrence"],
+        required: ["name", "recurrence", "dayPart"],
       },
     },
     {
@@ -511,8 +523,8 @@ function buildTools(
           },
           startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/after this date." },
           startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/before this date." },
-          priorityMin: { type: "number", description: "Only tasks with priority >= this value." },
-          priorityMax: { type: "number", description: "Only tasks with priority <= this value." },
+          dayPart: { type: "string", enum: DAY_PART_IDS, description: "Only items in this part of the day." },
+          important: { type: "boolean", description: "true = only items flagged important; false = only the others." },
           done: { type: "boolean", description: "true = only completed tasks, false = only not-yet-done tasks." },
         },
         required: [],
@@ -534,8 +546,8 @@ function buildTools(
           },
           startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only habits starting on/after this date." },
           startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only habits starting on/before this date." },
-          priorityMin: { type: "number", description: "Only habits with priority >= this value." },
-          priorityMax: { type: "number", description: "Only habits with priority <= this value." },
+          dayPart: { type: "string", enum: DAY_PART_IDS, description: "Only items in this part of the day." },
+          important: { type: "boolean", description: "true = only items flagged important; false = only the others." },
           completionType: {
             type: "string",
             description: "Only habits tracked this way.",
@@ -569,8 +581,8 @@ function buildTools(
           },
           startDateFrom: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/after this date." },
           startDateTo: { type: "string", description: "ISO date (YYYY-MM-DD): only tasks starting on/before this date." },
-          priorityMin: { type: "number", description: "Only tasks with priority >= this value." },
-          priorityMax: { type: "number", description: "Only tasks with priority <= this value." },
+          dayPart: { type: "string", enum: DAY_PART_IDS, description: "Only items in this part of the day." },
+          important: { type: "boolean", description: "true = only items flagged important; false = only the others." },
           neverCompleted: {
             type: "boolean",
             description: "true = only tasks with zero completions ever recorded.",
@@ -598,7 +610,8 @@ function buildTools(
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
-          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newDayPart: { type: "string", enum: DAY_PART_IDS, description: "Moves the item to this part of the day." },
+          newImportant: { type: "boolean", description: "true flags the item as important (a top priority); false removes the flag." },
           newStartDate: {
             type: "string",
             description:
@@ -641,7 +654,8 @@ function buildTools(
             description: `New category id from: ${categoryList}.`,
             enum: categories.map((category) => category.id),
           },
-          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newDayPart: { type: "string", enum: DAY_PART_IDS, description: "Moves the item to this part of the day." },
+          newImportant: { type: "boolean", description: "true flags the item as important (a top priority); false removes the flag." },
           newStartDate: {
             type: "string",
             description:
@@ -706,7 +720,8 @@ function buildTools(
             type: "string",
             description: `New category id from: ${categoryList}. Empty string clears the category.`,
           },
-          newPriority: { type: "number", description: "New priority; positive whole number, higher means more important." },
+          newDayPart: { type: "string", enum: DAY_PART_IDS, description: "Moves the item to this part of the day." },
+          newImportant: { type: "boolean", description: "true flags the item as important (a top priority); false removes the flag." },
           newStartDate: {
             type: "string",
             description:

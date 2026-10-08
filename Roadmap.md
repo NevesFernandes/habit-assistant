@@ -10,7 +10,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §60** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §61** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
@@ -35,24 +35,16 @@ Transcribe in the browser (Whisper via WASM/WebGPU) instead of sending audio to 
 
 **Trial first:** a spike on a branch, measured on the user's real phone; adopting it isn't decided. If it's adopted, it's probably a Settings toggle alongside the Groq path rather than a replacement.
 
-### §54 — Brainstorm: rethink priorities
-The user isn't happy with the current design and wants to brainstorm before anything is built. How it works today, as a starting point:
+### §60 — Extra priority inside a part of the day
+§54 replaced the priority number with six parts of the day; inside a part the order is important items first, then A–Z. The user expects that to be enough for their own lists, but another user's part could get cluttered. Only pick this up if that shows in real use.
 
-- Every item has `priority`, an open-ended positive number (default 1, higher = more important), set only through chat ("this is really important" → the model picks some higher number).
-- Its only effect is display order: every list (day view, habits, tasks, stats, timer) sorts by priority, then by name. The bare number shows in the lists, and in confirmations once it's above 1.
-- Habits, Recurring Tasks and Single Tasks all share one scale.
-
-Questions to bring to the session (not decisions):
-- **Scale:** an open number nobody can interpret ("is 3 high?"), vs. a few named levels (low/normal/high), or none at all with a "pin to top" / manual order instead.
-- **Purpose:** is it about *ordering* the day, *highlighting* what matters, or *filtering* (e.g. "what's important today")? Each points to a different design.
-- **Chat fit:** how the user says it ("make gym top priority", "move reading above meditation") and what the model can reliably map to the stored value.
-- **Display:** a number, a colour, a flag icon, or only position in the list.
-- **Migration:** existing items' numbers in users' Drive files must map cleanly to whatever replaces them.
+- Ideas, not decisions: an exact order the user sets ("put reading before meditation", or drag to reorder), or more than one level of importance.
+- Whatever is chosen has to stay sayable in chat and readable without numbers, which is what §54 removed.
 
 ### §58 — Shrink the full tool list to fit Groq's free tier
 A message `classifyIntent` can't place still gets every tool and every prompt rule: about 14,900 tokens (estimated at 4 characters per token; Groq counted 12,828 for it on 2026-10-05), against the 8,000 tokens a minute of Groq's free tier. §51 made this rarer (short replies are classified by what they answer, and several items can be picked without a model call) and gave a user on their own Groq key a clear "too large" message, but the full list itself is unchanged. It is the last blocker for `TRIAL_FALLBACK_PROVIDER=groq` (CLAUDE.md).
 
-- Sizes measured 2026-10-05, estimated tokens: full ~14,900; edit ~7,500; create ~4,400; delete ~4,400. §56 (2026-10-08) then added about 650 to the full, delete and checklist sets for its two remove tools and their rules (not re-measured: full ~15,500, delete ~5,050). The edit set alone is close to the limit, so a Groq user gets about one edit a minute; delete + edit together doesn't fit.
+- Sizes measured 2026-10-05, estimated tokens: full ~14,900; edit ~7,500; create ~4,400; delete ~4,400. §56 (2026-10-08) then added about 650 to the full, delete and checklist sets for its two remove tools and their rules (not re-measured: full ~15,500, delete ~5,050). §54 (2026-10-08) swapped the priority fields for part-of-day and importance fields plus one prompt rule: an estimated 250 to 350 more tokens on the create and edit sets, which puts the edit set (~7,500 before) at about the 8,000 limit on its own. The edit set alone is close to the limit, so a Groq user gets about one edit a minute; delete + edit together doesn't fit.
 - Options to weigh: a first small call that only chooses the tool family (two calls per unclassified message); trimming the prompt rules, which are most of the size; splitting the edit set (update vs. log/mark done vs. pause/archive); or a cheaper model on Groq with higher limits.
 - Related safety net to consider: when the model was given a narrowed tool set and says it can't do what was asked, retry once with the full list. That would have caught §55's wrong refusal, and covers a short follow-up that §51 routes to the wrong family.
 - Whatever is chosen changes how every unclassified message is handled on every provider, so it needs the chat scenarios run broadly, not just targeted ones.
