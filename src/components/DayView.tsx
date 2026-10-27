@@ -13,11 +13,13 @@ import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
 import { formatDurationMinutes } from "../lib/duration";
 import { noteOn } from "../lib/dayNotes";
+import { skipOn } from "../lib/skip";
 
 type DayItem =
   | { kind: "habit"; item: Habit }
   | { kind: "singleTask"; item: SingleTask }
-  | { kind: "recurringTask"; item: RecurringTask };
+  | { kind: "recurringTask"; item: RecurringTask }
+  | { kind: "skipped"; item: Habit | RecurringTask }; // §68: shown greyed, with an Undo
 
 interface DayViewProps {
   selectedDate: string;
@@ -43,7 +45,9 @@ interface DayViewProps {
   onAddRecurringTaskChecklistItem: (taskId: string, text: string) => void;
   onRemoveRecurringTaskChecklistItem: (taskId: string, itemId: string) => void;
   /** §54: moves an item to another part of the day, or flags it, without leaving the day. */
-  onPlaceItem: (kind: DayItem["kind"], id: string, patch: PlacementPatch) => void;
+  onPlaceItem: (kind: "habit" | "recurringTask" | "singleTask", id: string, patch: PlacementPatch) => void;
+  /** §68: takes a skip back, for today or a later day. */
+  onUnskip: (kind: "habit" | "recurringTask", id: string, dateISO: string) => void;
 }
 
 function getItemsForDate(
@@ -60,7 +64,10 @@ function getItemsForDate(
     kind: "recurringTask",
     item,
   }));
-  return [...habitItems, ...taskItems, ...recurringTaskItems];
+  const skipped: DayItem[] = [...habits, ...recurringTasks]
+    .filter((item) => skipOn(item, dateISO))
+    .map((item) => ({ kind: "skipped", item }));
+  return [...habitItems, ...taskItems, ...recurringTaskItems, ...skipped];
 }
 
 // §54: the day's items under a heading per part of the day, in day order.
@@ -89,6 +96,7 @@ export default function DayView({
   onAddRecurringTaskChecklistItem,
   onRemoveRecurringTaskChecklistItem,
   onPlaceItem,
+  onUnskip,
 }: DayViewProps) {
   const groups = getGroupsForDate(habits, singleTasks, recurringTasks, selectedDate);
   // §29: a day that hasn't happened yet is read-only for completion. One-off tasks are the
@@ -118,7 +126,7 @@ export default function DayView({
         <DayPartPicker
           item={entry.item}
           onChange={(patch) => {
-            onPlaceItem(entry.kind, entry.item.id, patch);
+            onPlaceItem(entry.kind === "skipped" ? entry.item.kind : entry.kind, entry.item.id, patch);
             // The item moves to another heading, so the buttons close; a star toggle stays put.
             if (patch.newDayPart) setPlacingId(null);
           }}
@@ -146,6 +154,27 @@ export default function DayView({
       <h3 className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-400">{group.label}</h3>
       <ul className="flex flex-col gap-2">
       {group.items.map((entry) => {
+        if (entry.kind === "skipped") {
+          const { item } = entry;
+          return (
+            <li key={item.id} className="flex items-center gap-3 rounded-md bg-slate-800/50 px-3 py-2 text-slate-500">
+              <CategoryIcon name={categories.find((c) => c.id === item.categoryId)?.icon} className="h-4 w-4 shrink-0" />
+              <div className="flex-1">
+                <div>{item.name}</div>
+                <NoteLine note={noteOn({ notes }, item.id, selectedDate)} />
+              </div>
+              <span className="text-xs">Skipped</span>
+              {selectedDate >= todayISO && (
+                <button
+                  onClick={() => onUnskip(item.kind, item.id, selectedDate)}
+                  className="rounded-md bg-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-600"
+                >
+                  Undo
+                </button>
+              )}
+            </li>
+          );
+        }
         if (entry.kind === "habit") {
           return (
             <HabitRow

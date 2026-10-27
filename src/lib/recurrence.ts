@@ -137,14 +137,17 @@ export function isPausedOn(item: { pauses?: PausePeriod[] }, dateISO: string): b
   return (item.pauses ?? []).some((pause) => pauseCovers(pause, dateISO));
 }
 
-/** The pause in force today, if any — what the UI labels and the chat reply describe. */
+/**
+ * The pause in force today, if any — what the UI labels and the chat reply describe. A
+ * skipped day (§68) isn't a pause here: it has its own label and its own undo.
+ */
 export function currentPause(item: { pauses?: PausePeriod[] }, todayISO: string): PausePeriod | undefined {
-  return (item.pauses ?? []).find((pause) => pauseCovers(pause, todayISO));
+  return (item.pauses ?? []).find((pause) => !pause.skip && pauseCovers(pause, todayISO));
 }
 
 /** A pause that hasn't started yet — resuming cancels it outright, there's nothing to keep. */
 export function upcomingPause(item: { pauses?: PausePeriod[] }, todayISO: string): PausePeriod | undefined {
-  return (item.pauses ?? []).find((pause) => pause.from > todayISO);
+  return (item.pauses ?? []).find((pause) => !pause.skip && pause.from > todayISO);
 }
 
 export function isPaused(item: { pauses?: PausePeriod[] }, todayISO: string): boolean {

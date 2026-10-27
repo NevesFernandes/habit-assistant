@@ -481,8 +481,10 @@ export function pauseItem(
   pause: PausePeriod,
   todayISO: string,
 ): AppData {
+  // §68: a skipped day outside the new pause stays; one inside it is covered anyway.
+  const covers = (day: string) => day >= pause.from && (!pause.resumeOn || day < pause.resumeOn);
   return mapPausable(data, kind, id, (pauses) => [
-    ...pauses.filter((existing) => isFinishedPause(existing, todayISO)),
+    ...pauses.filter((existing) => isFinishedPause(existing, todayISO) || (existing.skip && !covers(existing.from))),
     pause,
   ]);
 }
@@ -495,6 +497,8 @@ export function resumeItem(data: AppData, kind: "habit" | "recurringTask", id: s
   return mapPausable(data, kind, id, (pauses) =>
     pauses.flatMap((pause) => {
       if (isFinishedPause(pause, todayISO)) return [pause];
+      // §68: "resume" is about pausing; a day skipped ahead stays skipped.
+      if (pause.skip && pause.from > todayISO) return [pause];
       if (pause.from >= todayISO) return [];
       return [{ ...pause, resumeOn: todayISO }];
     }),

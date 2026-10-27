@@ -16,12 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §68 — Skip a day
-"I'm sick today, skip gym": one excused day that counts as neither done nor missed, so the streak survives, lighter than a pause.
-
-- Probably a one-day pause under the hood (§28's rules: paused days aren't scheduled days), unless a separate "skipped" mark reads better in the app; to decide. Whether a past day can be skipped (a pause can't start in the past) is also to decide.
-- Connector (inputs ready, 2026-10-27): `schedule` has a `skip` op with a `date` (default today), answering `not_available` until this is built.
-
 ## Next
 
 ### §63 — Stats for recurring tasks and one-off tasks

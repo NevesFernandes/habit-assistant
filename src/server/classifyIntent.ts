@@ -51,7 +51,8 @@ const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
 // §28: pausing/resuming, and archiving, are the "schedule" family. §59: on their own they no
 // longer bring the delete tools along — "pause my gym habit" names its action plainly, and
 // delete + edit together was too large for Groq's free tier.
-const PAUSE_VERBS = ["pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
+// §68: skipping one day is a schedule change too.
+const PAUSE_VERBS = ["skip", "skipping", "unskip", "pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
 
 // §55: "remove the comments of the task X" / "clear the end date on gym" take one *field*
 // off an item — an edit (updateX with that field set to ""), not a deletion. Users say

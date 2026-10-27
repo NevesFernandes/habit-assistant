@@ -227,7 +227,7 @@
           <li><a href="#talking">Talking to the assistant</a></li>
           <li><a href="#types">Habits, recurring tasks and tasks</a></li>
           <li><a href="#schedules">Schedules</a></li>
-          <li><a href="#stop">Pause, archive or delete</a></li>
+          <li><a href="#stop">Skip, pause, archive or delete</a></li>
           <li><a href="#rules">Rules that can surprise you</a></li>
           <li><a href="#app">Around the app</a></li>
           <li><a href="#stats">Stats and the heatmap</a></li>
@@ -279,6 +279,10 @@
         <tr>
           <td>Take a break</td>
           <td><span class="say">pause gym for two weeks</span>, <span class="say">resume gym</span></td>
+        </tr>
+        <tr>
+          <td>Skip one day</td>
+          <td><span class="say">I'm sick, skip gym today</span>, <span class="say">skip the bins on Thursday</span>, <span class="say">unskip gym</span></td>
         </tr>
         <tr>
           <td>Stop or remove</td>
@@ -455,9 +459,14 @@
       </table>
       <p>Change a schedule the same way: <span class="say">change reading to weekdays only</span>. Weeks start on Sunday, or on Monday if you choose that in Settings (<strong>First day of the week</strong>). This decides what counts as “this week” for a <em>times per week</em> schedule. Changing it also regroups past weeks, so a past week may now count as met or missed differently.</p>
 
-      <h2 id="stop">4. Pause, archive or delete</h2>
+      <h2 id="stop">4. Skip, pause, archive or delete</h2>
       <table>
         <tr><th></th><th>What happens</th><th>History</th></tr>
+        <tr>
+          <td><strong id="skip">Skip</strong></td>
+          <td>Excuses one day, today or later (<span class="say">I'm sick, skip gym today</span>). It counts as neither done nor missed, so your streak survives. The Today tab still shows it, greyed out and marked Skipped, with an <strong>Undo</strong>. Past days can't be skipped, nor a day already done (undo it first). A habit set to a number of times a week or month has no set day, so there's nothing to skip.</td>
+          <td>Kept</td>
+        </tr>
         <tr>
           <td><strong>Pause</strong></td>
           <td>Stops it for a while, with or without an end date. Paused days count as neither done nor missed, so your streak survives. A pause can't start in the past.</td>
@@ -474,7 +483,7 @@
           <td>Erased</td>
         </tr>
       </table>
-      <p>Pause and archive are for habits and recurring tasks; a one-off task can only be deleted.</p>
+      <p>Skip, pause and archive are for habits and recurring tasks; a one-off task can only be moved or deleted.</p>
 
       <h2 id="rules">5. Rules that can surprise you</h2>
       <ul>
@@ -644,8 +653,7 @@
           Claude asks you for your time zone once.
         </li>
         <li>
-          A few things Claude may offer are still being built: skipping a single day, stats for tasks, and resetting
-          stats. Until then Claude says they aren't available
+          A few things Claude may offer are still being built: stats for tasks, and resetting stats. Until then Claude says they aren't available
           yet (a completion with a note is still saved, without the note).
         </li>
         <li>

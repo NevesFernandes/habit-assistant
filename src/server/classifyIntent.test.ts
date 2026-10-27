@@ -113,6 +113,9 @@ const cases: Case[] = [
   ["add a note to today's run: legs tired", ["progress"]],
   ["note for tomorrow's gym: bring a towel", ["progress"]],
   ["remove the notes from the dentist task", ["edit"]],
+  // §68
+  ["skip gym today", ["schedule"]],
+  ["unskip my run", ["schedule"]],
 ];
 
 let failures = 0;
