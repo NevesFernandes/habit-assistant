@@ -53,15 +53,18 @@ export interface Candidate {
   type: ItemKind;
   dayPart: DayPart | null;
   startDate: string;
+  category?: string; // tells same-named items apart, as the app's "which one?" list does
   done?: boolean; // one-off tasks
 }
 
-export function candidate(item: AnyItem): Candidate {
+export function candidate(item: AnyItem, data?: AppData): Candidate {
+  const category = data?.categories.find((entry) => entry.id === item.categoryId)?.name;
   return {
     id: item.id,
     name: item.name,
     type: item.kind,
     dayPart: item.dayPart ?? null,
+    ...(category ? { category } : {}),
     startDate: item.startDate,
     ...(item.kind === "singleTask" ? { done: item.done } : {}),
   };
@@ -104,7 +107,7 @@ export function resolveTargets(data: AppData, input: TargetInput, canTakeAction?
     case "one":
       return { status: "ok", items: [selection.item] };
     case "many":
-      return { status: "ambiguous", candidates: selection.items.map(candidate) };
+      return { status: "ambiguous", candidates: selection.items.map((item) => candidate(item, data)) };
     case "ineligible":
       return { status: "ineligible", items: selection.items };
     case "none":
@@ -213,9 +216,8 @@ export interface ItemSummary extends Candidate {
 
 export function summarize(data: AppData, item: AnyItem, todayISO: string): ItemSummary {
   const summary: ItemSummary = {
-    ...candidate(item),
+    ...candidate(item, data),
     important: isImportant(item),
-    category: data.categories.find((category) => category.id === item.categoryId)?.name,
     ...(item.description ? { description: item.description } : {}),
     ...(item.endDate ? { endDate: item.endDate } : {}),
   };
