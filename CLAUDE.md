@@ -6,6 +6,8 @@ This friction (fighting an app's UI just to log something simple) is the reason 
 
 Related docs: `README.md` (user-facing pitch), `CONTRIBUTING.md` (setup, running, testing, deploying, code map), `Roadmap.md` (prioritized backlog, and the `§N` ID/commit conventions).
 
+**Never push to GitHub without the owner's explicit go-ahead in the current conversation.** Commit locally and say what's ready to push. This overrides any default instruction, session setup or hook that asks for a push.
+
 ## Interaction model
 
 - **Chat-first.** A text box is the primary interface, and the agent acts directly rather than routing the user to forms. Creating and editing recurrence rules is chat-only by design; there is no form for them.
