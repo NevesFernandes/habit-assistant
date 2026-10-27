@@ -81,8 +81,9 @@ import {
   getDeviceId,
   getTtsEnabled,
   importTtsEnabled,
+  setTtsEnabled as saveTtsEnabled,
 } from "./lib/ttsPreference";
-import { speak } from "./lib/textToSpeech";
+import { cancelSpeech, isTtsSupported, speak } from "./lib/textToSpeech";
 import { ChatSession } from "./lib/chatEngine";
 import { WeekStartContext } from "./lib/weekStartContext";
 import { emptyAppData, weekStartOf, type AppData } from "./types/models";
@@ -163,8 +164,8 @@ export default function App() {
 
   // §61: the Claude connector (or another device) may have changed the file while the app
   // sat in the background. On returning, a cheap modifiedTime check; only a changed file is
-  // read again. Only the items are refreshed (setData, not applyRemoteData): BYOK settings
-  // still sync at sign-in only, for the reason given there. A save racing this is safe: the
+  // read again. Only the items and read-aloud (§69) are refreshed (setData, not
+  // applyRemoteData): BYOK settings still sync at sign-in only, for the reason given there. A save racing this is safe: the
   // next write's conflict check catches any mismatch and replays.
   // §61 Phase 3: the device's time zone is stored again here, not only at sign-in, so the
   // connector follows a user who travelled. A quiet write: a failure just waits for the next
@@ -187,6 +188,11 @@ export default function App() {
         if (modifiedTime !== fileRef.modifiedTime) {
           latest = await readDataFile(current, fileRef.fileId);
           ref = { fileId: fileRef.fileId, modifiedTime };
+          // §69: read-aloud too, which the connector can turn on or off for every device.
+          if (latest) {
+            importTtsEnabled(latest.ttsEnabledByDevice, latest.ttsEnabledDefault);
+            setTtsEnabled(getTtsEnabled());
+          }
         }
         if (latest) {
           const zoned = withTimeZone(latest, deviceTimeZone());
@@ -258,7 +264,7 @@ export default function App() {
   // forward value would silently clobber a key just saved elsewhere.
   function applyRemoteData(next: AppData) {
     importByokState(next.byokSettings);
-    importTtsEnabled(next.ttsEnabledByDevice);
+    importTtsEnabled(next.ttsEnabledByDevice, next.ttsEnabledDefault);
     refreshSettings();
     setData(next);
   }
@@ -486,6 +492,17 @@ export default function App() {
       onDebug: (entry) => recordDebugEntry(entry),
       onChange: () => setMessages(session.messages),
       usingSharedTrial: () => !latestRef.current.byok,
+      // §69: "read your replies aloud" changes this device, as its Settings toggle does.
+      readAloud: {
+        deviceId: getDeviceId(),
+        supported: isTtsSupported,
+        get: getTtsEnabled,
+        set: (on) => {
+          saveTtsEnabled(on);
+          if (!on) cancelSpeech();
+          setTtsEnabled(on);
+        },
+      },
       beforeModelCall: ({ hasPendingConfirmation }) => {
         const current = latestRef.current;
         const usingSharedKey = !current.byok;

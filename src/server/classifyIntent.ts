@@ -12,7 +12,8 @@
 // (mark done, log an amount) and schedule (pause, resume, archive) — so that no single
 // family comes near Groq's free-tier request limit.
 // §66: "history" reads what was done, missed or is coming up over a period; it changes nothing.
-export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history";
+// §69: "settings" shows or changes the first day of the week and reading replies aloud.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -131,6 +132,13 @@ const HISTORY_PATTERNS: RegExp[] = [
   /\bundo\b[\s\S]*\breset\b/,
 ];
 
+// §69: the settings a chat can change, or asking what they are.
+const SETTINGS_PATTERNS = [
+  /\bsettings?\b/, /\bpreferences?\b/,
+  /\bweeks?\b[\s\S]{0,30}\b(?:start|starts|starting|begin|begins|beginning)\b/, /\b(?:start|begin)\b[\s\S]{0,20}\bweeks?\b/, /\bfirst day of the week\b/,
+  /\bread\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\breading\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\bspeak\b/, /\bspoken\b/, /\btalk(?:ing)? back\b/,
+];
+
 export function classifyIntent(rawText: string): ClassifyIntentResult {
   const text = rawText.toLowerCase();
 
@@ -209,13 +217,14 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
     matchesAny(text, AMOUNT_CHANGE_VERBS) && hasNumberOrDuration && !matchesAny(text, ["goal", "target"]);
   if (marksDone || (hasLogVerb && hasNumberOrDuration && !asksHistory) || amountWithChangeVerb) buckets.add("progress");
 
+  if (asksHistory) buckets.add("history");
+  if (SETTINGS_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("settings");
+
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous
   // between marking a habit done ("progress") and a checklist-type habit's
   // item ("checklist") — the router can't see the user's actual data to know
   // which, so send both rather than guess.
-  if (asksHistory) buckets.add("history");
-
   if (hasLogVerb && !hasNumberOrDuration && !hasListNoun && !hasCheckVerb && !asksHistory) {
     buckets.add("progress");
     buckets.add("checklist");

@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,28 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- Settings (§69) -----------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const shown = await call("more_actions", { action: "settings" });
+  assert.deepEqual(shown, { status: "ok", firstDayOfWeek: "Sunday", readRepliesAloud: "off", note: "API keys, the chat provider and voice transcription are changed in Settings (⚙), not by chat." });
+  const monday = await call("more_actions", { action: "settings", args: { weekStartsOn: "monday" } });
+  assert.equal(monday.status, "ok");
+  assert.match(monday.message, /^Weeks now start on Monday\./);
+  assert.equal(store.file().weekStartsOn, 1);
+  assert.equal((await call("more_actions", { action: "settings", args: { weekStartsOn: "friday" } })).status, "rejected");
+}
+{
+  // Read-aloud: no device of its own, so every device, and any added later.
+  const store = memoryStore({ ...fixture(), ttsEnabledByDevice: { phone: true, laptop: false } });
+  const call = (tool: string, args: Record<string, unknown>) => callTool({ store }, tool, args).then((r) => r.body);
+  assert.equal((await call("more_actions", { action: "settings" })).readRepliesAloud, "on on some devices, off on others");
+  const off = await call("more_actions", { action: "settings", args: { readAloud: false } });
+  assert.match(off.message, /^Read-aloud is now off in the Habit Assistant app on every device/);
+  assert.deepEqual([store.file().ttsEnabledByDevice, store.file().ttsEnabledDefault], [{ phone: false, laptop: false }, false]);
 }
 
 // --- get_history (§66) ----------------------------------------------------------------------

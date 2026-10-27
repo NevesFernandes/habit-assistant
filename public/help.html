@@ -286,11 +286,15 @@
         </tr>
         <tr>
           <td>Stop or remove</td>
-          <td><span class="say">archive the guitar habit</span>, <span class="say">delete the dentist task</span></td>
+          <td><span class="say">archive the guitar habit</span>, <span class="say">bring back the guitar habit</span>, <span class="say">delete the dentist task</span></td>
         </tr>
         <tr>
           <td>Add a note to a day</td>
           <td><span class="say">mark run done, 5 km, legs tired</span>, <span class="say">add a note to yesterday's gym: knee hurt</span>, <span class="say">note for tomorrow's run: bring a towel</span>, <span class="say">remove the note from today's run</span></td>
+        </tr>
+        <tr>
+          <td id="settings-by-chat">Settings</td>
+          <td><span class="say">start my week on Monday</span>, <span class="say">read your replies aloud</span>, <span class="say">stop reading aloud</span>, <span class="say">what are my settings?</span></td>
         </tr>
         <tr>
           <td>Look back or ahead</td>
@@ -328,7 +332,8 @@
         Press and <strong>hold</strong> the microphone button, speak, and let go. What you said is turned into text
         and sent straight away, with no review step, and shows up in the chat like a typed message. A very short tap
         or a recording with no speech in it is ignored. Replies can also be read aloud: turn on
-        <strong>Spoken responses</strong> in Settings.
+        <strong>Spoken responses</strong> in Settings, or say <span class="say">read your replies aloud</span>. It's set
+        per device, so your phone and computer can differ.
       </p>
 
       <h2 id="types">2. Habits, recurring tasks and tasks</h2>
@@ -509,7 +514,7 @@
         <li><strong>Stats</strong> (bar chart): overall progress, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
         <li><strong>Timer</strong> (stopwatch): a stopwatch or countdown you can save to a Timer habit.</li>
       </ul>
-      <p>Next to the title, the <strong>?</strong> button opens this page (also linked from the sign-in screen) and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies, and the first day of the week.</p>
+      <p>Next to the title, the <strong>?</strong> button opens this page (also linked from the sign-in screen) and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies, and the first day of the week. The first day of the week and spoken replies can also be changed by chat (<a href="#settings-by-chat">see above</a>). Keys can't: never paste a key into the chat, because the message goes to the AI provider.</p>
 
       <h2 id="stats">7. Stats and the heatmap</h2>
       <figure class="shot">
@@ -683,8 +688,12 @@
         <li>
           Claude gets the same numbers and summary the app works out, so you can ask it for a picture too:
           <span class="say">show my month in Habit Assistant as a calendar</span>,
-          <span class="say">chart my last four weeks of habits</span>. Until then Claude says they aren't available
-          yet (a completion with a note is still saved, without the note).
+          <span class="say">chart my last four weeks of habits</span>.
+        </li>
+        <li>
+          Claude can change the first day of the week and spoken replies too. Claude isn't on one of your devices, so
+          <span class="say">turn off read-aloud in Habit Assistant</span> changes it on every device, the next time the
+          app is opened or brought back to the screen.
         </li>
         <li>
           If Claude ever says it can't find one of Habit Assistant's tools, remove the connector and add it again

@@ -37,6 +37,7 @@ import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } fr
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
+import { NOT_BY_CHAT, describeReadAloudEverywhere, describeWeekStart, readAloudEverywhere, withReadAloudEverywhere, withWeekStart } from "../lib/settingsByChat.ts";
 import { describeUndoReset, resetTargets, undoable, undoReset, type ResetScope } from "../lib/statsReset.ts";
 
 /** A change that's allowed: `apply` replays on a conflict (§21), `describe` reads the saved result. */
@@ -470,6 +471,44 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §69: the app's two chat-changeable settings. Claude has no device of its own, so
+  // read-aloud changes on every device (and any added later).
+  settings: {
+    description:
+      'Shows the app\'s settings, or changes them: the first day of the week ("start my week on Monday") and reading replies aloud in the Habit Assistant app ("turn off read-aloud", for every device). With no args it shows them. API keys, the chat provider and voice transcription are changed in the app\'s Settings, never by chat: never ask for a key.',
+    args: { weekStartsOn: '"sunday" or "monday"', readAloud: "boolean" },
+    run: (data, args) => {
+      const weekStart = args.weekStartsOn === "monday" ? 1 : args.weekStartsOn === "sunday" ? 0 : undefined;
+      if (args.weekStartsOn !== undefined && weekStart === undefined) {
+        return { status: "rejected", message: 'weekStartsOn is "sunday" or "monday"; the week can only start on one of those.' };
+      }
+      const readAloud = typeof args.readAloud === "boolean" ? args.readAloud : undefined;
+      if (weekStart === undefined && readAloud === undefined) {
+        return {
+          result: {
+            firstDayOfWeek: weekStartOf(data) === 1 ? "Monday" : "Sunday",
+            readRepliesAloud: readAloudEverywhere(data),
+            note: NOT_BY_CHAT,
+          },
+        };
+      }
+      const before = weekStartOf(data);
+      return {
+        status: "ok",
+        apply: (d) => {
+          let next = weekStart === undefined ? d : withWeekStart(d, weekStart);
+          if (readAloud !== undefined) next = withReadAloudEverywhere(next, readAloud);
+          return next;
+        },
+        describe: () => ({
+          message: [
+            ...(weekStart === undefined ? [] : [describeWeekStart(before, weekStart)]),
+            ...(readAloud === undefined ? [] : [describeReadAloudEverywhere(readAloud)]),
+          ].join(" "),
+        }),
+      };
     },
   },
   // §68: skipping is schedule's `skip` op, frozen at launch; taking one back came later.
