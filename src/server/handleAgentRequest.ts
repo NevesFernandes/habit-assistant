@@ -117,6 +117,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "removeTaskChecklist", buckets: ["checklist", "delete"], listBlurb: "remove the whole checklist from a task, leaving a plain task." },
   { name: "setNote", buckets: ["progress"], listBlurb: "add, change or remove the note on an item's day." },
   { name: "getStats", buckets: ["history"], listBlurb: "show stats: streaks, completion %, counts, for one item, a category or everything; changes nothing." },
+  { name: "resetStats", buckets: ["history"], listBlurb: "start the stats over (history kept) for one item, a category or everything, or undo that; the app asks first." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
 ];
 
@@ -1072,6 +1073,21 @@ export function buildTools(
         properties: {
           name: { type: "string", description: "Optional. Fragment of one item's name, when the user asked about one item." },
           categoryId: { type: "string", description: "Optional. A category id, when the user asked about one category." },
+        },
+      },
+    },
+    {
+      name: "resetStats",
+      description:
+        "Start the stats over from today, keeping all history: 'reset my gym stats', 'reset all my stats', 'reset the stats of my Health habits'. The best streak stays unless the user explicitly says to reset it too ('including the best streak'). undo: true for 'undo the reset'. The app asks the user first; never ask yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Optional. Fragment of one item's name." },
+          categoryId: { type: "string", description: "Optional. A category id, for one category." },
+          kind: { type: "string", enum: ["habit", "recurringTask", "singleTask"], description: "Optional. Only this kind of item, when the user said so." },
+          includeBestStreak: { type: "boolean", description: "true only when the user explicitly asked to reset the best streak too." },
+          undo: { type: "boolean", description: "true to undo the last reset." },
         },
       },
     },

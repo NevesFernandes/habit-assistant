@@ -48,6 +48,12 @@ export interface BaseItem {
   priority?: number;
   startDate: string; // ISO date, defaults to today
   endDate?: string; // ISO date
+  // §64: stats count from here (a reset); absent = from startDate. History is never touched.
+  statsFrom?: string;
+  // §64: the best streak counts from here; only an explicit "including best streak" sets it.
+  bestStreakFrom?: string;
+  // §64: both as they were before the last reset, so "undo the reset" can put them back.
+  statsUndo?: { statsFrom?: string; bestStreakFrom?: string };
 }
 
 // See the "Periodicity" section of CLAUDE.md for the product rationale

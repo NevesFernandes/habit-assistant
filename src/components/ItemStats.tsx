@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CompletionLogEntry, Habit } from "../types/models";
-import { computeHabitStats } from "../lib/habitStats";
+import { computeHabitStats, statsCountFrom } from "../lib/habitStats";
+import { formatDate } from "../lib/confirmations";
 import { todayISO } from "../lib/recurrence";
 import { useWeekStart } from "../lib/weekStartContext";
 import StatTile from "./StatTile";
@@ -18,6 +19,8 @@ export default function ItemStats({ item, completionLog }: { item: Habit; comple
       <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Statistics
       </div>
+      {/* §64: from the start date, or from the last reset (the history before it stays). */}
+      <div className="text-xs text-slate-500">Counting since {formatDate(statsCountFrom(item), todayISO())}</div>
 
       <Row label="Current streak">
         <span>{formatStreak(stats.currentStreak)}</span>

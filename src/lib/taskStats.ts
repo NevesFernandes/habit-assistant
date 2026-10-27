@@ -46,7 +46,9 @@ export interface SingleTaskStats {
  * (rolloverPersistentTasks), so "open" matches the Today tab.
  */
 export function computeSingleTaskStats(tasks: SingleTask[], todayISO: string, weekStartsOn: WeekStart): SingleTaskStats {
-  const doneSince = (start: string) => tasks.filter((task) => task.done && task.doneOn !== undefined && task.doneOn >= start).length;
+  // §64: after a reset a task counts only if it was done on or after it.
+  const counted = (task: SingleTask) => task.done && (!task.statsFrom || (task.doneOn !== undefined && task.doneOn >= task.statsFrom));
+  const doneSince = (start: string) => tasks.filter((task) => counted(task) && task.doneOn !== undefined && task.doneOn >= start).length;
   const open = tasks.filter((task) => !task.done && task.startDate <= todayISO);
   const carried = open.filter((task) => (task.originalStartDate ?? task.startDate) < todayISO);
   const totalCarried = carried.reduce((sum, task) => sum + daysBetween(task.originalStartDate ?? task.startDate, todayISO), 0);
@@ -55,7 +57,7 @@ export function computeSingleTaskStats(tasks: SingleTask[], todayISO: string, we
     doneThisWeek: doneSince(startOfWeek(todayISO, weekStartsOn)),
     doneThisMonth: doneSince(startOfMonth(todayISO)),
     doneThisYear: doneSince(startOfYear(todayISO)),
-    doneAllTime: tasks.filter((task) => task.done).length,
+    doneAllTime: tasks.filter(counted).length,
     open: open.length,
     upcoming: tasks.filter((task) => !task.done && task.startDate > todayISO).length,
     carriedOver: carried.length,
