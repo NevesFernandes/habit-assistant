@@ -94,7 +94,7 @@ export interface ConfirmPendingActionToolCall {
 
 export interface LogHabitProgressToolCall {
   name: "logHabitProgress";
-  input: { name: string; categoryId?: string; date?: string; value?: number; delta?: number };
+  input: { name: string; categoryId?: string; date?: string; value?: number; delta?: number; note?: string };
 }
 
 // Several items in one call ("add milk and bread"); `text` is the older one-item
@@ -148,6 +148,7 @@ export interface SetDoneInput {
   categoryId?: string;
   date?: string;
   done?: boolean;
+  note?: string; // §67
 }
 
 export interface SetHabitDoneToolCall {
@@ -164,6 +165,12 @@ export interface SetRecurringTaskDoneToolCall {
 export interface GetHistoryToolCall {
   name: "getHistory";
   input: { from: string; to: string; name?: string; categoryId?: string };
+}
+
+// §67: "" removes the note.
+export interface SetNoteToolCall {
+  name: "setNote";
+  input: { name: string; categoryId?: string; date?: string; note: string };
 }
 
 export type AgentToolCall =
@@ -193,7 +200,8 @@ export type AgentToolCall =
   | RemoveTaskChecklistToolCall
   | SetHabitDoneToolCall
   | SetRecurringTaskDoneToolCall
-  | GetHistoryToolCall;
+  | GetHistoryToolCall
+  | SetNoteToolCall;
 
 export interface AgentResponse {
   reply?: string;

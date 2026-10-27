@@ -1,4 +1,4 @@
-import type { Category, ChecklistItem, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
+import type { Category, ChecklistItem, CompletionLogEntry, DayNote, Habit, RecurringTask, SingleTask } from "../types/models";
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, ListChecks, MoreVertical } from "lucide-react";
 import { completionsInPeriod, getHabitsForDate, getRecurringTasksForDate, isFutureDate } from "../lib/recurrence";
@@ -12,6 +12,7 @@ import { groupByDayPart, isImportant, type DayPartGroup } from "../lib/dayParts"
 import Checklist from "./Checklist";
 import { CompletionControl, YesNoCheckbox } from "./CompletionControl";
 import { formatDurationMinutes } from "../lib/duration";
+import { noteOn } from "../lib/dayNotes";
 
 type DayItem =
   | { kind: "habit"; item: Habit }
@@ -25,6 +26,8 @@ interface DayViewProps {
   singleTasks: SingleTask[];
   recurringTasks: RecurringTask[];
   completionLog: CompletionLogEntry[];
+  /** §67: each item's note for the selected day shows under it. */
+  notes?: DayNote[];
   categories: Category[];
   onToggleHabit: (habitId: string) => void;
   onToggleTask: (taskId: string) => void;
@@ -72,6 +75,7 @@ export default function DayView({
   singleTasks,
   recurringTasks,
   completionLog,
+  notes,
   categories,
   onToggleHabit,
   onToggleTask,
@@ -146,6 +150,7 @@ export default function DayView({
           return (
             <HabitRow
               key={entry.item.id}
+              note={noteOn({ notes }, entry.item.id, selectedDate)}
               placeControl={placeControl(entry)}
               placePanel={placePanel(entry)}
               habit={entry.item}
@@ -162,6 +167,7 @@ export default function DayView({
           return (
             <RecurringTaskRow
               key={entry.item.id}
+              note={noteOn({ notes }, entry.item.id, selectedDate)}
               placeControl={placeControl(entry)}
               placePanel={placePanel(entry)}
               task={entry.item}
@@ -179,6 +185,7 @@ export default function DayView({
         return (
           <TaskRow
             key={entry.item.id}
+            note={noteOn({ notes }, entry.item.id, selectedDate)}
             placeControl={placeControl(entry)}
             placePanel={placePanel(entry)}
             task={entry.item}
@@ -207,8 +214,15 @@ export default function DayView({
 
 const FUTURE_TITLE = "This day hasn't happened yet";
 
+/** §67: the day's note. inline-block keeps a done row's strike-through off it. */
+function NoteLine({ note }: { note?: string }) {
+  if (!note) return null;
+  return <div className="inline-block text-xs italic text-sky-300">“{note}”</div>;
+}
+
 function HabitRow({
   habit,
+  note,
   placeControl,
   placePanel,
   selectedDate,
@@ -219,6 +233,7 @@ function HabitRow({
   onToggleChecklistItem,
 }: {
   habit: Habit;
+  note?: string;
   placeControl: ReactNode;
   placePanel: ReactNode;
   selectedDate: string;
@@ -248,6 +263,7 @@ function HabitRow({
             {isImportant(habit) && <ImportantMark />}
           </div>
           {habit.description && <div className="text-xs text-slate-500">{habit.description}</div>}
+          <NoteLine note={note} />
           {habit.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
               {completionsInPeriod(completionLog, habit.id, selectedDate, habit.recurrence.period, weekStartsOn)}/
@@ -303,6 +319,7 @@ function HabitRow({
 
 function RecurringTaskRow({
   task,
+  note,
   placeControl,
   placePanel,
   selectedDate,
@@ -315,6 +332,7 @@ function RecurringTaskRow({
   onRemoveChecklistItem,
 }: {
   task: RecurringTask;
+  note?: string;
   placeControl: ReactNode;
   placePanel: ReactNode;
   selectedDate: string;
@@ -345,6 +363,7 @@ function RecurringTaskRow({
             {isImportant(task) && <ImportantMark />}
           </div>
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
+          <NoteLine note={note} />
           {task.recurrence.type === "timesPerPeriod" && (
             <div className="text-xs text-violet-300">
               {completionsInPeriod(completionLog, task.id, selectedDate, task.recurrence.period, weekStartsOn)}/
@@ -385,6 +404,7 @@ function RecurringTaskRow({
 // then disappears from the day being viewed.
 function TaskRow({
   task,
+  note,
   placeControl,
   placePanel,
   categories,
@@ -399,6 +419,7 @@ function TaskRow({
   onConfirm,
 }: {
   task: SingleTask;
+  note?: string;
   placeControl: ReactNode;
   placePanel: ReactNode;
   categories: Category[];
@@ -428,6 +449,7 @@ function TaskRow({
             {isImportant(task) && <ImportantMark />}
           </div>
           {task.description && <div className="text-xs text-slate-500">{task.description}</div>}
+          <NoteLine note={note} />
         </div>
         {task.checklist && (
           <ChecklistBadge items={task.checklist} expanded={checklist.expanded} onClick={checklist.toggleExpanded} />

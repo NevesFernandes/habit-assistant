@@ -69,6 +69,7 @@ import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "./history";
 import { describeHistory } from "./historyReply";
 import { rolloverPersistentTasks } from "./dataStore";
 import { isISODate } from "./today";
+import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -141,6 +142,11 @@ const CHECKLIST_OWNER_KINDS: ItemKind[] = ["recurringTask", "singleTask", "habit
 function formatQuotedAnd(texts: string[]): string {
   const quoted = texts.map((text) => `"${text}"`);
   return quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+}
+
+/** §67: what a progress reply adds when a note was saved with it. */
+function noteSaved(note: string | undefined): string {
+  return note ? ` Note: "${note}".` : "";
 }
 
 const ITEM_NOUNS: Record<ItemKind, string> = {
@@ -391,6 +397,8 @@ export class ChatSession {
       await this.handleRemoveTaskChecklist(toolCall.input, toolCall);
     } else if (toolCall.name === "getHistory") {
       this.handleGetHistory(toolCall.input, toolCall);
+    } else if (toolCall.name === "setNote") {
+      await this.handleSetNote(toolCall.input, toolCall);
     }
   }
 
@@ -748,7 +756,7 @@ export class ChatSession {
   }
 
   private async handleLogHabitProgress(
-    input: ItemSelector & { date?: string; value?: number; delta?: number },
+    input: ItemSelector & { date?: string; value?: number; delta?: number; note?: string },
     toolCall: ToolCallRef,
   ) {
     // §32: only number/timer habits can take a logged value, so a same-named yes/no habit
@@ -779,11 +787,14 @@ export class ChatSession {
     // whatever data a conflict-replay actually reloads, rather than replaying a stale
     // absolute value — see §21.
     let loggedValue = 0;
+    const note = this.noteFrom(input.note, toolCall);
+    if (note === null) return;
     const saved = await this.deps.persist((latest) => {
       const currentValue =
         latest.completionLog.find((entry) => entry.itemId === habit.id && entry.date === dateISO)?.value ?? 0;
       loggedValue = input.value !== undefined ? input.value : currentValue + (input.delta ?? 0);
-      return setHabitValue(latest, habit.id, dateISO, loggedValue);
+      const next = setHabitValue(latest, habit.id, dateISO, loggedValue);
+      return note ? setDayNote(next, habit.id, dateISO, note) : next;
     });
     if (saved) {
       const loggedText =
@@ -795,7 +806,7 @@ export class ChatSession {
           ? ` — ${Math.round((loggedValue / habit.target) * 100)}% of your ${habit.completionType === "timer" ? formatGoalMinutes(habit.target) : `${habit.target}${habit.unit ? ` ${habit.unit}` : ""}`} goal`
           : "";
       const dateText = dateISO === today ? "today" : `on ${formatDate(dateISO, today)}`;
-      this.pushAssistantMessage(`Logged ${loggedText} for "${habit.name}" ${dateText}${goalText}.`, toolCall);
+      this.pushAssistantMessage(`Logged ${loggedText} for "${habit.name}" ${dateText}${goalText}.${noteSaved(note)}`, toolCall);
     }
   }
 
@@ -804,14 +815,19 @@ export class ChatSession {
   // confirm-and-move-to-today still applies to it.
   private async handleSetDone(
     requestedKind: "habit" | "recurringTask",
-    input: ItemSelector & { date?: string; done?: boolean },
+    input: ItemSelector & { date?: string; done?: boolean; note?: string },
     toolCall: ToolCallRef,
   ) {
     const done = input.done ?? true;
     const selector = { name: input.name, categoryId: input.categoryId };
+    const note = this.noteFrom(input.note, toolCall);
+    if (note === null) return;
     const kind = this.resolveKind(requestedKind, ["habit", "recurringTask", "singleTask"], selector);
     if (kind === "singleTask") {
       await this.handleUpdateRequest("singleTask", { ...selector, newDone: done }, toolCall);
+      // §67: a one-off task's note goes on the day it was marked, saved once the change is.
+      const task = note && !this.pendingConfirmation && !this.pendingPick ? this.lastPickedSingleTask(selector) : undefined;
+      if (task && note) await this.saveNoteAfter(task, this.todayISO, note);
       return;
     }
     const item = kind === "habit" ? this.pickItem("habit", selector, toolCall) : this.pickItem("recurringTask", selector, toolCall);
@@ -836,13 +852,19 @@ export class ChatSession {
     if (!data) return;
     const before = data.completionLog.find((entry) => entry.itemId === item.id && entry.date === dateISO);
 
+    // §67: the note rides in the same save; with nothing else to change it's saved alone.
+    const save = async (change?: (current: AppData) => AppData) => {
+      if (!change && !note) return true;
+      return this.deps.persist((current) => {
+        const next = change ? change(current) : current;
+        return note ? setDayNote(next, item.id, dateISO, note) : next;
+      });
+    };
+
     if (item.kind === "recurringTask") {
       const wasDone = !!before;
-      if (wasDone !== done) {
-        const saved = await this.deps.persist((current) => setRecurringTaskDone(current, item.id, dateISO, done));
-        if (!saved) return;
-      }
-      this.pushAssistantMessage(describeRecurringTaskMarked(item, wasDone, done, dateISO, today), toolCall);
+      if (!(await save(wasDone !== done ? (current) => setRecurringTaskDone(current, item.id, dateISO, done) : undefined))) return;
+      this.pushAssistantMessage(describeRecurringTaskMarked(item, wasDone, done, dateISO, today) + noteSaved(note), toolCall);
       return;
     }
 
@@ -860,28 +882,27 @@ export class ChatSession {
     }
 
     if (!done) {
-      if (before) {
-        const saved = await this.deps.persist((current) => setHabitDone(current, habit.id, dateISO, false));
-        if (!saved) return;
-      }
-      this.pushAssistantMessage(describeHabitMarkedNotDone(habit, before, dateISO, today), toolCall);
+      if (!(await save(before ? (current) => setHabitDone(current, habit.id, dateISO, false) : undefined))) return;
+      this.pushAssistantMessage(describeHabitMarkedNotDone(habit, before, dateISO, today) + noteSaved(note), toolCall);
       return;
     }
 
     const wasComplete = isHabitEntryComplete(habit, before);
     let streak = computeHabitStats(habit, data.completionLog, today, weekStartOf(data)).currentStreak;
-    if (!wasComplete) {
-      // Streak read inside the mutator, so a §21 conflict replay reports what was written.
-      const saved = await this.deps.persist((current) => {
-        const next = setHabitDone(current, habit.id, dateISO, true);
-        streak = computeHabitStats(habit, next.completionLog, today, weekStartOf(next)).currentStreak;
-        return next;
-      });
-      if (!saved) return;
-    }
+    // Streak read inside the mutator, so a §21 conflict replay reports what was written.
+    const saved = await save(
+      wasComplete
+        ? undefined
+        : (current) => {
+            const next = setHabitDone(current, habit.id, dateISO, true);
+            streak = computeHabitStats(habit, next.completionLog, today, weekStartOf(next)).currentStreak;
+            return next;
+          },
+    );
+    if (!saved) return;
     const unit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
     this.pushAssistantMessage(
-      describeHabitMarkedDone(habit, before, wasComplete, dateISO, today, `${streak} ${unit}${streak === 1 ? "" : "s"}`),
+      describeHabitMarkedDone(habit, before, wasComplete, dateISO, today, `${streak} ${unit}${streak === 1 ? "" : "s"}`) + noteSaved(note),
       toolCall,
     );
   }
@@ -1093,6 +1114,60 @@ export class ChatSession {
 
   // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
   // when the list still has items, since they go with it.
+  /** §67: a usable note, undefined for none, or null after replying that it's too long. */
+  private noteFrom(raw: string | undefined, toolCall: ToolCallRef): string | undefined | null {
+    const text = raw?.trim();
+    if (!text) return undefined;
+    if (text.length > NOTE_MAX_LENGTH) {
+      this.pushAssistantMessage(`That note is too long (over ${NOTE_MAX_LENGTH} characters). Could you shorten it? Nothing was changed.`, toolCall);
+      return null;
+    }
+    return text;
+  }
+
+  /** The one-off task a name picks now, if exactly one (after a set-done went through). */
+  private lastPickedSingleTask(selector: ItemSelector): SingleTask | undefined {
+    const data = this.deps.getData();
+    if (!data) return undefined;
+    const selection = selectOne(data.singleTasks, selector);
+    return selection.kind === "one" ? selection.item : undefined;
+  }
+
+  private async saveNoteAfter(item: { id: string; name: string }, dateISO: string, note: string) {
+    const saved = await this.deps.persist((current) => setDayNote(current, item.id, dateISO, note));
+    if (saved) this.pushAssistantMessage(`Noted for "${item.name}": "${note}".`);
+  }
+
+  // §67: add, replace or remove the note on an item's day, without marking anything.
+  private async handleSetNote(input: ItemSelector & { date?: string; note: string }, toolCall: ToolCallRef) {
+    const today = this.todayISO;
+    const dateISO = input.date && isISODate(input.date) ? input.date : today;
+    const selector = { name: input.name, categoryId: input.categoryId };
+    const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
+    const item = this.pickItem(kind, selector, toolCall);
+    if (!item) return;
+    // A note isn't a tick: a future day can have one ("bring a towel").
+    const text = (input.note ?? "").trim();
+    const day = dateISO === today ? "today" : formatDate(dateISO, today);
+    const data = this.deps.getData();
+    if (!data) return;
+    if (!text) {
+      if (!noteOn(data, item.id, dateISO)) {
+        this.pushAssistantMessage(`"${item.name}" has no note for ${day}.`, toolCall);
+        return;
+      }
+      const saved = await this.deps.persist((current) => setDayNote(current, item.id, dateISO, ""));
+      if (saved) this.pushAssistantMessage(`Removed the note from "${item.name}" for ${day}.`, toolCall);
+      return;
+    }
+    if (this.noteFrom(text, toolCall) === null) return;
+    const replaced = noteOn(data, item.id, dateISO);
+    const saved = await this.deps.persist((current) => setDayNote(current, item.id, dateISO, text));
+    if (saved) {
+      this.pushAssistantMessage(`Noted for "${item.name}" ${dateISO === today ? "today" : `on ${day}`}: "${text}".${replaced ? ` It replaces "${replaced}".` : ""}`, toolCall);
+    }
+  }
+
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
   private handleGetHistory(input: { from: string; to: string; name?: string; categoryId?: string }, toolCall: ToolCallRef) {

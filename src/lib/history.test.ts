@@ -125,4 +125,22 @@ assert.equal(historyRangeDays("2026-09-02", "2026-09-01"), 0);
   assert.equal(describeHistory(getHistory(data, "2026-08-01", "2026-08-02", TODAY), flexibleOf), "Nothing was due between Sat 1 Aug and Sun 2 Aug.");
 }
 
+// §67: notes ride along in the history, also on a day the item wasn't due.
+{
+  const noted: AppData = {
+    ...data,
+    notes: [
+      { id: "n1", itemId: "Floss", date: "2026-09-22", text: "gums sore" },
+      { id: "n2", itemId: "Mondays", date: "2026-09-22", text: "moved to Tuesday" },
+    ],
+  };
+  const week = getHistory(noted, "2026-09-21", "2026-09-23", TODAY);
+  const tue = week.days!.find((d) => d.date === "2026-09-22")!;
+  assert.deepEqual(tue.items.find((i) => i.id === "Floss"), { id: "Floss", name: "Floss", kind: "habit", status: "missed", note: "gums sore" });
+  assert.equal(tue.items.find((i) => i.id === "Mondays")?.status, "not_due");
+  assert.equal(summary(week, "Mondays")!.missed, 1); // the note doesn't count as a day
+  const reply = describeHistory(week, () => undefined).split("\n");
+  assert.equal(reply[reply.indexOf("Floss: 2 of 3 done, missed Tue 22 Sep") + 1], '  Tue 22 Sep: "gums sore"');
+}
+
 console.log("history: all assertions passed");

@@ -30,7 +30,9 @@ import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "
 import { describeArchive, describeDeleteQuestion, describePause, describeResume, formatDate } from "../lib/confirmations.ts";
 import { aggregateCategoryStats, computeHabitStats } from "../lib/habitStats.ts";
 import { hasChecklist, resolveChecklistItemMatches } from "../lib/itemSelection.ts";
-import { itemsOf, type AnyItem, type ItemKind, type Refusal } from "./writeTools.ts";
+import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } from "./writeTools.ts";
+import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
+import { isISODate } from "../lib/today.ts";
 
 /** A change that's allowed: `apply` replays on a conflict (§21), `describe` reads the saved result. */
 export interface Change {
@@ -342,6 +344,49 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
         // "square" is DEFAULT_ICON_NAME in src/lib/icons.ts, which can't be imported here (it pulls in the icon library).
         apply: (d) => addCategory(d, { name, icon: "square" }),
         describe: () => ({ message: `Added the category "${name}".` }),
+      };
+    },
+  },
+  // §67: notes also come with set_done and log_progress; this is for a note on its own,
+  // changing one, or removing one (like clearing a field with update_item).
+  set_note: {
+    description:
+      'Adds, replaces or removes the note on one day of an item, without marking anything: "add a note to today\'s run: legs tired", "note for tomorrow\'s gym: bring a towel", "remove the note from yesterday\'s gym". One note per item per day; a new one replaces it.',
+    args: {
+      id: "string, the item's id (or name)",
+      name: "string, the item's name in the user's words (or id)",
+      date: "YYYY-MM-DD, defaults to today",
+      note: 'string, required; "" removes the note',
+    },
+    run: (data, args, todayISO) => {
+      const date = typeof args.date === "string" && args.date ? args.date : todayISO;
+      if (!isISODate(date)) return { status: "rejected", message: `"${date}" is not a YYYY-MM-DD date.` };
+      // A note isn't a tick: a future day can have one ("bring a towel").
+      if (typeof args.note !== "string") return { status: "need_info", message: "Pass `note` (\"\" to remove it)." };
+      const text = args.note.trim();
+      if (text.length > NOTE_MAX_LENGTH) return { status: "rejected", message: `The note is over ${NOTE_MAX_LENGTH} characters; ask the user to shorten it.` };
+      const id = typeof args.id === "string" ? args.id : undefined;
+      const name = typeof args.name === "string" ? args.name : undefined;
+      const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
+      if (resolved.status === "not_found") return { status: "rejected", message: resolved.message };
+      if (resolved.status === "ambiguous") {
+        const list = resolved.candidates.map((c) => `${c.name} (${c.type}, id ${c.id})`).join("; ");
+        return { status: "need_info", message: `Several items match: ${list}. Ask which one, then call again with its id.` };
+      }
+      if (resolved.status !== "ok") return { status: "rejected", message: "That item can't take a note." };
+      const item = resolved.items[0];
+      const before = noteOn(data, item.id, date);
+      if (!text && !before) return { status: "rejected", message: `"${item.name}" has no note on ${date}.` };
+      return {
+        status: "ok",
+        apply: (d) => setDayNote(d, item.id, date, text),
+        describe: () => ({
+          message: text
+            ? `Noted for "${item.name}" on ${date}: "${text}".${before ? ` It replaces "${before}".` : ""}`
+            : `Removed the note from "${item.name}" on ${date}.`,
+          ownerId: item.id,
+          date,
+        }),
       };
     },
   },

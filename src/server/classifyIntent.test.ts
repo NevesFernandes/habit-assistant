@@ -108,6 +108,11 @@ const cases: Case[] = [
   ["did I floss last week?", ["history"]],
   ["what's on next week?", ["history"]],
   ["I did my stretching yesterday", ["progress", "checklist"]],
+  // §67: a note naming a day is a day note; "notes" with no day is still the description.
+  ["remove the note from yesterday's run", ["progress"]],
+  ["add a note to today's run: legs tired", ["progress"]],
+  ["note for tomorrow's gym: bring a towel", ["progress"]],
+  ["remove the notes from the dentist task", ["edit"]],
 ];
 
 let failures = 0;

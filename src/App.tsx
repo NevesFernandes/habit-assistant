@@ -758,6 +758,7 @@ export default function App() {
                 singleTasks={data.singleTasks}
                 recurringTasks={data.recurringTasks}
                 completionLog={data.completionLog}
+                notes={data.notes}
                 categories={data.categories}
                 onToggleHabit={handleHabitToggle}
                 onToggleTask={handleTaskToggle}

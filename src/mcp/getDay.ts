@@ -16,6 +16,7 @@ import { isSingleTaskActiveOn, rolloverPersistentTasks } from "../lib/dataStore.
 import { checklistItemsForEntry, isHabitEntryComplete } from "../lib/habitStats.ts";
 import { recurringTaskChecklistOn } from "../lib/recurringChecklist.ts";
 import { groupByDayPart, isImportant } from "../lib/dayParts.ts";
+import { noteOn } from "../lib/dayNotes.ts";
 
 interface ChecklistView {
   checked: number;
@@ -30,6 +31,7 @@ interface DayItemBase {
   category?: string;
   done: boolean;
   checklist?: ChecklistView;
+  note?: string; // §67: the note on this day
 }
 
 export type DayItemView =
@@ -127,9 +129,10 @@ function singleTaskView(data: AppData, task: SingleTask): DayItemView {
 
 /** One item as it stands on `dateISO` (a one-off task: on its own day), in get_day's shape. Write tools return this, so a reply describes what was actually saved. */
 export function dayItemView(data: AppData, item: Habit | RecurringTask | SingleTask, dateISO: string): DayItemView {
-  if (item.kind === "habit") return habitView(data, item, dateISO);
-  if (item.kind === "recurringTask") return recurringTaskView(data, item, dateISO);
-  return singleTaskView(data, item);
+  const view =
+    item.kind === "habit" ? habitView(data, item, dateISO) : item.kind === "recurringTask" ? recurringTaskView(data, item, dateISO) : singleTaskView(data, item);
+  const note = noteOn(data, item.id, dateISO);
+  return note ? { ...view, note } : view;
 }
 
 type Due =

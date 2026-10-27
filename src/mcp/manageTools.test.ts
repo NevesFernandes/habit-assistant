@@ -170,7 +170,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -187,16 +187,45 @@ const fresh = () => {
   assert.equal((await callTool({ store: noZone }, "more_actions", { action: "add_category", args: { name: "X" } })).body.status, "need_timezone");
 }
 
-// --- Inputs frozen ahead of §67, §68 (not built yet) -----------------------------------
+// --- Notes (§67) ----------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  // §67: the completion is saved; the note is reported as not kept, never silently dropped.
+  // With a completion: saved in the same write, shown by get_day.
   const done = await call("set_done", { name: "floss", note: "used the new floss" });
   assert.equal(done.status, "ok");
-  assert.match(done.noteNotSaved, /Notes aren't available yet/);
+  assert.equal(done.results[0].item.note, "used the new floss");
   assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss" && e.date === TODAY));
-  assert.equal((await call("set_done", { name: "floss" })).noteNotSaved, undefined);
+  const day = await call("get_day", {});
+  const floss = day.groups.flatMap((g: { items: { id: string; note?: string }[] }) => g.items).find((i: { id: string }) => i.id === "Floss");
+  assert.equal(floss.note, "used the new floss");
+  // Un-ticking keeps the note; a new one replaces it.
+  await call("set_done", { name: "floss", done: false });
+  assert.equal(store.file().notes?.find((n) => n.itemId === "Floss")?.text, "used the new floss");
+  await call("set_done", { name: "read", note: "two chapters" });
+  await call("set_done", { name: "read", note: "three chapters" });
+  assert.deepEqual(store.file().notes?.filter((n) => n.itemId === "Read").map((n) => n.text), ["three chapters"]);
+  // A note on an already-done day still saves.
+  assert.equal(store.file().completionLog.filter((e) => e.itemId === "Read" && e.date === TODAY).length, 1);
+  // On its own, through more_actions; on a missed day; removed with "".
+  const yesterday = addDays(TODAY, -2);
+  const noted = await call("more_actions", { action: "set_note", args: { name: "floss", date: yesterday, note: "gums sore" } });
+  assert.equal(noted.status, "ok");
+  const history = await call("get_history", { from: yesterday, to: yesterday, name: "floss" });
+  assert.deepEqual([history.days[0].items[0].status, history.days[0].items[0].note], ["missed", "gums sore"]);
+  assert.equal((await call("more_actions", { action: "set_note", args: { name: "floss", date: yesterday, note: "" } })).status, "ok");
+  assert.equal(store.file().notes?.some((n) => n.date === yesterday), false);
+  // A future day can have one: a note isn't a tick.
+  assert.equal((await call("more_actions", { action: "set_note", args: { name: "floss", date: TOMORROW, note: "new brush" } })).status, "ok");
+  // Deleting an item deletes its notes.
+  await call("delete_items", { ids: ["Read"], confirm: true });
+  assert.equal(store.file().notes?.some((n) => n.itemId === "Read"), false);
+}
+
+// --- Inputs frozen ahead of §68 (not built yet) ------------------------------------------
+
+{
+  const { store, call } = fresh();
   // §68: skip answers "not available" and writes nothing.
   const version = store.version();
   assert.equal((await call("schedule", { op: "skip", name: "gym" })).status, "not_available");
