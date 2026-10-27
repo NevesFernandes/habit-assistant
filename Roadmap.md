@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §76 — Habit packs
-"Set me up a morning routine": a ready-made set of items created in one go. In Claude this already works (several `create_item` calls). For the app, either the same through its chat or a small set of templates; to decide.
-
 ## Next
 
 ### §74 — Calendar sync

@@ -4,6 +4,7 @@
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
 import type { Category, DayPart, WeekStart } from "../types/models";
+import type { PackItem } from "./pack";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
 import { withoutDownloads, type AgentHistoryMessage } from "../server/agentHistory";
@@ -89,7 +90,7 @@ export interface ResumeRecurringTaskToolCall {
 
 export interface ConfirmPendingActionToolCall {
   name: "confirmPendingAction";
-  input: { confirmed: boolean };
+  input: { confirmed: boolean; leaveOut?: string[] }; // §76: "yes, without 2" for a pack
 }
 
 export interface LogHabitProgressToolCall {
@@ -191,6 +192,12 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §76: a set of new items made for the user; recurrences arrive parsed (the server expands them).
+export interface CreatePackToolCall {
+  name: "createPack";
+  input: { packName: string; startDate?: string; items: PackItem[] };
+}
+
 // §72: no dates = ask which period.
 export interface ExportCsvToolCall {
   name: "exportCsv";
@@ -259,7 +266,8 @@ export type AgentToolCall =
   | SettingsToolCall
   | GetMissedToolCall
   | ApplyToManyToolCall
-  | ExportCsvToolCall;
+  | ExportCsvToolCall
+  | CreatePackToolCall;
 
 export interface AgentResponse {
   reply?: string;

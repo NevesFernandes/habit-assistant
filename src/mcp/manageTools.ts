@@ -38,6 +38,8 @@ import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
 import { planBulk, type BulkAction } from "../lib/bulk.ts";
+import { applyPack, describePackAdded, describePackPreview, PACK_MAX_ITEMS, planPack, type PackItem } from "../lib/pack.ts";
+import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
 import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
 import { isDayPart } from "../lib/dayParts.ts";
 import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
@@ -479,6 +481,50 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §76: no templates: Claude builds the set for this user, the app's rules check it.
+  add_pack: {
+    description: `Adds several new items at once, made for this user: "set me up a morning routine", "help me get fit for a 10K". Build the set from what the user told you (goals, schedule, level); if the request is broad and you know nothing about them, ask one short question first. Usually 3 to 8 items, at most ${PACK_MAX_ITEMS}. Items the user already has are left out. The first call never adds anything: it returns status "needs_confirm" with the list as \`question\`; show it to the user, drop any items they don't want, and only after a yes call again with the remaining items and confirm: true.`,
+    args: {
+      name: 'string, what the set is, e.g. "a morning routine"',
+      items:
+        'array of {kind: "habit" | "recurringTask" | "singleTask", name, category (name), dayPart, recurrence (create_item\'s format; habits and recurring tasks), completionType, target, unit, checklistItems}',
+      startDate: "YYYY-MM-DD, only if the user named a later start",
+      confirm: "boolean, true only after the user agreed to the list",
+    },
+    run: (data, args, todayISO) => {
+      const raw = Array.isArray(args.items) ? (args.items as Record<string, unknown>[]) : [];
+      if (raw.length === 0) return { status: "need_info", message: "Pass the items of the set in `items`." };
+      const items: PackItem[] = [];
+      for (const item of raw) {
+        const kind = item.kind === "habit" || item.kind === "recurringTask" || item.kind === "singleTask" ? item.kind : "habit";
+        let recurrence;
+        if (kind !== "singleTask" && item.recurrence !== undefined) {
+          const parsed = parseCompactRecurrence(typeof item.recurrence === "string" ? item.recurrence : undefined);
+          if (!parsed.ok) return { status: "rejected", message: `"${String(item.name)}": ${parsed.error}. Use create_item's recurrence format.` };
+          recurrence = parsed.rule;
+        }
+        const text = (key: string) => (typeof item[key] === "string" ? (item[key] as string) : undefined);
+        items.push({
+          kind,
+          name: text("name") ?? "",
+          description: text("description"),
+          categoryId: text("category"),
+          dayPart: isDayPart(item.dayPart) ? item.dayPart : undefined,
+          recurrence,
+          completionType: ["yesno", "value", "timer", "checklist"].includes(String(item.completionType)) ? (item.completionType as PackItem["completionType"]) : undefined,
+          target: typeof item.target === "number" ? item.target : undefined,
+          unit: text("unit"),
+          checklistItems: Array.isArray(item.checklistItems) ? item.checklistItems.filter((step): step is string => typeof step === "string") : undefined,
+        });
+      }
+      const startDate = typeof args.startDate === "string" && isISODate(args.startDate) ? args.startDate : undefined;
+      const plan = planPack(data, typeof args.name === "string" ? args.name : "", items, todayISO, startDate);
+      if (args.confirm !== true || plan.items.length === 0) {
+        return { result: { status: plan.items.length ? "needs_confirm" : "rejected", question: describePackPreview(plan, todayISO) } };
+      }
+      return { status: "ok", apply: (d) => applyPack(d, plan, todayISO), describe: () => ({ message: describePackAdded(plan, todayISO) }) };
     },
   },
   // §72: the app's export, as text for Claude to save. Capped: a tool result has to stay small.

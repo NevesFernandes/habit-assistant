@@ -13,7 +13,8 @@
 // family comes near Groq's free-tier request limit.
 // §66: "history" reads what was done, missed or is coming up over a period; it changes nothing.
 // §69: "settings" shows or changes the first day of the week and reading replies aloud.
-export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings";
+// §76: "pack" sets up several new items at once, made for the user.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings" | "pack";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -143,6 +144,14 @@ const SETTINGS_PATTERNS = [
   /\bread\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\breading\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\bspeak\b/, /\bspoken\b/, /\btalk(?:ing)? back\b/,
 ];
 
+// §76: asking for a set of new items rather than one.
+// "routine" alone is too loose: items get called that ("my cleaning routine").
+const PACK_PATTERNS = [
+  /\bset (?:me )?up\b/, /\b(?:build|create|make|give|design|plan|need|want)\b[\s\S]{0,30}\broutine\b/, /\b(?:habit|starter) pack\b/,
+  /\b(?:training|workout|fitness|study|running) (?:plan|program(?:me)?)\b/, /\b(?:a|my) (?:\w+ )?plan (?:for|to)\b/,
+  /\bhelp me (?:to )?(?:start|build|get|become|sleep|eat|be|stop)\b/, /\bsuggest\b[\s\S]{0,30}\bhabits?\b/,
+];
+
 export function classifyIntent(rawText: string): ClassifyIntentResult {
   const text = rawText.toLowerCase();
 
@@ -223,6 +232,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
 
   if (asksHistory) buckets.add("history");
   if (SETTINGS_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("settings");
+  if (PACK_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("pack");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous

@@ -86,6 +86,7 @@ import {
 import { rolloverPersistentTasks } from "./dataStore";
 import { planBulk, type BulkRequest } from "./bulk";
 import { buildExportCsv, exportRefusal } from "./exportCsv";
+import { applyPack, describePackAdded, describePackPreview, planPack, withoutItems, type PackItem, type PackPlan } from "./pack";
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
@@ -143,7 +144,9 @@ export type PendingConfirmation =
   // §64: starting stats over, asked first.
   | { type: "resetStats"; ids: string[]; scope: ResetScope; includeBestStreak: boolean }
   // §75: one action on every item, asked first since nothing narrowed it.
-  | { type: "bulk"; request: BulkRequest };
+  | { type: "bulk"; request: BulkRequest }
+  // §76: a set of new items, shown before anything is added.
+  | { type: "pack"; plan: PackPlan };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -436,6 +439,8 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "createPack") {
+      this.handleCreatePack(toolCall.input, toolCall);
     } else if (toolCall.name === "exportCsv") {
       this.handleExportCsv(toolCall.input, toolCall);
     } else if (toolCall.name === "applyToMany") {
@@ -505,6 +510,23 @@ export class ChatSession {
         updateSingleTask(current, pending.taskId, { ...pending.patch, newStartDate: today }),
       );
       if (saved) this.pushAssistantMessage(`Marked "${pending.name}" done and moved it to today.`, toolCall);
+      return;
+    }
+
+    if (pending.type === "pack") {
+      if (!confirmed) {
+        this.pushAssistantMessage("Okay, I didn't add them. Ask again with any changes and I'll put together a new list.", toolCall);
+        return;
+      }
+      const leaveOut = toolCall?.name === "confirmPendingAction" ? (toolCall.input as { leaveOut?: string[] }).leaveOut : undefined;
+      const plan = withoutItems(pending.plan, leaveOut);
+      const today = this.todayISO;
+      if (plan.items.length === 0) {
+        this.pushAssistantMessage(describePackAdded(plan, today), toolCall);
+        return;
+      }
+      const saved = await this.deps.persist((current) => applyPack(current, plan, today));
+      if (saved) this.pushAssistantMessage(describePackAdded(plan, today), toolCall);
       return;
     }
 
@@ -1394,6 +1416,17 @@ export class ChatSession {
 
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
+  // §76: a set of new items made for the user; nothing is added before a yes.
+  private handleCreatePack(input: { packName?: string; startDate?: string; items?: PackItem[] }, toolCall: ToolCallRef) {
+    const data = this.deps.getData();
+    if (!data) return;
+    const today = this.todayISO;
+    const startDate = input.startDate && isISODate(input.startDate) ? input.startDate : undefined;
+    const plan = planPack(data, input.packName ?? "", Array.isArray(input.items) ? input.items : [], today, startDate);
+    if (plan.items.length > 0) this.pendingConfirmation = { type: "pack", plan };
+    this.pushAssistantMessage(describePackPreview(plan, today), toolCall);
+  }
+
   // §72: a period's history as a CSV, offered with a Download button. No period named: ask.
   private handleExportCsv(input: { from?: string; to?: string }, toolCall: ToolCallRef) {
     const stored = this.deps.getData();

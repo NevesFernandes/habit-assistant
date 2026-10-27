@@ -122,6 +122,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
   { name: "exportCsv", buckets: ["history"], listBlurb: "export a period as a spreadsheet (CSV) the user can download; changes nothing." },
   { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
+  { name: "createPack", buckets: ["pack"], listBlurb: "set up several new items at once, made for this user (a routine, a plan, a fresh start); the app shows the list and asks before adding." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
 
@@ -246,6 +247,11 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 }
 
 // §66
+// §76: no templates; the model builds the set for this user. Its own family, as the create
+// family is near its payload budget.
+const PACK_PROSE = `For createPack: the user wants several new items set up at once ("set me up a morning routine", "help me get fit for a 10K", "a study plan for my exams"). Build the set for this user from what they told you: their goals, schedule, level and limits. If the request is broad and they said nothing about themselves, you may first ask ONE short question (for example what time their day starts, or what they want from it); otherwise call createPack straight away. Usually 3 to 8 items, never more than 10, realistic for a beginner unless they say otherwise. Per item: kind "habit" for something to build and track, "recurringTask" for a chore, "singleTask" for a one-off step ("buy running shoes"); a short name; a dayPart; for habits and recurring tasks a recurrence in the compact format below; for habits a categoryId, and a target for "value" or "timer" tracking. startDate only when the user named one. The app shows the user the list and asks before adding anything, so never ask for confirmation yourself.
+recurrence: ${RECURRENCE_SPEC_GRAMMAR}`;
+
 const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For "what did I miss?" (only the misses) use getMissed. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
 
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
@@ -281,6 +287,7 @@ export function buildSystemPrompt(
   if (has("create")) chunks.push(buildCreateProse(categoryList));
   if (has("create") || has("edit")) chunks.push(DAY_PART_PROSE);
   if (has("history")) chunks.push(HISTORY_PROSE);
+  if (has("pack")) chunks.push(PACK_PROSE);
 
   chunks.push(
     "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
@@ -294,7 +301,7 @@ function buildConfirmationSystemPrompt(todayISO: string): string {
 
 The user was just asked a yes/no confirmation question in the previous message (e.g. before deleting something, or before creating an item whose name is already in use), and was shown exactly what it concerns. The user's latest message is their answer to that question.
 
-Call confirmPendingAction with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should happen on anything less than a clear yes. Do not call any other tool.`;
+Call confirmPendingAction with confirmed=true only if they clearly agreed (e.g. "yes", "confirm", "do it", "go ahead"). Call it with confirmed=false if they declined, said you misunderstood, or their message is ambiguous, off-topic, or an unrelated new request — when in doubt, decline. Nothing should happen on anything less than a clear yes. A yes to a proposed list that leaves some items out ("yes, without 2", "all but the cold shower") is still a yes: put those in leaveOut. Do not call any other tool.`;
 }
 
 // §32 in Roadmap.md: lets the model act on the user's answer to the app's
@@ -364,6 +371,11 @@ export function buildTools(
               type: "boolean",
               description:
                 "true only if the user clearly agreed (e.g. 'yes', 'confirm', 'go ahead'). false if they declined, corrected you, or their message is ambiguous/off-topic/unrelated to the pending question.",
+            },
+            leaveOut: {
+              type: "array",
+              items: { type: "string" },
+              description: "Only when agreeing to a proposed list of new items: the numbers (as digits) or names the user said to leave out ('yes, without 2' → [\"2\"]). Still confirmed=true.",
             },
           },
           required: ["confirmed"],
@@ -1108,6 +1120,38 @@ export function buildTools(
       },
     },
     {
+      name: "createPack",
+      description:
+        "Propose several new items at once, made for this user: 'set me up a morning routine', 'help me get fit', 'a plan to sleep better'. The app shows the list and adds them only after the user agrees.",
+      parameters: {
+        type: "object",
+        properties: {
+          packName: { type: "string", description: "What the set is, as a phrase for the reply, e.g. \"a morning routine\"." },
+          startDate: { type: "string", description: "ISO date, only if the user named a later start." },
+          items: {
+            type: "array",
+            description: "The items, at most 10.",
+            items: {
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: ["habit", "recurringTask", "singleTask"] },
+                name: { type: "string" },
+                categoryId: { type: "string", enum: categories.map((category) => category.id) },
+                dayPart: { type: "string", enum: DAY_PART_IDS },
+                recurrence: { type: "string", description: "Habits and recurring tasks: the compact format in the instructions." },
+                completionType: { type: "string", enum: ["yesno", "value", "timer", "checklist"], description: "Habits only; default yesno." },
+                target: { type: "number", description: "value: the amount; timer: minutes." },
+                unit: { type: "string", description: "value: e.g. glasses, pages." },
+                checklistItems: { type: "array", items: { type: "string" }, description: "checklist: the steps." },
+              },
+              required: ["kind", "name", "dayPart"],
+            },
+          },
+        },
+        required: ["packName", "items"],
+      },
+    },
+    {
       name: "exportCsv",
       description:
         "Export a period as a spreadsheet (CSV), one row per item per day, which the user downloads from the reply: 'export my October', 'give me last month as a spreadsheet', 'download this year'. Pass from and to only when the user named a period; if they didn't, leave both out and the app asks which period.",
@@ -1190,7 +1234,7 @@ export function buildTools(
   return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
 }
 
-export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings"];
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings", "pack"];
 
 const FAMILY_BLURBS: Record<IntentBucket, string> = {
   create: "add a new habit or task",
@@ -1201,6 +1245,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   checklist: "add, tick or remove checklist items, or remove a checklist",
   history: "look at stats, or what was done, missed or is coming up over a period, or export it as a spreadsheet",
   settings: "show or change settings: the first day of the week, reading replies aloud",
+  pack: "set up several new items at once, made for the user (a routine, a plan)",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");
@@ -1387,8 +1432,29 @@ const RECURRENCE_TOOL_FIELDS: Record<string, "recurrence" | "newRecurrence"> = {
 const RECURRENCE_PARSE_FAILURE_REPLY =
   "Sorry, I didn't catch how often that should repeat — could you rephrase it (e.g. \"every Monday and Friday\", \"every 3 days\", \"twice a week\")?";
 
+// §76: each item of a pack carries its own compact recurrence.
+function resolvePackRecurrences(result: ProviderResult): ProviderResult {
+  const toolCall = result.toolCall!;
+  const items = Array.isArray(toolCall.input.items) ? (toolCall.input.items as Record<string, unknown>[]) : [];
+  const parsedItems: Record<string, unknown>[] = [];
+  for (const item of items) {
+    if (item.kind === "singleTask" || item.recurrence === undefined) {
+      parsedItems.push({ ...item, recurrence: undefined });
+      continue;
+    }
+    const parsed = parseCompactRecurrence(typeof item.recurrence === "string" ? item.recurrence : undefined);
+    if (!parsed.ok) {
+      console.error(`[recurrenceSpec] createPack.items: ${parsed.error}`);
+      return { reply: RECURRENCE_PARSE_FAILURE_REPLY };
+    }
+    parsedItems.push({ ...item, recurrence: parsed.rule });
+  }
+  return { ...result, toolCall: { ...toolCall, input: { ...toolCall.input, items: parsedItems } } };
+}
+
 function resolveRecurrenceToolCall(result: ProviderResult): ProviderResult {
   const toolCall = result.toolCall;
+  if (toolCall?.name === "createPack") return resolvePackRecurrences(result);
   const field = toolCall && RECURRENCE_TOOL_FIELDS[toolCall.name];
   if (!toolCall || !field) return result;
 
