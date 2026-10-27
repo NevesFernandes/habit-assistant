@@ -120,6 +120,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "resetStats", buckets: ["history"], listBlurb: "start the stats over (history kept) for one item, a category or everything, or undo that; the app asks first." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
+  { name: "exportCsv", buckets: ["history"], listBlurb: "export a period as a spreadsheet (CSV) the user can download; changes nothing." },
   { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
@@ -1107,6 +1108,18 @@ export function buildTools(
       },
     },
     {
+      name: "exportCsv",
+      description:
+        "Export a period as a spreadsheet (CSV), one row per item per day, which the user downloads from the reply: 'export my October', 'give me last month as a spreadsheet', 'download this year'. Pass from and to only when the user named a period; if they didn't, leave both out and the app asks which period.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "First day, ISO date (YYYY-MM-DD)." },
+          to: { type: "string", description: "Last day, ISO date (YYYY-MM-DD)." },
+        },
+      },
+    },
+    {
       name: "applyToMany",
       description:
         "One action on several items at once: 'mark floss and water done', 'mark all my morning habits done', 'skip everything in Sports today', 'pause my Work tasks for a week', 'resume all my habits'. Use it whenever the user names two or more items or says all/every/everything; for one item use the single-item tools. Give names (each item as the user said it) or filters (dayPart, categoryId, kind), not both. The app leaves out items the action doesn't fit and says so, and asks first only for everything with no filter.",
@@ -1186,7 +1199,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   schedule: "pause, resume or archive",
   delete: "delete whole habits or tasks",
   checklist: "add, tick or remove checklist items, or remove a checklist",
-  history: "look at stats, or what was done, missed or is coming up over a period",
+  history: "look at stats, or what was done, missed or is coming up over a period, or export it as a spreadsheet",
   settings: "show or change settings: the first day of the week, reading replies aloud",
 };
 

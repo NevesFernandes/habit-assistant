@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "apply_to_many", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,21 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- Export (§72) ---------------------------------------------------------------------------
+
+{
+  const { call } = fresh();
+  const asked = await call("more_actions", { action: "export" });
+  assert.equal(asked.status, "need_info");
+  const week = await call("more_actions", { action: "export", args: { from: addDays(TODAY, -6), to: TOMORROW } });
+  assert.equal(week.status, "ok");
+  assert.equal(week.to, TODAY); // never a day to come
+  assert.match(week.csv, /^date,item,kind,category,part of day,status,value,goal,unit,checklist,note\r\n/);
+  assert.equal(week.csv.trim().split("\r\n").length - 1, week.rows);
+  assert.equal(week.filename, `habit-assistant-${addDays(TODAY, -6)}-to-${TODAY}.csv`);
+  assert.equal((await call("more_actions", { action: "export", args: { from: TOMORROW, to: TOMORROW } })).status, "rejected");
 }
 
 // --- Bulk actions (§75) --------------------------------------------------------------------

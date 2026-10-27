@@ -301,6 +301,10 @@
           <td><span class="say">start my week on Monday</span>, <span class="say">read your replies aloud</span>, <span class="say">stop reading aloud</span>, <span class="say">what are my settings?</span></td>
         </tr>
         <tr>
+          <td>Export</td>
+          <td><span class="say">export my October</span>, <span class="say">give me last month as a spreadsheet</span></td>
+        </tr>
+        <tr>
           <td>Look back or ahead</td>
           <td><span class="say">how did my week go?</span>, <span class="say">what did I miss?</span>, <span class="say">when did I last go to the dentist?</span>, <span class="say">what's on next week?</span></td>
         </tr>
@@ -322,6 +326,14 @@
         half its days (3 or more), or a task has been carried over for a week or more, it asks whether you'd like to change
         its days, pause it, give it a new date or drop it. Paused and skipped days are never misses, and a habit set to a
         number of times a week or month counts only a week or month that's over.
+      </p>
+      <p id="export">
+        <strong>Export.</strong> Ask for a period as a spreadsheet and the reply has a <strong>Download</strong> button for a
+        CSV file, which opens in Excel, Google Sheets or Numbers. There's one row per item per day where something
+        applies: done, missed, paused, skipped, still to do today, or a note. Each row has the date, item, kind,
+        category, part of the day, status, the amount and goal for a number or timer habit, checklist progress and the
+        note. Days still to come are left out. If you don't say which period, the assistant asks. Up to a year per file.
+        Everything is also in your own Drive file, as JSON, if you ever want the raw data.
       </p>
       <p id="notes">
         <strong>Notes on a day.</strong> Each habit or task can have one short note per day, like a journal line. It
@@ -703,6 +715,10 @@
           Claude gets the same numbers and summary the app works out, so you can ask it for a picture too:
           <span class="say">show my month in Habit Assistant as a calendar</span>,
           <span class="say">chart my last four weeks of habits</span>.
+        </li>
+        <li>
+          Claude can export too (<span class="say">export my October from Habit Assistant</span>): it gets the same
+          CSV as the app and gives it to you as a file, up to 3,000 rows at a time. For more, use the app.
         </li>
         <li>
           Claude can change the first day of the week and spoken replies too. Claude isn't on one of your devices, so

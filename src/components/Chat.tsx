@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AgentHistoryMessage } from "../lib/agentClient";
 import type { ByokProvider } from "../lib/settingsStore";
-import { toDisplayMessages } from "../server/agentHistory";
+import { toDisplayMessages, type ChatDownload } from "../server/agentHistory";
 import VoiceButton from "./VoiceButton";
 
 interface ChatProps {
@@ -47,6 +47,14 @@ export default function Chat({ messages, onSend, sending, sttApiKey, byokProvide
             }
           >
             {message.content}
+            {message.download && (
+              <button
+                onClick={() => saveDownload(message.download!)}
+                className="mt-2 block rounded-md bg-violet-500 px-3 py-1 text-sm font-medium text-white hover:bg-violet-400"
+              >
+                Download {message.download.filename}
+              </button>
+            )}
           </div>
         ))}
         {sending && <div className="mr-auto text-sm text-slate-500">Thinking…</div>}
@@ -70,4 +78,17 @@ export default function Chat({ messages, onSend, sending, sttApiKey, byokProvide
       <VoiceButton sttApiKey={sttApiKey} disabled={sending} onTranscribed={onSend} />
     </div>
   );
+}
+
+// §72: an export saved from its Download button. The byte-order mark makes Excel read the
+// file as UTF-8, so accents and emoji in names and notes come through.
+function saveDownload(download: ChatDownload) {
+  const url = URL.createObjectURL(new Blob(["\uFEFF", download.text], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = download.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

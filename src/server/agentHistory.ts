@@ -21,6 +21,15 @@ export interface HistoryAssistantMessage {
   // sentence for a tool call (e.g. `Added "Gym" as a habit.`).
   content?: string;
   toolCall?: { id: string; name: string; input: Record<string, unknown> };
+  // §72: a file the reply offers (an export), shown as a Download button. Never sent to
+  // the model: agentClient strips it.
+  download?: ChatDownload;
+}
+
+export interface ChatDownload {
+  filename: string;
+  /** The file's text; a CSV for now. */
+  text: string;
 }
 
 export interface HistoryToolResultMessage {
@@ -37,11 +46,25 @@ export type AgentHistoryMessage = HistoryUserMessage | HistoryAssistantMessage |
 export interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
+  download?: ChatDownload;
 }
 
 /** Drops tool-result entries and keeps only what belongs in the visible chat log. */
 export function toDisplayMessages(history: AgentHistoryMessage[]): DisplayMessage[] {
   return history
     .filter((message): message is HistoryUserMessage | HistoryAssistantMessage => message.role !== "tool")
-    .map((message) => ({ role: message.role, content: message.content ?? "" }));
+    .map((message) => ({
+      role: message.role,
+      content: message.content ?? "",
+      ...(message.role === "assistant" && message.download ? { download: message.download } : {}),
+    }));
+}
+
+/** §72: the history as the model gets it: an export's file stays on the device. */
+export function withoutDownloads(history: AgentHistoryMessage[]): AgentHistoryMessage[] {
+  return history.map((message) => {
+    if (message.role !== "assistant" || !message.download) return message;
+    const { download: _file, ...rest } = message;
+    return rest;
+  });
 }

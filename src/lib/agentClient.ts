@@ -6,7 +6,7 @@ import type { ByokSettings } from "./settingsStore";
 import type { Category, DayPart, WeekStart } from "../types/models";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
-import type { AgentHistoryMessage } from "../server/agentHistory";
+import { withoutDownloads, type AgentHistoryMessage } from "../server/agentHistory";
 import type { AgentDebugEntry } from "../server/handleAgentRequest";
 
 export type { AgentHistoryMessage } from "../server/agentHistory";
@@ -191,6 +191,12 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §72: no dates = ask which period.
+export interface ExportCsvToolCall {
+  name: "exportCsv";
+  input: { from?: string; to?: string };
+}
+
 // §75: one action on the items named, or on every item the filters catch.
 export interface ApplyToManyToolCall {
   name: "applyToMany";
@@ -252,7 +258,8 @@ export type AgentToolCall =
   | ResetStatsToolCall
   | SettingsToolCall
   | GetMissedToolCall
-  | ApplyToManyToolCall;
+  | ApplyToManyToolCall
+  | ExportCsvToolCall;
 
 export interface AgentResponse {
   reply?: string;
@@ -322,7 +329,7 @@ export async function sendMessage(
   todayISO?: string,
 ): Promise<AgentResponse> {
   const payload = JSON.stringify({
-    messages: history,
+    messages: withoutDownloads(history), // §72
     byok: byok ?? undefined,
     categories,
     hasPendingConfirmation: hasPendingConfirmation || undefined,

@@ -38,6 +38,7 @@ import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
 import { planBulk, type BulkAction } from "../lib/bulk.ts";
+import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
 import { isDayPart } from "../lib/dayParts.ts";
 import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
 import { HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
@@ -384,6 +385,9 @@ export interface MoreAction {
   run: (data: AppData, args: Record<string, unknown>, todayISO: string) => { result: Record<string, unknown> } | Refusal | Change;
 }
 
+/** §72: the most rows the connector's export returns at once; the app's has no cap. */
+export const EXPORT_MAX_ROWS = 3000;
+
 export const MORE_ACTIONS: Record<string, MoreAction> = {
   list_categories: {
     description: "The user's categories, with how many habits and tasks use each.",
@@ -475,6 +479,25 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §72: the app's export, as text for Claude to save. Capped: a tool result has to stay small.
+  export: {
+    description:
+      'A period of the user\'s history as a CSV spreadsheet, the same file the app gives: one row per item per day where something applies (done, missed, paused, skipped, to do today, or a note). Give the CSV to the user as a downloadable file named `filename`, unchanged. Pass from and to only when the user named a period; if not, ask which one. "export my October", "give me last month as a spreadsheet".',
+    args: { from: "YYYY-MM-DD, required", to: "YYYY-MM-DD, required" },
+    run: (data, args, todayISO) => {
+      const from = typeof args.from === "string" && args.from ? args.from : undefined;
+      const to = typeof args.to === "string" && args.to ? args.to : undefined;
+      if (!from || !to) return { status: "need_info", message: 'Ask the user which period to export, e.g. "October" or "last month".' };
+      if (!isISODate(from) || !isISODate(to)) return { status: "rejected", message: "from and to are YYYY-MM-DD dates." };
+      const refusal = exportRefusal(from, to, todayISO);
+      if (refusal) return { status: "rejected", message: refusal };
+      const file = buildExportCsv(rolloverPersistentTasks(data, todayISO), from, to, todayISO);
+      if (file.rows > EXPORT_MAX_ROWS) {
+        return { status: "rejected", message: `That's ${file.rows} rows, more than ${EXPORT_MAX_ROWS} at once. Export a shorter period (or several), or use the export in the Habit Assistant app, which has no limit.` };
+      }
+      return { result: { from: file.from, to: file.to, filename: file.filename, rows: file.rows, columns: EXPORT_COLUMNS, csv: file.csv } };
     },
   },
   // §75: set_done takes several ids, but skip, pause and resume take one, and nothing filters.
