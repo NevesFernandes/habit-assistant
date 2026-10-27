@@ -191,7 +191,7 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
 
 {
   const { result } = await rpc(deps, "tools/list");
-  assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), ["find_items", "get_day", "log_progress", "set_done"]);
+  assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), ["create_item", "find_items", "get_day", "log_progress", "set_done", "update_item"]);
   const tool = result.tools.find((t: { name: string }) => t.name === "get_day");
   assert.ok(tool);
   assert.equal(tool.annotations.readOnlyHint, true);

@@ -14,17 +14,24 @@ import { isISODate, isValidTimeZone, localTodayISO, todayIn } from "../lib/today
 import { DriveAccessError, DriveConflictError, DriveFileNotFoundError } from "./drive.ts";
 import { persist, type FileStore } from "./persist.ts";
 import {
+  buildPatch,
+  canTakePatch,
   candidate,
   decideLogProgress,
   decideSetDone,
   findItems,
   itemsOf,
   loggable,
+  planCreate,
+  planUpdate,
   resolveTargets,
+  summarize,
   type AnyItem,
   type Decision,
   type ItemKind,
 } from "./writeTools.ts";
+import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
+import { DAY_PARTS } from "../lib/dayParts.ts";
 
 export interface McpDeps {
   store: FileStore;
@@ -51,6 +58,23 @@ Reply in one line with what was recorded (e.g. "with 8 glasses", "all checklist 
 
 const LOG_PROGRESS_DESCRIPTION = `Logs an amount on a number or timer habit for a day: \`value\` sets the day's total ("I drank 6 glasses"), \`add\` adds to it ("another 2 glasses", "20 more minutes"). Timer habits are in minutes. \`date\` defaults to the user's today; future days are rejected.
 Reply in one line with the day's total against the goal, from the returned item.`;
+
+const CREATE_ITEM_DESCRIPTION = `Creates a habit, a recurring task or a one-off task.
+- habit: something the user wants to build or track, with stats and streaks. Needs \`category\` (pick the best fit from the user's categories; "Other" when nothing fits; never ask) and a \`recurrence\`. Tracking (\`completionType\`) is "yesno" unless the user describes an amount ("value", with \`target\` and \`unit\`), a duration ("timer", \`target\` in minutes) or steps ("checklist", with \`checklistItems\`). Never ask how to track it; do ask for the goal amount when they gave none for a number or timer habit.
+- recurringTask: a chore or errand that repeats (bins, weekly shopping), done/not done only. Category optional.
+- singleTask: a one-off to-do. An unfinished one carries over to the next day unless \`carriesOver\` is false.
+Always pick \`dayPart\` yourself from what the item is, even when the user named no time; never ask.
+Pass the user's message word for word as \`userMessage\`: the confirmation marks what you assumed from it.
+\`startDate\` defaults to today; for a weekday the user named ("from next Tuesday") pass \`startWeekday\` (0 = Sunday) instead of working out the date.
+Statuses: "ok": reply with \`confirmation\`, keeping its "Assumed:" line. "needs_confirm": the name is already in use; ask the question, and only after a yes call again with \`confirmDuplicate: true\`. "need_info": ask what \`message\` says, then call again.
+
+recurrence (habits and recurring tasks): ${RECURRENCE_SPEC_GRAMMAR}`;
+
+const UPDATE_ITEM_DESCRIPTION = `Changes an existing item: rename, note, category, part of the day, important (star), start or end date, how often it repeats, a habit's tracking, goal, unit or checklist steps, a recurring task's checklist mode, whether a one-off task carries over. Pass only what changes. Not for done/not done (set_done) or logging amounts (log_progress).
+Name the item with \`id\` (from get_day or find_items) or \`name\` (the user's words).
+\`newChecklistItems\` replaces a habit's whole list of steps, from today on; earlier days keep theirs. Only when the user names an earlier day, pass it as \`newChecklistItemsFrom\`.
+\`newRecurrence\` uses the same format as create_item's \`recurrence\` and replaces the whole rule.
+Statuses: "ok": reply with \`confirmation\`. "ambiguous": list the candidates and ask which one, then call again with \`id\`. "rejected" or "need_info": tell or ask the user what \`message\` says.`;
 
 const NEED_TIMEZONE = {
   status: "need_timezone",
@@ -132,10 +156,13 @@ const ITEM_TYPE = z.enum(["habit", "recurringTask", "singleTask"]);
 const DATE = z.string().optional().describe("YYYY-MM-DD in the user's local calendar. Defaults to today.");
 const TIME_ZONE = z.string().optional().describe('The user\'s IANA time zone, e.g. "Europe/Lisbon". Only when they say they\'re somewhere else.');
 
-function ambiguous(candidates: ReturnType<typeof candidate>[]): Body {
+function ambiguous(candidates: ReturnType<typeof candidate>[], pick: "ids" | "id" = "ids"): Body {
   return {
     status: "ambiguous",
-    message: "Several items match. List them and ask which one; a reply can pick several. Then call again with `ids`.",
+    message:
+      pick === "ids"
+        ? "Several items match. List them and ask which one; a reply can pick several. Then call again with `ids`."
+        : "Several items match. List them and ask which one, then call again with `id` (once per item if they pick several).",
     candidates,
   };
 }
@@ -155,6 +182,11 @@ async function applyDecisions(store: FileStore, loaded: Awaited<ReturnType<FileS
   if (mutations.length === 0) return loaded.data;
   return (await persist(store, loaded, todayISO, (data) => mutations.reduce((next, mutate) => mutate(next), data))).data;
 }
+
+const DAY_PART = z.enum(DAY_PARTS.map((part) => part.id) as [string, ...string[]]);
+const START_WEEKDAY_MODE = z.enum(["closest", "next"]);
+const COMPLETION_TYPE = z.enum(["yesno", "value", "timer", "checklist"]);
+const CHECKLIST_MODE = z.enum(["carryOver", "sameList"]);
 
 export function buildServer(deps: McpDeps): McpServer {
   const server = new McpServer(
@@ -277,7 +309,7 @@ export function buildServer(deps: McpDeps): McpServer {
         const dateISO = date ?? today;
         const resolved = resolveTargets(loaded.data, { ids: id ? [id] : undefined, name, type: "habit" }, loggable);
         if (resolved.status === "not_found") return resolved;
-        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates);
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
         const item = resolved.items[0];
         if (resolved.status === "ineligible" || !loggable(item)) {
           return { status: "rejected", ...candidate(item), reason: `"${item.name}" isn't tracked with a number or timer, so there's nothing to log. Use set_done.` };
@@ -285,6 +317,122 @@ export function buildServer(deps: McpDeps): McpServer {
         const decision = decideLogProgress(item, dateISO, today, { value, add });
         const saved = await applyDecisions(deps.store, loaded, today, [decision]);
         return { date: dateISO, today, ...describeResult(saved, decision, dateISO) };
+      }),
+  );
+
+  server.registerTool(
+    "create_item",
+    {
+      title: "Create an item",
+      description: CREATE_ITEM_DESCRIPTION,
+      inputSchema: {
+        type: ITEM_TYPE,
+        name: z.string(),
+        userMessage: z.string().describe("The user's message that asked for this, word for word."),
+        dayPart: DAY_PART.describe("Part of the day it belongs to. Always set; never ask."),
+        category: z.string().optional().describe("Category name. Required for habits."),
+        recurrence: z.string().optional().describe("How often it repeats (habits and recurring tasks). See the format in the description."),
+        important: z.boolean().optional().describe("Only when the user calls it important or top priority."),
+        description: z.string().optional().describe("A note, only when the user gave one."),
+        startDate: z.string().optional().describe("YYYY-MM-DD. For a one-off task, the day it's for. Defaults to today."),
+        startWeekday: z.number().int().min(0).max(6).optional().describe("A weekday the user named instead of a date, 0 = Sunday."),
+        startWeekdayMode: START_WEEKDAY_MODE.optional().describe('"next" for "next Tuesday" (never today); "closest" (default) may be today.'),
+        endDate: z.string().optional().describe("YYYY-MM-DD, last day. Only when the user gave one."),
+        completionType: COMPLETION_TYPE.optional().describe("Habits only. Defaults to yesno."),
+        target: z.number().positive().optional().describe("Goal for value/timer habits (timer: minutes)."),
+        unit: z.string().optional().describe('Unit for value habits, e.g. "glasses".'),
+        checklistItems: z.array(z.string()).optional().describe("A checklist habit's steps, or the items of a task's checklist."),
+        withChecklist: z.boolean().optional().describe("Tasks: give it a checklist even with no items yet."),
+        checklistMode: CHECKLIST_MODE.optional().describe('Recurring tasks with a checklist: "carryOver" (unticked items move on, default) or "sameList" (a routine).'),
+        carriesOver: z.boolean().optional().describe("One-off tasks: false to drop it at the end of its day if not done."),
+        confirmDuplicate: z.boolean().optional().describe("Only after the user said yes to a needs_confirm question."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    (input) =>
+      timed(deps, "create_item", async () => {
+        const invalid =
+          invalidInput(input.startDate, input.timeZone) ??
+          (input.endDate !== undefined ? invalidInput(input.endDate, undefined) : undefined);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, input.timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const plan = planCreate(
+          loaded.data,
+          {
+            ...input,
+            type: input.type as ItemKind,
+            dayPart: input.dayPart as AnyItem["dayPart"] & string,
+            completionType: input.completionType as "yesno" | "value" | "timer" | "checklist" | undefined,
+            checklistMode: input.checklistMode as "carryOver" | "sameList" | undefined,
+            startWeekdayMode: input.startWeekdayMode as "closest" | "next" | undefined,
+          },
+          today,
+        );
+        if (plan.status !== "ok") return plan;
+        const saved = (await persist(deps.store, loaded, today, plan.add)).data;
+        const { item, confirmation } = plan.describe(saved);
+        return { status: "ok", today, item: summarize(saved, item, today), confirmation };
+      }),
+  );
+
+  server.registerTool(
+    "update_item",
+    {
+      title: "Change an item",
+      description: UPDATE_ITEM_DESCRIPTION,
+      inputSchema: {
+        id: z.string().optional().describe("The item's id, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
+        type: ITEM_TYPE.optional().describe("Only when the user said which kind of item."),
+        newName: z.string().optional(),
+        newDescription: z.string().optional().describe('A note; "" removes it.'),
+        newCategory: z.string().optional().describe('Category name; "" removes a task\'s category.'),
+        newDayPart: DAY_PART.optional(),
+        newImportant: z.boolean().optional(),
+        newStartDate: z.string().optional().describe("YYYY-MM-DD; for a one-off task, moves it to that day."),
+        newStartWeekday: z.number().int().min(0).max(6).optional().describe("A weekday the user named instead of a date, 0 = Sunday."),
+        newStartWeekdayMode: START_WEEKDAY_MODE.optional(),
+        newEndDate: z.string().optional().describe('YYYY-MM-DD; "" removes it.'),
+        newRecurrence: z.string().optional().describe("Habits and recurring tasks: the whole new rule, same format as create_item."),
+        newCompletionType: COMPLETION_TYPE.optional().describe("Habits only."),
+        newTarget: z.number().positive().optional().describe("Habits: goal for value/timer (timer: minutes)."),
+        newUnit: z.string().optional().describe("Habits: unit for value."),
+        newChecklistItems: z.array(z.string()).optional().describe("Habits: the whole new list of steps."),
+        newChecklistItemsFrom: z.string().optional().describe("Habits: YYYY-MM-DD, only when the user names an earlier day for new steps."),
+        newChecklistMode: CHECKLIST_MODE.optional().describe("Recurring tasks with a checklist."),
+        newCarriesOver: z.boolean().optional().describe("One-off tasks: whether it carries over to the next day if not done."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ id, name, type, timeZone, ...fields }) =>
+      timed(deps, "update_item", async () => {
+        const dates = [fields.newStartDate, fields.newChecklistItemsFrom, fields.newEndDate || undefined];
+        const invalid = invalidInput(undefined, timeZone) ?? dates.map((date) => invalidInput(date, undefined)).find(Boolean);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const patch = buildPatch(loaded.data, {
+          ...fields,
+          newDayPart: fields.newDayPart as AnyItem["dayPart"],
+          newStartWeekdayMode: fields.newStartWeekdayMode as "closest" | "next" | undefined,
+          newCompletionType: fields.newCompletionType as "yesno" | "value" | "timer" | "checklist" | undefined,
+          newChecklistMode: fields.newChecklistMode as "carryOver" | "sameList" | undefined,
+        });
+        if ("status" in patch) return patch;
+        const resolved = resolveTargets(loaded.data, { ids: id ? [id] : undefined, name, type: type as ItemKind | undefined }, canTakePatch(patch));
+        if (resolved.status === "not_found") return resolved;
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+        const plan = planUpdate(loaded.data, resolved.items[0], patch, today);
+        if (plan.status !== "ok") return plan;
+        const saved = (await persist(deps.store, loaded, today, plan.apply)).data;
+        const described = plan.describe(saved);
+        if (!described) return { status: "rejected", message: `"${resolved.items[0].name}" was deleted in the meantime.` };
+        return { status: "ok", today, item: summarize(saved, described.item, today), confirmation: described.confirmation };
       }),
   );
 

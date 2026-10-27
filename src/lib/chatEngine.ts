@@ -37,6 +37,7 @@ import {
   pauseItem,
   resumeItem,
   updateRecurringTask,
+  updateKindsFor,
   updateSingleTask,
   type DeleteCriteria,
   type UpdatePatch,
@@ -178,19 +179,6 @@ function buildDeleteConfirmationQuestion(
         : "This will also permanently delete their tracked completion history."
       : "";
   return `Are you sure you want to delete ${subject}${historyWarning}`.trimEnd();
-}
-
-/** Item types an update patch can apply to — e.g. newTarget only makes sense on a habit, newDone only on a one-off task. */
-function updateKindsFor(patch: UpdatePatch, isArchive: boolean): ItemKind[] {
-  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newChecklistItemsFrom, patch.newTarget, patch.newUnit].some(
-    (value) => value !== undefined,
-  );
-  const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
-  const recurringOnly = patch.newRecurrence !== undefined || isArchive;
-  if (patch.newChecklistMode !== undefined) return habitOnly || singleTaskOnly ? [] : ["recurringTask"];
-  if (habitOnly) return singleTaskOnly ? [] : ["habit"];
-  if (singleTaskOnly) return recurringOnly ? [] : ["singleTask"];
-  return recurringOnly ? ["habit", "recurringTask"] : ["habit", "recurringTask", "singleTask"];
 }
 
 /** Fast-path eligibility: only an unambiguous single-name filter, nothing else composed with it. */

@@ -429,6 +429,19 @@ export interface UpdatePatch {
   newUnit?: string; // Habit only — meaningful when completionType is "value"
 }
 
+/** Item types an update patch can apply to — e.g. newTarget only makes sense on a habit, newDone only on a one-off task. Shared by the chat engine and the Claude connector (§61). */
+export function updateKindsFor(patch: UpdatePatch, isArchive = false): ("habit" | "recurringTask" | "singleTask")[] {
+  const habitOnly = [patch.newCompletionType, patch.newChecklistItems, patch.newChecklistItemsFrom, patch.newTarget, patch.newUnit].some(
+    (value) => value !== undefined,
+  );
+  const singleTaskOnly = patch.newDone !== undefined || patch.newPersistency !== undefined;
+  const recurringOnly = patch.newRecurrence !== undefined || isArchive;
+  if (patch.newChecklistMode !== undefined) return habitOnly || singleTaskOnly ? [] : ["recurringTask"];
+  if (habitOnly) return singleTaskOnly ? [] : ["habit"];
+  if (singleTaskOnly) return recurringOnly ? [] : ["singleTask"];
+  return recurringOnly ? ["habit", "recurringTask"] : ["habit", "recurringTask", "singleTask"];
+}
+
 function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch, todayISO: string): T {
   return {
     ...item,

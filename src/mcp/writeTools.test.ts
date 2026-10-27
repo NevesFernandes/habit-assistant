@@ -1,4 +1,4 @@
-// MCP agent, Phase 3: the write tools (set_done, log_progress) and find_items, end to end
+// MCP agent, Phase 3: the write tools (set_done, log_progress, create_item, update_item) and find_items, end to end
 // through the MCP protocol against an in-memory Drive file: same rules as the chat engine
 // (§29, §41), saves replayed on a conflict (§21), and the user's today, not the Worker's.
 // Run: npm run test:mcp
@@ -264,6 +264,133 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
   assert.equal(created.habits.at(-1)?.startDate, day);
   const moved = updateSingleTask(fixture(), "dentist", { newStartDate: day }, day);
   assert.equal(moved.singleTasks.find((t) => t.id === "dentist")?.startDate, day); // not clamped to the machine's today
+}
+
+// --- create_item -------------------------------------------------------------------------
+
+{
+  const { store, deps } = fresh();
+  const created = (
+    await callTool(deps, "create_item", {
+      type: "habit",
+      name: "Drink water",
+      userMessage: "add a habit to drink 8 glasses of water every day",
+      category: "nutrition", // a name, as Claude says it
+      dayPart: "workDay",
+      recurrence: "daily",
+      completionType: "value",
+      target: 8,
+      unit: "glasses",
+    })
+  ).body;
+  assert.equal(created.status, "ok");
+  assert.deepEqual([created.item.category, created.item.target, created.item.unit, created.item.startDate], ["Nutrition", 8, "glasses", TODAY]);
+  // The app's own confirmation, flagging what the user didn't say.
+  assert.match(created.confirmation, /^Added habit "Drink water":/);
+  // "every day" was said, so it isn't flagged; the category, start and part of day weren't.
+  assert.match(created.confirmation, /\nAssumed: Nutrition, starting today, part of day Work day\./);
+  const saved = store.file().habits.find((h) => h.name === "Drink water");
+  assert.deepEqual([saved?.categoryId, saved?.dayPart, saved?.recurrence.type], ["nutrition", "workDay", "daily"]);
+
+  // A category that doesn't exist falls back to Other, and says so.
+  const other = (
+    await callTool(deps, "create_item", { type: "habit", name: "Juggle", userMessage: "add juggling", category: "Circus", dayPart: "afternoon", recurrence: "times:3/week" })
+  ).body;
+  assert.equal(other.item.category, "Other");
+  assert.match(other.confirmation, /Assumed: .*Other/);
+}
+
+// The engine's rules: a goal, a step, a valid rule; nothing written when refused.
+{
+  const { store, deps } = fresh();
+  const create = (args: Record<string, unknown>) =>
+    callTool(deps, "create_item", { userMessage: "add it", dayPart: "morning", category: "Health", ...args });
+  assert.equal((await create({ type: "habit", name: "Run", recurrence: "daily", completionType: "value" })).body.status, "need_info");
+  assert.equal((await create({ type: "habit", name: "Routine", recurrence: "daily", completionType: "checklist", checklistItems: [" "] })).body.status, "need_info");
+  assert.equal((await create({ type: "habit", name: "Run", recurrence: "sometimes" })).body.status, "invalid_recurrence");
+  assert.equal((await create({ type: "habit", name: "Run" })).body.status, "invalid_recurrence");
+  assert.equal((await create({ type: "singleTask", name: "Call", recurrence: "daily" })).body.status, "rejected");
+  assert.equal((await create({ type: "singleTask", name: "Call", startDate: "next week" })).body.status, "invalid_date");
+  assert.equal(store.version(), 1);
+}
+
+// §32: a name already in use asks first.
+{
+  const { store, deps } = fresh();
+  const args = { type: "habit", name: "read", userMessage: "add a habit to read", category: "Study", dayPart: "evening", recurrence: "daily" };
+  const asked = (await callTool(deps, "create_item", args)).body;
+  assert.equal(asked.status, "needs_confirm");
+  assert.match(asked.question, /already/i);
+  assert.equal(store.version(), 1);
+  assert.equal((await callTool(deps, "create_item", { ...args, confirmDuplicate: true })).body.status, "ok");
+  assert.equal(store.file().habits.filter((h) => h.name.toLowerCase() === "read").length, 2);
+}
+
+// Tasks: a day, a checklist, the user's today rather than the Worker's.
+{
+  const { store, deps } = fresh({ ...fixture(), timeZone: "Pacific/Pago_Pago" });
+  const today = todayIn("Pacific/Pago_Pago"); // UTC-11: before 11:00 UTC, the day before UTC's
+  const task = (await callTool(deps, "create_item", { type: "singleTask", name: "Post parcel", userMessage: "post the parcel", dayPart: "workDay" })).body;
+  assert.equal(task.item.startDate, today);
+  const later = (
+    await callTool(deps, "create_item", { type: "singleTask", name: "Pick up suit", userMessage: "pick up suit", dayPart: "afternoon", startDate: addDays(today, 2) })
+  ).body;
+  assert.equal(later.item.startDate, addDays(today, 2));
+  const shop = (
+    await callTool(deps, "create_item", {
+      type: "recurringTask",
+      name: "Weekly shop",
+      userMessage: "a weekly shopping task every saturday with milk and eggs",
+      dayPart: "morning",
+      recurrence: "days:sat",
+      checklistItems: ["Milk", "Eggs"],
+    })
+  ).body;
+  assert.deepEqual(shop.item.checklist, undefined); // a recurring task's list lives per day (get_day)
+  assert.match(shop.confirmation, /Checklist: Milk, Eggs/);
+  assert.equal(store.file().recurringTasks.find((t) => t.name === "Weekly shop")?.checklist?.length, 2);
+}
+
+// --- update_item -------------------------------------------------------------------------
+
+{
+  const { store, deps } = fresh();
+  const update = (args: Record<string, unknown>) => callTool(deps, "update_item", args);
+
+  const moved = (await update({ name: "read", newDayPart: "morning", newImportant: true })).body;
+  assert.equal(moved.status, "ok");
+  assert.match(moved.confirmation, /Part of day: Evening → Morning/);
+  assert.match(moved.confirmation, /Important: no → yes/);
+  assert.deepEqual([moved.item.dayPart, moved.item.important], ["morning", true]);
+
+  assert.equal((await update({ name: "stretch", newImportant: true })).body.status, "ambiguous");
+  assert.equal((await update({ id: "Stretch evening", newImportant: true })).body.status, "ok");
+
+  // Fields that don't fit the item, unknown categories, empty patches: refused.
+  assert.equal((await update({ id: "dentist", newTarget: 3 })).body.status, "rejected");
+  const badCategory = (await update({ name: "Read", newCategory: "Nope" })).body;
+  assert.equal(badCategory.status, "rejected");
+  assert.match(badCategory.message, /Nutrition/);
+  assert.equal((await update({ name: "Read" })).body.status, "need_info");
+  assert.equal((await update({ name: "Read", newCompletionType: "value" })).body.status, "need_info");
+  assert.equal((await update({ name: "Read", newRecurrence: "often" })).body.status, "invalid_recurrence");
+
+  // §56: steps change from today (or a named earlier day), never from a future one.
+  const future = (await update({ name: "Night routine", newChecklistItems: ["Floss"], newChecklistItemsFrom: TOMORROW })).body;
+  assert.equal(future.status, "rejected");
+  const steps = (await update({ name: "Night routine", newChecklistItems: ["Floss", "Stretch"] })).body;
+  assert.equal(steps.status, "ok");
+  assert.match(steps.confirmation, /apply from today on/);
+  assert.deepEqual(steps.item.checklist, ["Floss", "Stretch"]);
+
+  // A wrong kind guess still finds the item (§32).
+  const bins = (await update({ name: "take out bins", type: "habit", newRecurrence: "days:mon,thu" })).body;
+  assert.equal(bins.status, "ok");
+  assert.equal(bins.item.schedule, "Every Mon, Thu");
+
+  const dentist = (await update({ id: "dentist", newStartDate: TOMORROW, newCategory: "Health" })).body;
+  assert.deepEqual([dentist.item.startDate, dentist.item.category], [TOMORROW, "Health"]);
+  assert.equal(store.file().singleTasks.find((t) => t.id === "dentist")?.categoryId, "health");
 }
 
 for (const event of logged) assert.deepEqual(Object.keys(event).sort(), ["ms", "status", "tool"]);
