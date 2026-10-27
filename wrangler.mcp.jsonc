@@ -20,7 +20,7 @@
     "PUBLIC_ORIGIN": "https://mcp.habitassistant.app",
     // The second OAuth client in the PWA's Google Cloud project (not the PWA's own).
     // Client IDs aren't secret.
-    "GOOGLE_CLIENT_ID": "REPLACE_WITH_MCP_GOOGLE_CLIENT_ID"
+    "GOOGLE_CLIENT_ID": "448168969591-e8ubmnktilv5gli3nnlpq4t78hu8r01i.apps.googleusercontent.com"
   },
   "observability": {
     "logs": {
