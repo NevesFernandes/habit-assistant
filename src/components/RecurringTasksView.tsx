@@ -8,12 +8,14 @@ import CategoryIcon from "./CategoryIcon";
 import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
 import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
+import ArchiveRow from "./ArchiveRow";
 
 interface RecurringTasksViewProps {
   recurringTasks: RecurringTask[];
   categories: Category[];
   completionLog: CompletionLogEntry[];
   onPlace: (id: string, patch: PlacementPatch) => void;
+  onUnarchive: (id: string) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
@@ -24,6 +26,7 @@ export default function RecurringTasksView({
   categories,
   completionLog,
   onPlace,
+  onUnarchive,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -39,6 +42,7 @@ export default function RecurringTasksView({
         categories={categories}
         completionLog={completionLog}
         onPlace={onPlace}
+        onUnarchive={onUnarchive}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
         onRemoveChecklistItem={onRemoveChecklistItem}
@@ -91,6 +95,7 @@ function RecurringTaskDetail({
   categories,
   completionLog,
   onPlace,
+  onUnarchive,
   onToggleChecklistItem,
   onAddChecklistItem,
   onRemoveChecklistItem,
@@ -100,13 +105,13 @@ function RecurringTaskDetail({
   categories: Category[];
   completionLog: CompletionLogEntry[];
   onPlace: (id: string, patch: PlacementPatch) => void;
+  onUnarchive: (id: string) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === task.categoryId);
-  const archived = isArchived(task);
   const pause = currentPause(task, todayISO()) ?? upcomingPause(task, todayISO());
 
   return (
@@ -142,11 +147,7 @@ function RecurringTaskDetail({
           <span>{task.startDate}</span>
         </DetailRow>
 
-        {task.endDate && (
-          <DetailRow label={archived ? "Archived since" : "End date"}>
-            <span>{task.endDate}</span>
-          </DetailRow>
-        )}
+        <ArchiveRow item={task} onUnarchive={onUnarchive} />
 
         {/* §28: a pause is distinct from archiving — it ends by itself, or when asked. */}
         {pause && (

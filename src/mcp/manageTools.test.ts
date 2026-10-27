@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -280,6 +280,34 @@ const fresh = () => {
   assert.deepEqual(floss().pauses, []);
   assert.equal((await call("more_actions", { action: "unskip", args: { name: "floss" } })).status, "rejected");
   assert.equal((await call("schedule", { op: "skip", name: "gym", date: "soon" })).status, "invalid_date");
+}
+
+// --- Bringing an archived item back (§77) -------------------------------------------------
+
+{
+  const data = fixture();
+  data.habits = data.habits.map((h) => (h.id === "Floss" ? { ...h, endDate: addDays(TODAY, -10) } : h));
+  data.recurringTasks = data.recurringTasks.map((t) => ({ ...t, endDate: addDays(TODAY, -5) }));
+  const store = memoryStore(data);
+  const call = (tool: string, args: Record<string, unknown>) => callTool({ store }, tool, args).then((r) => r.body);
+  // more_actions' unarchive: the archived days become a finished pause, not misses.
+  const back = await call("more_actions", { action: "unarchive", args: { name: "floss" } });
+  assert.equal(back.status, "ok");
+  assert.match(back.message, /^Brought back "Floss" — it's due again from today\. The days it was archived \(.+\) count as paused, not missed\./);
+  const floss = store.file().habits.find((h) => h.id === "Floss")!;
+  assert.deepEqual([floss.endDate, floss.pauses], [undefined, [{ from: addDays(TODAY, -9), resumeOn: TODAY }]]);
+  assert.equal(occursOn(floss, TODAY), true);
+  // Not archived any more, or never: refused. One-off tasks have no archive.
+  assert.equal((await call("more_actions", { action: "unarchive", args: { name: "floss" } })).status, "rejected");
+  assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /isn't archived/);
+  assert.equal((await call("more_actions", { action: "unarchive", args: { name: "buy milk" } })).status, "rejected");
+  // schedule's resume does the same.
+  const resumed = await call("schedule", { op: "resume", name: "bins" });
+  assert.match(resumed.message, /^Brought back "Bins"/);
+  assert.deepEqual(store.file().recurringTasks[0].pauses, [{ from: addDays(TODAY, -4), resumeOn: TODAY }]);
+  // An end date ahead isn't an archive: the message points to update_item.
+  await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
+  assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
 }
 
 // --- get_history (§66) ----------------------------------------------------------------------

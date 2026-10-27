@@ -125,6 +125,10 @@ const cases: Case[] = [
   // §68
   ["skip gym today", ["schedule"]],
   ["unskip my run", ["schedule"]],
+  // §77
+  ["unarchive gym", ["schedule"]],
+  ["bring my reading habit back", ["schedule"]],
+  ["restore the bins task", ["schedule"]],
 ];
 
 let failures = 0;

@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §77 — Un-archive from the item's page
-Bringing an archived habit or recurring task back. By chat (app or Claude) it's already possible by removing the end date (§55); the item's page has no button for it. Small UI item.
-
 ### §69 — Settings by chat
 Change settings by asking: where the week starts (Sunday or Monday), replies read aloud on or off. In the connector, `more_actions` actions (no reconnect). Device-local settings (read-aloud is per device) need a decision on what "by chat" means for them.
 

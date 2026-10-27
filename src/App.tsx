@@ -62,6 +62,7 @@ import {
   updateCategory,
   updateHabit,
   updateRecurringTask,
+  unarchiveItem,
   updateSingleTask,
   type CreateCategoryInput,
   type UpdateCategoryPatch,
@@ -593,6 +594,12 @@ export default function App() {
     );
   }
 
+  // §77: "Bring back" on an archived item's page.
+  function handleUnarchive(kind: "habit" | "recurringTask", id: string) {
+    if (!data) return;
+    void persist((current) => unarchiveItem(current, kind, id, todayISO()));
+  }
+
   // §68: Undo on a skipped row of the Today tab.
   function handleUnskip(kind: "habit" | "recurringTask", id: string, dateISO: string) {
     if (!data) return;
@@ -827,6 +834,7 @@ export default function App() {
                   habits={data.habits}
                   categories={data.categories}
                   onPlace={(id, patch) => handlePlaceItem("habit", id, patch)}
+                  onUnarchive={(id) => handleUnarchive("habit", id)}
                   completionLog={data.completionLog}
                   onToggleChecklistItem={(habitId, itemId) => handleHabitChecklistToggle(habitId, itemId, todayISO())}
                 />
@@ -849,6 +857,7 @@ export default function App() {
                   categories={data.categories}
                   completionLog={data.completionLog}
                   onPlace={(id, patch) => handlePlaceItem("recurringTask", id, patch)}
+                  onUnarchive={(id) => handleUnarchive("recurringTask", id)}
                   onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
                   onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
                   onRemoveChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistRemove(taskId, itemId, todayISO())}

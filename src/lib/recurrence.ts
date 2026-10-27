@@ -239,6 +239,20 @@ export function isArchived(item: { endDate?: string }, today: string = todayISO(
   return !!item.endDate && item.endDate <= today;
 }
 
+/**
+ * §77: the days an archived item sat past its end date, before today, as a finished pause
+ * for when its end date is removed (`newEndDate` undefined) or moved later, so coming back
+ * doesn't turn them into misses. The one pause ever written in the past, and only over days
+ * that weren't due anyway. None when the item isn't archived or was archived today or
+ * yesterday.
+ */
+export function archiveGap(item: { endDate?: string }, newEndDate: string | undefined, today: string): PausePeriod | undefined {
+  if (!item.endDate || item.endDate >= today) return undefined;
+  const from = addDays(item.endDate, 1);
+  const resumeOn = newEndDate === undefined || newEndDate >= today ? today : addDays(newEndDate, 1);
+  return resumeOn > from ? { from, resumeOn } : undefined;
+}
+
 const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTH_ABBREVIATIONS = [

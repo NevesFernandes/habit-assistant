@@ -36,6 +36,7 @@ import {
   updateHabit,
   pauseItem,
   resumeItem,
+  unarchiveItem,
   updateRecurringTask,
   updateKindsFor,
   updateSingleTask,
@@ -57,11 +58,12 @@ import {
   describePause,
   describeRecurringTaskMarked,
   describeResume,
+  describeUnarchive,
   describeUpdate,
   formatDate,
   formatGoalMinutes,
 } from "./confirmations";
-import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
+import { archiveGap, currentPause, isArchived, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "./recurringChecklist";
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
@@ -780,6 +782,13 @@ export class ChatSession {
     const target = this.pickItem(kind, input, toolCall);
     if (!target) return;
 
+    // §77: "bring back gym" — an archived item comes back, and a pause it had ends with it.
+    if (isArchived(target, today)) {
+      const gap = archiveGap(target, undefined, today);
+      const saved = await this.deps.persist((current) => resumeItem(unarchiveItem(current, kind, target.id, today), kind, target.id, today));
+      if (saved) this.pushAssistantMessage(describeUnarchive(target.name, gap, today), toolCall);
+      return;
+    }
     if (!isPaused(target, today) && !upcomingPause(target, today)) {
       this.pushAssistantMessage(`"${target.name}" isn't paused — it's already running.`, toolCall);
       return;

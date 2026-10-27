@@ -10,7 +10,7 @@
 // pushAssistantMessage), so follow-up corrections have real context.
 import type { Category, CompletionLogEntry, Habit, PausePeriod, RecurringTask, SingleTask } from "../types/models.ts";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput } from "./dataStore.ts";
-import { describeRecurrence, isPaused, isPausedOn, nextOccurrence } from "./recurrence.ts";
+import { addDays, archiveGap, describeRecurrence, isPaused, isPausedOn, nextOccurrence } from "./recurrence.ts";
 import { checklistModeOf, recurringTaskChecklistOn } from "./recurringChecklist.ts";
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist.ts";
 import { dayPartLabel, isImportant } from "./dayParts.ts";
@@ -274,6 +274,9 @@ export function describeChanges(before: AnyItem, after: AnyItem, categories: Cat
   add("Important", isImportant(before) ? "yes" : "no", isImportant(after) ? "yes" : "no");
   add("Starts", date(before.startDate), date(after.startDate));
   add("Ends", date(before.endDate), date(after.endDate));
+  // §77: removing or moving out an end date that had passed keeps the archived days unscheduled.
+  const gap = before.kind !== "singleTask" && before.endDate !== after.endDate ? archiveGap(before, after.endDate, todayISO) : undefined;
+  if (gap) changes.push(`Archived days (${gapRange(gap, todayISO)}): count as paused, not missed`);
 
   if (before.kind !== "singleTask" && after.kind !== "singleTask") {
     add("Repeats", recurrenceText(before), recurrenceText(after));
@@ -320,6 +323,17 @@ export function describePause(name: string, pause: PausePeriod, todayISO: string
 
 export function describeResume(name: string): string {
   return `Resumed "${name}" — it's due again from today.`;
+}
+
+/** §77: "2 Oct to 26 Oct" (or one day), the days a brought-back item sat archived. */
+function gapRange(gap: PausePeriod, todayISO: string): string {
+  const last = addDays(gap.resumeOn ?? gap.from, -1);
+  return last === gap.from ? formatDate(gap.from, todayISO) : `${formatDate(gap.from, todayISO)} to ${formatDate(last, todayISO)}`;
+}
+
+export function describeUnarchive(name: string, gap: PausePeriod | undefined, todayISO: string): string {
+  const back = `Brought back "${name}" — it's due again from today.`;
+  return gap ? `${back} The days it was archived (${gapRange(gap, todayISO)}) count as paused, not missed.` : back;
 }
 
 export function describeArchive(item: AnyItem): string {

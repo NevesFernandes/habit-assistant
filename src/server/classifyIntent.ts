@@ -53,6 +53,8 @@ const ARCHIVE_VERBS = ["archive", "retire", "stop tracking", "no longer track"];
 // delete + edit together was too large for Groq's free tier.
 // §68: skipping one day is a schedule change too.
 const PAUSE_VERBS = ["skip", "skipping", "unskip", "pause", "unpause", "suspend", "on hold", "take a break", "taking a break", "hold off", "resume", "start it again", "start tracking it again"];
+// §77: bringing an archived item back is the resume tools' job.
+const UNARCHIVE_PATTERN = /\bunarchive\b|\bun archive\b|\brestore\b|\breactivate\b|\bbring\b[\s\S]{0,40}\bback\b/;
 
 // §55: "remove the comments of the task X" / "clear the end date on gym" take one *field*
 // off an item — an edit (updateX with that field set to ""), not a deletion. Users say
@@ -191,7 +193,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   if (hasDeleteVerb) buckets.add("delete");
 
   // Schedule: pause, resume and archive (§58/§59).
-  if (hasArchiveVerb || hasPauseVerb) buckets.add("schedule");
+  if (hasArchiveVerb || hasPauseVerb || UNARCHIVE_PATTERN.test(text)) buckets.add("schedule");
 
   // Edit: the update tools — a change verb, clearing a field (§55), placing or flagging
   // (§54), or changing what a recurring task's checklist does between occurrences (§42:
