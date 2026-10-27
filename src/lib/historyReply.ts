@@ -2,6 +2,7 @@
 // way confirmations.ts builds the other replies: plain text, one line per item, in the
 // day's order. The Claude connector returns the History itself and lets Claude word it.
 import type { History, HistoryItemSummary, HistoryStatus } from "./history.ts";
+import type { HistorySummary } from "./historySummary.ts";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -83,6 +84,30 @@ function itemBlock(history: History, item: HistoryItemSummary, today: string, fl
 }
 
 /**
+ * §65: the summary on top of a period's answer: the done rate against the same number of
+ * days before, then the highlights. Empty when nothing was due yet.
+ */
+export function describeSummary(summary: HistorySummary): string[] {
+  const { period, previous, highlights } = summary;
+  if (period.rate === undefined) return [];
+  const days = Math.round((Date.parse(period.to) - Date.parse(period.from)) / 86_400_000) + 1;
+  const before = days === 1 ? "the day before" : `the ${days} days before`;
+  const compare =
+    previous.rate === undefined
+      ? ""
+      : previous.rate === period.rate
+        ? `, the same as ${before}`
+        : `, ${previous.rate < period.rate ? "up" : "down"} from ${previous.rate}% ${before}`;
+  const lines = [`Done: ${period.rate}% (${period.done} of ${period.done + period.missed})${compare}.`];
+  const { longestStreak, mostMissed, mostImproved, perfect } = highlights;
+  if (longestStreak) lines.push(`Longest streak now: ${longestStreak.name}, ${longestStreak.streak} ${longestStreak.unit}${longestStreak.streak === 1 ? "" : "s"}.`);
+  if (perfect.length) lines.push(`Every due day done: ${perfect.map((item) => item.name).join(", ")}.`);
+  if (mostImproved) lines.push(`Most improved: ${mostImproved.name}, ${mostImproved.before}% → ${mostImproved.now}%.`);
+  if (mostMissed) lines.push(`Most missed: ${mostMissed.name} (${mostMissed.missed}).`);
+  return lines;
+}
+
+/**
  * The reply. `flexibleOf` says which items are "N times a week/month" (their line reads per
  * period); `single` is set when the user asked about one item, which adds when it was last done.
  */
@@ -90,6 +115,7 @@ export function describeHistory(
   history: History,
   flexibleOf: (id: string) => "week" | "month" | undefined,
   single?: { name: string },
+  summary?: HistorySummary,
 ): string {
   const { from, to, today } = history;
   const range = from === to ? shortDate(from, today) : `${shortDate(from, today)} to ${shortDate(to, today)}`;
@@ -104,5 +130,6 @@ export function describeHistory(
     return [range, ...itemBlock(history, item, today, flexibleOf(item.id)), last].join("\n");
   }
   if (history.items.length === 0) return `Nothing was due ${within}.`;
-  return [range, ...history.items.flatMap((item) => itemBlock(history, item, today, flexibleOf(item.id)))].join("\n");
+  const top = summary ? describeSummary(summary) : [];
+  return [range, ...top, ...(top.length ? [""] : []), ...history.items.flatMap((item) => itemBlock(history, item, today, flexibleOf(item.id)))].join("\n");
 }

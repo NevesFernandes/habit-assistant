@@ -34,6 +34,7 @@
     "test:skip": "tsx src/lib/skip.test.ts",
     "test:taskStats": "tsx src/lib/taskStats.test.ts",
     "test:statsReset": "tsx src/lib/statsReset.test.ts",
+    "test:historySummary": "tsx src/lib/historySummary.test.ts",
     "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/manageTools.test.ts && tsx src/mcp/scenarios.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",
