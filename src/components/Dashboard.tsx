@@ -1,5 +1,7 @@
 import { useState } from "react";
-import type { Category, CompletionLogEntry, Habit } from "../types/models";
+import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
+import { aggregateRecurringTaskStats, asTrackable, computeSingleTaskStats } from "../lib/taskStats";
+import { rolloverPersistentTasks } from "../lib/dataStore";
 import { compareForDay } from "../lib/dayParts";
 import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
@@ -10,25 +12,36 @@ import Meter from "./Meter";
 import HabitHeatmap from "./HabitHeatmap";
 
 // §17 in Roadmap.md: an overview of the numbers HabitsView/CategoriesView already compute
-// per-item, plus the one real chart (a calendar heatmap). Habits + Categories only — no
-// Recurring Task/Single Task stats exist to show here, see CLAUDE.md.
+// per-item, plus the one real chart (a calendar heatmap). §63 adds recurring and one-off
+// tasks as sections of their own, so chores never dilute the habit numbers.
 interface DashboardProps {
   habits: Habit[];
+  recurringTasks: RecurringTask[];
+  singleTasks: SingleTask[];
   categories: Category[];
   completionLog: CompletionLogEntry[];
   onViewCategories: () => void;
 }
 
-export default function Dashboard({ habits, categories, completionLog, onViewCategories }: DashboardProps) {
+export default function Dashboard({ habits, recurringTasks, singleTasks, categories, completionLog, onViewCategories }: DashboardProps) {
   const today = todayISO();
-  const sortedHabits = habits.slice().sort(compareForDay);
-  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(sortedHabits[0]?.id ?? null);
-  const selectedHabit = sortedHabits.find((h) => h.id === selectedHabitId) ?? sortedHabits[0];
+  // The heatmap picks from habits and recurring tasks; a recurring task is drawn as a yes/no habit.
+  const tracked = [...habits.slice().sort(compareForDay), ...recurringTasks.slice().sort(compareForDay).map(asTrackable)];
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(tracked[0]?.id ?? null);
+  const selectedHabit = tracked.find((h) => h.id === selectedHabitId) ?? tracked[0];
   const weekStartsOn = useWeekStart();
 
-  if (habits.length === 0) {
-    return <p className="text-sm text-slate-500">No habits yet — stats will show up here once you have some.</p>;
+  if (habits.length === 0 && recurringTasks.length === 0 && singleTasks.length === 0) {
+    return <p className="text-sm text-slate-500">Nothing yet — stats will show up here once you have habits or tasks.</p>;
   }
+
+  const taskStats = aggregateRecurringTaskStats(recurringTasks, completionLog, today, weekStartsOn);
+  // As the Today tab shows them: unfinished one-off tasks already carried over to today.
+  const oneOff = computeSingleTaskStats(
+    rolloverPersistentTasks({ categories, habits, recurringTasks, singleTasks, completionLog }, today).singleTasks,
+    today,
+    weekStartsOn,
+  );
 
   const overall = aggregateCategoryStats(habits, completionLog, today, weekStartsOn);
   const categoryBreakdown = categories
@@ -46,15 +59,17 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col items-center gap-4 rounded-md bg-slate-800 px-4 py-4 sm:flex-row sm:justify-between">
-        <Meter percentage={overall.completionPercentage} label={`${overall.habitCount} habit${overall.habitCount === 1 ? "" : "s"}`} />
-        <div className="flex gap-4">
-          <StatTile value={overall.completionsThisWeek} label="This week" />
-          <StatTile value={overall.completionsThisMonth} label="This month" />
-          <StatTile value={overall.completionsThisYear} label="This year" />
-          <StatTile value={overall.completionsAllTime} label="All-time" />
+      {habits.length > 0 && (
+        <div className="flex flex-col items-center gap-4 rounded-md bg-slate-800 px-4 py-4 sm:flex-row sm:justify-between">
+          <Meter percentage={overall.completionPercentage} label={`${overall.habitCount} habit${overall.habitCount === 1 ? "" : "s"}`} />
+          <div className="flex gap-4">
+            <StatTile value={overall.completionsThisWeek} label="This week" />
+            <StatTile value={overall.completionsThisMonth} label="This month" />
+            <StatTile value={overall.completionsThisYear} label="This year" />
+            <StatTile value={overall.completionsAllTime} label="All-time" />
+          </div>
         </div>
-      </div>
+      )}
 
       {categoryBreakdown.length > 0 && (
         <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
@@ -77,23 +92,58 @@ export default function Dashboard({ habits, categories, completionLog, onViewCat
         </div>
       )}
 
-      <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Completion history</div>
-          <select
-            value={selectedHabit?.id ?? ""}
-            onChange={(event) => setSelectedHabitId(event.target.value)}
-            className="rounded-md bg-slate-900 px-2 py-1 text-sm"
-          >
-            {sortedHabits.map((habit) => (
-              <option key={habit.id} value={habit.id}>
-                {habit.name}
-              </option>
-            ))}
-          </select>
+      {recurringTasks.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Recurring tasks</div>
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+            <Meter percentage={taskStats.completionPercentage} label={`${taskStats.habitCount} task${taskStats.habitCount === 1 ? "" : "s"}`} />
+            <div className="flex gap-4">
+              <StatTile value={taskStats.completionsThisWeek} label="This week" />
+              <StatTile value={taskStats.completionsThisMonth} label="This month" />
+              <StatTile value={taskStats.completionsThisYear} label="This year" />
+              <StatTile value={taskStats.completionsAllTime} label="All-time" />
+            </div>
+          </div>
         </div>
-        {selectedHabit && <HabitHeatmap habit={selectedHabit} completionLog={completionLog} todayISO={today} />}
-      </div>
+      )}
+
+      {singleTasks.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">One-off tasks done</div>
+          <div className="flex gap-4">
+            <StatTile value={oneOff.doneThisWeek} label="This week" />
+            <StatTile value={oneOff.doneThisMonth} label="This month" />
+            <StatTile value={oneOff.doneThisYear} label="This year" />
+            <StatTile value={oneOff.doneAllTime} label="All-time" />
+          </div>
+          <div className="text-sm text-slate-300">
+            {oneOff.open} open today
+            {oneOff.carriedOver > 0 &&
+              ` · ${oneOff.carriedOver} carried over, ${oneOff.averageDaysCarried} day${oneOff.averageDaysCarried === 1 ? "" : "s"} on average`}
+            {oneOff.upcoming > 0 && ` · ${oneOff.upcoming} coming up`}
+          </div>
+        </div>
+      )}
+
+      {tracked.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Completion history</div>
+            <select
+              value={selectedHabit?.id ?? ""}
+              onChange={(event) => setSelectedHabitId(event.target.value)}
+              className="rounded-md bg-slate-900 px-2 py-1 text-sm"
+            >
+              {tracked.map((habit) => (
+                <option key={habit.id} value={habit.id}>
+                  {habit.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedHabit && <HabitHeatmap habit={selectedHabit} completionLog={completionLog} todayISO={today} />}
+        </div>
+      )}
     </div>
   );
 }

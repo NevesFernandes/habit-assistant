@@ -847,6 +847,7 @@ export default function App() {
                 <RecurringTasksView
                   recurringTasks={data.recurringTasks}
                   categories={data.categories}
+                  completionLog={data.completionLog}
                   onPlace={(id, patch) => handlePlaceItem("recurringTask", id, patch)}
                   onToggleChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistToggle(taskId, itemId, todayISO())}
                   onAddChecklistItem={(taskId, text) => handleRecurringTaskChecklistAdd(taskId, text, todayISO())}
@@ -859,6 +860,8 @@ export default function App() {
           {activeTab === "stats" && (
             <Dashboard
               habits={data.habits}
+              recurringTasks={data.recurringTasks}
+              singleTasks={data.singleTasks}
               categories={data.categories}
               completionLog={data.completionLog}
               onViewCategories={() => setActiveTab("categories")}

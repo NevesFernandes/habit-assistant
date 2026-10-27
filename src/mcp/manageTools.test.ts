@@ -142,18 +142,25 @@ const fresh = () => {
   assert.deepEqual([read.currentStreak, read.completionsAllTime, read.streakUnit], [expected.currentStreak, 3, "day"]);
   assert.equal(read.currentStreak, 3);
   assert.equal((await call("get_stats", { scope: "item", name: "gym" })).streakUnit, "week");
-  // §63 isn't built: tasks answer "not available" (the inputs already take them, as the tool list freezes at launch).
+  // §63: a recurring task gets a yes/no habit's stats (no reconnect: the inputs froze at launch).
   const bins = await call("get_stats", { scope: "item", name: "bins" });
-  assert.deepEqual([bins.status, bins.id], ["not_available", "bins"]);
-  assert.equal((await call("get_stats", { scope: "overall", type: "singleTask" })).status, "not_available");
-  assert.equal((await call("get_stats", { scope: "overall", type: "habit" })).note, undefined);
+  assert.deepEqual([bins.status, bins.kind, bins.id, bins.streakUnit, bins.currentStreak, bins.completionsAllTime], ["ok", "recurringTask", "bins", "day", 0, 0]);
+  // A one-off task: its own few facts.
+  const milk = await call("get_stats", { scope: "item", name: "buy milk" });
+  assert.deepEqual([milk.kind, milk.done, milk.due, milk.daysCarriedOver], ["singleTask", false, TODAY, undefined]);
+  // `type` keeps one kind; tasks come in sections of their own.
+  const oneOff = await call("get_stats", { scope: "overall", type: "singleTask" });
+  assert.deepEqual([oneOff.status, oneOff.overall, oneOff.recurringTasks, oneOff.singleTasks.open, oneOff.singleTasks.taskCount], ["ok", undefined, undefined, 2, 2]);
+  const habitOnly = await call("get_stats", { scope: "overall", type: "habit" });
+  assert.deepEqual([habitOnly.recurringTasks, habitOnly.singleTasks], [undefined, undefined]);
   const health = await call("get_stats", { scope: "category", category: "health" });
   assert.deepEqual([health.category, health.habitCount, health.habits.length], ["Health", 2, 2]);
   assert.equal((await call("get_stats", { scope: "category", category: "Juggling" })).status, "rejected");
   const overall = await call("get_stats", { scope: "overall" });
   assert.equal(overall.overall.habitCount, 4);
   assert.deepEqual(overall.categories.map((c: { category: string }) => c.category), ["Health", "Study", "Sports"]);
-  assert.match(overall.note, /only habits/); // says what's missing rather than implying tasks have none
+  assert.deepEqual([overall.recurringTasks.taskCount, overall.singleTasks.taskCount], [1, 2]);
+  assert.equal(overall.overall.habitCount, 4); // the tasks don't dilute the habit numbers
 }
 
 // --- reset_stats (§64, not built yet) ------------------------------------------------------

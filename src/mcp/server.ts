@@ -40,6 +40,8 @@ import {
   checklistIneligible,
   describeActions,
   habitStats,
+  itemStats,
+  taskStats,
   MORE_ACTIONS,
   overallStats,
   planChecklist,
@@ -134,7 +136,6 @@ const RESET_STATS_DESCRIPTION = `Starts stats over, from today, for one item, a 
 It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. If the status is "not_available", tell the user resetting stats isn't available yet.`;
 
 const NOT_AVAILABLE = {
-  taskStats: "Stats for recurring and one-off tasks aren't available yet; only habits have them so far.",
   resetStats: "Resetting stats isn't available yet.",
 };
 
@@ -592,11 +593,17 @@ export function buildServer(deps: McpDeps): McpServer {
         const { data } = await deps.store.load();
         const today = userToday(data, timeZone);
         if (!today) return NEED_TIMEZONE;
-        // §63: until task stats exist, a scope limited to tasks has nothing to show, and a
-        // mixed one shows the habits and says so.
-        if (scope !== "item" && type && type !== "habit") return { status: "not_available", message: NOT_AVAILABLE.taskStats };
-        const habitsOnly = type ? {} : { note: NOT_AVAILABLE.taskStats };
-        if (scope === "overall") return { status: "ok", today, ...overallStats(data, today), ...habitsOnly };
+        // §63: habits as before; recurring and one-off tasks in sections of their own, so
+        // they never dilute the habit numbers. `type` keeps one kind.
+        const wants = (kind: string) => !type || type === kind;
+        const tasksIn = (categoryId?: string) => {
+          const tasks = taskStats(data, today, categoryId);
+          return {
+            ...(wants("recurringTask") ? { recurringTasks: tasks.recurringTasks } : {}),
+            ...(wants("singleTask") ? { singleTasks: tasks.singleTasks } : {}),
+          };
+        };
+        if (scope === "overall") return { status: "ok", today, ...(wants("habit") ? overallStats(data, today) : {}), ...tasksIn() };
         if (scope === "category") {
           const categoryId = category ? resolveCategoryId(data, category) : undefined;
           if (!categoryId) {
@@ -607,17 +614,14 @@ export function buildServer(deps: McpDeps): McpServer {
             status: "ok",
             today,
             category: data.categories.find((c) => c.id === categoryId)?.name,
-            ...categoryStats(data, categoryId, today),
-            habits: habits.map((habit) => habitStats(data, habit, today)),
-            ...habitsOnly,
+            ...(wants("habit") ? { ...categoryStats(data, categoryId, today), habits: habits.map((habit) => habitStats(data, habit, today)) } : {}),
+            ...tasksIn(categoryId),
           };
         }
         const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
         if (resolved.status === "not_found") return resolved;
         if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
-        const item = resolved.items[0];
-        if (item.kind !== "habit") return { status: "not_available", ...candidate(item, data), message: NOT_AVAILABLE.taskStats };
-        return { status: "ok", today, ...habitStats(data, item, today) };
+        return { status: "ok", today, ...itemStats(data, resolved.items[0], today) };
       }),
   );
 

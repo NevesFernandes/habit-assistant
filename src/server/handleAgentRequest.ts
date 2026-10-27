@@ -116,6 +116,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "removeChecklistItems", buckets: ["checklist", "delete"], listBlurb: "take one or more items off a task's or a checklist habit's checklist." },
   { name: "removeTaskChecklist", buckets: ["checklist", "delete"], listBlurb: "remove the whole checklist from a task, leaving a plain task." },
   { name: "setNote", buckets: ["progress"], listBlurb: "add, change or remove the note on an item's day." },
+  { name: "getStats", buckets: ["history"], listBlurb: "show stats: streaks, completion %, counts, for one item, a category or everything; changes nothing." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
 ];
 
@@ -141,7 +142,7 @@ function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
   return `You can take these actions:\n${lines.join("\n")}`;
 }
 
-const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something, or asks how a period went (getHistory). Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something, or asks how a period went or for stats (getHistory, getStats). Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
 Only ever offer the user actions from the list above, and only for the kind of item each one applies to. Never suggest something you have no tool for.
 
@@ -240,7 +241,7 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 }
 
 // §66
-const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "what did I miss yesterday?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. Never answer such a question from memory: you can't see the user's data.`;
+const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "what did I miss yesterday?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
 
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
 // prose to only what the classifier is confident the message needs — see
@@ -1063,6 +1064,18 @@ export function buildTools(
       },
     },
     {
+      name: "getStats",
+      description:
+        "Show stats, as in the stats tab: 'what's my gym streak?', 'how am I doing?', 'stats for my Health habits', 'how many tasks did I finish this month?'. Reads only; the app words the answer.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Optional. Fragment of one item's name, when the user asked about one item." },
+          categoryId: { type: "string", description: "Optional. A category id, when the user asked about one category." },
+        },
+      },
+    },
+    {
       name: "getHistory",
       description:
         "Show the user what was done, missed or paused over a period, or what's coming up. Reads only. Use for 'how did my week go?', 'when did I last…', 'what did I miss?', 'what's on next week?'.",
@@ -1111,7 +1124,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   schedule: "pause, resume or archive",
   delete: "delete whole habits or tasks",
   checklist: "add, tick or remove checklist items, or remove a checklist",
-  history: "look at what was done, missed or is coming up over a period",
+  history: "look at stats, or what was done, missed or is coming up over a period",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");

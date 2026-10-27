@@ -67,6 +67,7 @@ import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "./history";
 import { describeHistory } from "./historyReply";
+import { describeGroupStats, describeItemStats } from "./statsReply";
 import { rolloverPersistentTasks } from "./dataStore";
 import { isISODate } from "./today";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
@@ -402,6 +403,8 @@ export class ChatSession {
       await this.handleSetNote(toolCall.input, toolCall);
     } else if (toolCall.name === "skipDay") {
       await this.handleSkipDay(toolCall.input, toolCall);
+    } else if (toolCall.name === "getStats") {
+      this.handleGetStats(toolCall.input, toolCall);
     }
   }
 
@@ -1117,6 +1120,30 @@ export class ChatSession {
 
   // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
   // when the list still has items, since they go with it.
+  // §63: stats for one item, a category or everything; reads only, worded here.
+  private handleGetStats(input: { name?: string; categoryId?: string }, toolCall: ToolCallRef) {
+    const stored = this.deps.getData();
+    if (!stored) return;
+    const today = this.todayISO;
+    const data = rolloverPersistentTasks(stored, today);
+    const weekStartsOn = weekStartOf(data);
+    if (input.name?.trim() || this.forcedPick) {
+      const selector = { name: input.name ?? "", categoryId: input.categoryId };
+      const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
+      const picked = this.pickItem(kind, selector, toolCall);
+      if (!picked) return;
+      const item = itemsOf(data, picked.kind).find((candidate) => candidate.id === picked.id) ?? picked;
+      this.pushAssistantMessage(describeItemStats(data, item, today, weekStartsOn), toolCall);
+      return;
+    }
+    const category = input.categoryId ? data.categories.find((c) => c.id === input.categoryId) : undefined;
+    if (input.categoryId && !category) {
+      this.pushAssistantMessage(`I couldn't find that category. The categories are: ${data.categories.map((c) => c.name).join(", ")}.`, toolCall);
+      return;
+    }
+    this.pushAssistantMessage(describeGroupStats(data, today, weekStartsOn, category), toolCall);
+  }
+
   // §68: one excused day, today or later; undo takes it back. Not for one-off tasks.
   private async handleSkipDay(input: ItemSelector & { date?: string; undo?: boolean }, toolCall: ToolCallRef) {
     const today = this.todayISO;

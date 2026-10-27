@@ -1,0 +1,59 @@
+import type { ReactNode } from "react";
+import type { CompletionLogEntry, Habit } from "../types/models";
+import { computeHabitStats } from "../lib/habitStats";
+import { todayISO } from "../lib/recurrence";
+import { useWeekStart } from "../lib/weekStartContext";
+import StatTile from "./StatTile";
+import HabitHeatmap from "./HabitHeatmap";
+
+// The "Statistics" block of an item's own page: a habit's, and since §63 a recurring task's
+// too (passed in as asTrackable(task)), so the two pages can't drift apart.
+export default function ItemStats({ item, completionLog }: { item: Habit; completionLog: CompletionLogEntry[] }) {
+  const weekStartsOn = useWeekStart();
+  const stats = computeHabitStats(item, completionLog, todayISO(), weekStartsOn);
+  const streakUnit = item.recurrence.type === "timesPerPeriod" ? "time" : "day";
+  const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
+  return (
+    <>
+      <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Statistics
+      </div>
+
+      <Row label="Current streak">
+        <span>{formatStreak(stats.currentStreak)}</span>
+      </Row>
+
+      <Row label="Best streak">
+        <span>{formatStreak(stats.bestStreak)}</span>
+      </Row>
+
+      <Row label="Completion rate">
+        <span>{stats.completionPercentage}%</span>
+      </Row>
+
+      <Row label="Completions">
+        <div className="flex gap-4">
+          <StatTile value={stats.completionsThisWeek} label="This week" />
+          <StatTile value={stats.completionsThisMonth} label="This month" />
+          <StatTile value={stats.completionsThisYear} label="This year" />
+          <StatTile value={stats.completionsAllTime} label="All-time" />
+        </div>
+      </Row>
+
+      <Row label="Completion history">
+        <div className="pt-1">
+          <HabitHeatmap habit={item} completionLog={completionLog} todayISO={todayISO()} />
+        </div>
+      </Row>
+    </>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-slate-500">{label}</div>
+      <div>{children}</div>
+    </div>
+  );
+}

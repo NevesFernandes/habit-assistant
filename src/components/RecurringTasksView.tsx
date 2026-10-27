@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
-import type { Category, RecurringTask } from "../types/models";
+import type { Category, CompletionLogEntry, RecurringTask } from "../types/models";
+import { asTrackable } from "../lib/taskStats";
+import ItemStats from "./ItemStats";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistModeOf, recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
@@ -10,6 +12,7 @@ import Checklist from "./Checklist";
 interface RecurringTasksViewProps {
   recurringTasks: RecurringTask[];
   categories: Category[];
+  completionLog: CompletionLogEntry[];
   onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
@@ -19,6 +22,7 @@ interface RecurringTasksViewProps {
 export default function RecurringTasksView({
   recurringTasks,
   categories,
+  completionLog,
   onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
@@ -33,6 +37,7 @@ export default function RecurringTasksView({
       <RecurringTaskDetail
         task={selectedTask}
         categories={categories}
+        completionLog={completionLog}
         onPlace={onPlace}
         onToggleChecklistItem={onToggleChecklistItem}
         onAddChecklistItem={onAddChecklistItem}
@@ -84,6 +89,7 @@ export default function RecurringTasksView({
 function RecurringTaskDetail({
   task,
   categories,
+  completionLog,
   onPlace,
   onToggleChecklistItem,
   onAddChecklistItem,
@@ -92,6 +98,7 @@ function RecurringTaskDetail({
 }: {
   task: RecurringTask;
   categories: Category[];
+  completionLog: CompletionLogEntry[];
   onPlace: (id: string, patch: PlacementPatch) => void;
   onToggleChecklistItem: (taskId: string, itemId: string) => void;
   onAddChecklistItem: (taskId: string, text: string) => void;
@@ -172,6 +179,9 @@ function RecurringTaskDetail({
             onRemove={(itemId) => onRemoveChecklistItem(task.id, itemId)}
           />
         </DetailRow>
+
+        {/* §63: a recurring task's stats are a yes/no habit's. */}
+        <ItemStats item={asTrackable(task)} completionLog={completionLog} />
       </div>
     </div>
   );

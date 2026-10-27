@@ -1,15 +1,13 @@
 import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, Habit } from "../types/models";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
-import { checklistItemsForEntry, checklistProgress, computeHabitStats } from "../lib/habitStats";
-import { useWeekStart } from "../lib/weekStartContext";
+import { checklistItemsForEntry, checklistProgress } from "../lib/habitStats";
 import { formatDurationMinutes } from "../lib/duration";
 import CategoryIcon from "./CategoryIcon";
 import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
 import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
-import StatTile from "./StatTile";
-import HabitHeatmap from "./HabitHeatmap";
+import ItemStats from "./ItemStats";
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -101,10 +99,6 @@ function HabitDetail({
   const category = categories.find((c) => c.id === habit.categoryId);
   const archived = isArchived(habit);
   const pause = currentPause(habit, todayISO()) ?? upcomingPause(habit, todayISO());
-  const weekStartsOn = useWeekStart();
-  const stats = computeHabitStats(habit, completionLog, todayISO(), weekStartsOn);
-  const streakUnit = habit.recurrence.type === "timesPerPeriod" ? "time" : "day";
-  const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
   const todayEntry = completionLog.find((e) => e.itemId === habit.id && e.date === todayISO());
   const todayChecklistItems = checklistItemsForEntry(habit, todayEntry, todayISO());
   const todayEntryProgress = checklistProgress(habit, todayEntry, todayISO());
@@ -185,36 +179,7 @@ function HabitDetail({
           </DetailRow>
         )}
 
-        <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Statistics
-        </div>
-
-        <DetailRow label="Current streak">
-          <span>{formatStreak(stats.currentStreak)}</span>
-        </DetailRow>
-
-        <DetailRow label="Best streak">
-          <span>{formatStreak(stats.bestStreak)}</span>
-        </DetailRow>
-
-        <DetailRow label="Completion rate">
-          <span>{stats.completionPercentage}%</span>
-        </DetailRow>
-
-        <DetailRow label="Completions">
-          <div className="flex gap-4">
-            <StatTile value={stats.completionsThisWeek} label="This week" />
-            <StatTile value={stats.completionsThisMonth} label="This month" />
-            <StatTile value={stats.completionsThisYear} label="This year" />
-            <StatTile value={stats.completionsAllTime} label="All-time" />
-          </div>
-        </DetailRow>
-
-        <DetailRow label="Completion history">
-          <div className="pt-1">
-            <HabitHeatmap habit={habit} completionLog={completionLog} todayISO={todayISO()} />
-          </div>
-        </DetailRow>
+        <ItemStats item={habit} completionLog={completionLog} />
       </div>
     </div>
   );

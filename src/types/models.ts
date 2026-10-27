@@ -120,6 +120,9 @@ export interface SingleTask extends BaseItem {
   // startDate forward — lets the UI show a rolled-over task's true original due date.
   // Optional: tasks created before this field existed won't have it.
   originalStartDate?: string;
+  // §63: the day it was marked done, for "done this week". Absent on tasks done before
+  // §63 (they count in all-time only) and on tasks not done.
+  doneOn?: string;
 }
 
 export interface CompletionLogEntry {
