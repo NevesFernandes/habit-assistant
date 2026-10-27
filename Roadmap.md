@@ -10,11 +10,20 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §61** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §62** (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
 ## Now
+
+### §61 — Claude connector: use Habit Assistant from Claude (MCP)
+A remote MCP server, added in Claude as a custom connector, so users can manage habits by chatting with Claude (including on claude.ai mobile), on the same Drive file as the app. Full spec: the "Habit Assistant MCP Agent: Spec" doc. Decisions: a separate stateless Worker at `mcp.habitassistant.app`, a second Google OAuth client in the same project with `drive.file`, tools that call `src/lib` and add no editing logic of their own, multi-user, $0.
+
+- **Phase 1 (built, waiting on the live spike):** OAuth, read-only Drive access and `get_day`. Gate: on claude.ai mobile, "what's on today?" matches the app; the second client can see the app's file; latency measured.
+- **Phase 2:** "today" from the user's time zone everywhere (the app uses the UTC date today, a user-visible fix), `AppData.timeZone`, the app re-reading the file when it comes back to the foreground, an alternating-writes compatibility test.
+- **Phase 3:** write tools: `create_item`, `update_item`, `set_done`, `log_progress`, `find_items`, with conflict replay.
+- **Phase 4:** `checklist`, `schedule`, `delete_items`, `get_stats`.
+- **Phase 5:** `privacy.html` (data now passes through this Worker, which keeps Google refresh tokens) and `help.html`, user onboarding. Don't share the connector URL before this.
 
 ## Next
 

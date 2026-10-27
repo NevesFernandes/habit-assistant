@@ -29,18 +29,24 @@
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
     "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:taskCategory": "tsx src/lib/taskCategory.test.ts",
+    "test:mcp": "tsx src/mcp/mcp.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",
     "icons": "tsx scripts/generateIcons.ts",
     "screenshots": "tsx scripts/generateScreenshots.ts",
     "preview": "vite preview",
-    "workers:dev": "npm run build && wrangler dev"
+    "workers:dev": "npm run build && wrangler dev",
+    "mcp:dev": "wrangler dev --config wrangler.mcp.jsonc --port 8788 --local-upstream localhost:8788 --var PUBLIC_ORIGIN:http://localhost:8788"
   },
   "dependencies": {
+    "@cfworker/json-schema": "4.1.1",
+    "@cloudflare/workers-oauth-provider": "1.2.3",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@ricky0123/vad-web": "^0.0.30",
     "lucide-react": "^1.33.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260817.1",

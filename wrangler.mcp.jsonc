@@ -1,0 +1,30 @@
+{
+  // The MCP connector (Claude custom connector) — a second Worker, separate from the PWA's
+  // (wrangler.jsonc), so a broken MCP deploy can't take the app down. It imports src/lib
+  // directly, so both run the same scheduling code. Deployed by its own Cloudflare app on
+  // this repo with: npx wrangler deploy --config wrangler.mcp.jsonc
+  //
+  // Same rule as wrangler.jsonc: non-secret vars live here, never only in the dashboard
+  // (a Git-triggered deploy overwrites dashboard-only vars). GOOGLE_CLIENT_SECRET is a
+  // dashboard secret on this Worker only — never in this file.
+  "name": "habit-assistant-mcp",
+  "main": "src/mcp/worker.ts",
+  "compatibility_date": "2026-08-17",
+  // Required by the OAuth library to fetch Client ID Metadata Documents safely.
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "mcp.habitassistant.app", "custom_domain": true }],
+  // OAuth grants, client registrations and tokens (hashed; props encrypted).
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_NAMESPACE_ID" }],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://mcp.habitassistant.app",
+    // The second OAuth client in the PWA's Google Cloud project (not the PWA's own).
+    // Client IDs aren't secret.
+    "GOOGLE_CLIENT_ID": "REPLACE_WITH_MCP_GOOGLE_CLIENT_ID"
+  },
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
+}
