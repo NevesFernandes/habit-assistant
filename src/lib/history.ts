@@ -62,11 +62,23 @@ export interface HistoryItemSummary {
   periods?: HistoryPeriod[];
 }
 
+/** §65: one day's totals across the items, for a calendar or a chart. */
+export interface HistoryDayTotal {
+  date: string;
+  done: number;
+  missed: number;
+  /** Today, due and not done yet. */
+  open: number;
+  upcoming: number;
+}
+
 export interface History {
   from: string;
   to: string;
   today: string;
   items: HistoryItemSummary[];
+  /** §65: every day of the range, kept even when `days` is left out. */
+  daily: HistoryDayTotal[];
   /** Days with something on them, oldest first; left out when `daysOmitted`. */
   days?: HistoryDay[];
   daysOmitted?: boolean;
@@ -171,8 +183,11 @@ export function getHistory(
   const sorted = [...all].sort(compareForDay);
   const days: HistoryDay[] = [];
   const counts = new Map<string, HistoryItemSummary>();
+  const daily: HistoryDayTotal[] = [];
   for (const date of datesBetween(from, to)) {
     const entries: HistoryEntry[] = [];
+    const total: HistoryDayTotal = { date, done: 0, missed: 0, open: 0, upcoming: 0 };
+    daily.push(total);
     for (const item of sorted) {
       const note = noteOn(data, item.id, date);
       const found = item.kind === "singleTask" ? singleTaskEntry(item, date, today) : recurringEntry(data, item, date, today);
@@ -184,6 +199,7 @@ export function getHistory(
       if (!entry) continue;
       entries.push(entry);
       const summary = counts.get(item.id) ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, skipped: 0, upcoming: 0 };
+      if (entry.status === "done" || entry.status === "missed" || entry.status === "open" || entry.status === "upcoming") total[entry.status] += 1;
       if (entry.status === "done") summary.done += 1;
       if (entry.status === "missed") summary.missed += 1;
       if (entry.status === "paused") summary.paused += 1;
@@ -204,6 +220,6 @@ export function getHistory(
   });
   const size = days.reduce((total, day) => total + day.items.length, 0);
   return size > HISTORY_MAX_ENTRIES
-    ? { from, to, today, items: summaries, daysOmitted: true }
-    : { from, to, today, items: summaries, days };
+    ? { from, to, today, items: summaries, daily, daysOmitted: true }
+    : { from, to, today, items: summaries, daily, days };
 }

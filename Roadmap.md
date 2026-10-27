@@ -18,13 +18,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Next
 
-### §65 — Stats summaries in Claude (dashboard-style)
-Summaries of how the user is doing, like the app's stats tab and its calendar widget, asked for in Claude ("how did my week go?", "show my month").
-
-- Decided 2026-10-27: the app's code computes, Claude draws. The numbers come from `src/lib` (no streaks or percentages worked out by the model); Claude writes the summary, or builds a chart when asked.
-- Connector: only `get_stats`' **result** grows (e.g. a day-by-day series for the calendar/heatmap, per-period totals), so no reconnect is needed. Its inputs and description stay as they are; the result itself says what its fields mean.
-- Not chosen for now: a link to the app's stats tab (leaves Claude), and an interactive widget inside Claude ("MCP Apps"), which is unconfirmed on claude.ai mobile and would change the tool list (a reconnect for everyone if added after launch).
-
 ## Later
 
 ### §69 — Settings by chat

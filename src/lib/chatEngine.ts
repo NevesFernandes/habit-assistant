@@ -67,6 +67,7 @@ import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "./history";
 import { describeHistory } from "./historyReply";
+import { summarizeHistory } from "./historySummary";
 import { describeGroupStats, describeItemStats } from "./statsReply";
 import {
   describeReset,
@@ -1350,7 +1351,9 @@ export class ChatSession {
       const habit = data.habits.find((h) => h.id === id);
       return habit?.recurrence.type === "timesPerPeriod" ? habit.recurrence.period : undefined;
     };
-    this.pushAssistantMessage(describeHistory(history, flexibleOf, single ? { name: single.name } : undefined), toolCall);
+    // §65: a period across items gets a summary on top; one item's answer stays as it is.
+    const summary = single ? undefined : summarizeHistory(data, history, weekStartOf(data), items);
+    this.pushAssistantMessage(describeHistory(history, flexibleOf, single ? { name: single.name } : undefined, summary), toolCall);
   }
 
   private async handleRemoveTaskChecklist(input: ItemSelector, toolCall: ToolCallRef) {

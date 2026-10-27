@@ -294,6 +294,11 @@ const fresh = () => {
   const floss = week.items.find((i: { id: string }) => i.id === "Floss");
   assert.deepEqual([floss.done, floss.missed, floss.lastDone], [1, 1, addDays(TODAY, -1)]); // today is still open
   assert.equal(week.days.at(-1).date, TOMORROW);
+  // §65: per-day totals and a summary worked out by the app.
+  assert.equal(week.daily.length, 4);
+  assert.equal(typeof week.summary.period.done, "number");
+  assert.ok(Array.isArray(week.summary.highlights.perfect));
+  assert.match(week.fields, /Use these numbers as they are/);
   // One item by name; "when did I last…" reaches before the range.
   const one = await call("get_history", { from: TODAY, to: TODAY, name: "floss" });
   assert.deepEqual([one.items.length, one.items[0].lastDone], [1, addDays(TODAY, -1)]);

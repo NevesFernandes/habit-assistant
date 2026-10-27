@@ -34,6 +34,7 @@ import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
 import { resolveCategoryId, rolloverPersistentTasks, withTimeZone } from "../lib/dataStore.ts";
 import { describeReset, describeResetQuestion, resetRefusal, resetStats, resetTargets, type ResetScope } from "../lib/statsReset.ts";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
+import { summarizeHistory } from "../lib/historySummary.ts";
 import { NOTE_MAX_LENGTH, setDayNote } from "../lib/dayNotes.ts";
 import {
   canTakeChecklistOp,
@@ -565,6 +566,10 @@ export function buildServer(deps: McpDeps): McpServer {
         return {
           status: "ok",
           ...history,
+          // §65: worked out by the app; Claude words it or draws it, never recomputes it.
+          summary: summarizeHistory(data, history, weekStartOf(data), items),
+          fields:
+            "daily: per-day totals (done, missed, open today, upcoming) for a calendar or chart. summary.period/previous: done rate (done ÷ (done + missed), past days only) for this range and the same number of days before. summary.weekly: per-week totals. summary.highlights: longest current streak, most missed, most improved (vs previous), every-due-day-done items. Use these numbers as they are.",
           ...(history.daysOmitted ? { note: "Too many entries to list day by day; only the totals are here. Ask for a shorter period or one item for the days." } : {}),
         };
       }),
