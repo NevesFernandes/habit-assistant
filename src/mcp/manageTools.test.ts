@@ -170,7 +170,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -222,15 +222,36 @@ const fresh = () => {
   assert.equal(store.file().notes?.some((n) => n.itemId === "Read"), false);
 }
 
-// --- Inputs frozen ahead of §68 (not built yet) ------------------------------------------
+// --- Skip a day (§68) --------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  // §68: skip answers "not available" and writes nothing.
-  const version = store.version();
-  assert.equal((await call("schedule", { op: "skip", name: "gym" })).status, "not_available");
+  // Today: neither done nor missed, and the streak doesn't look at it.
+  const skipped = await call("schedule", { op: "skip", name: "floss" });
+  assert.equal(skipped.status, "ok");
+  assert.match(skipped.message, /^Skipped "Floss" today/);
+  const floss = () => store.file().habits.find((h) => h.id === "Floss")!;
+  assert.deepEqual(floss().pauses, [{ from: TODAY, resumeOn: TOMORROW, skip: true }]);
+  const history = await call("get_history", { from: TODAY, to: TODAY, name: "floss" });
+  assert.equal(history.days[0].items[0].status, "skipped");
+  // Refused: twice, a past day, a done day, a one-off task, an "N times a week" habit.
+  assert.match((await call("schedule", { op: "skip", name: "floss" })).message, /already skipped/);
+  assert.match((await call("schedule", { op: "skip", name: "bins", date: addDays(TODAY, -1) })).message, /only skip today or a later day/);
+  assert.match((await call("schedule", { op: "skip", name: "read" })).message, /already done .* Undo it first/);
+  assert.equal((await call("schedule", { op: "skip", name: "buy milk" })).status, "rejected");
+  assert.match((await call("schedule", { op: "skip", name: "gym" })).message, /3 times a week, with no set day to skip/);
+  // A later day; pausing from next week and resuming keep it.
+  assert.equal((await call("schedule", { op: "skip", name: "bins", date: TOMORROW })).status, "ok");
+  await call("schedule", { op: "pause", name: "bins", from: addDays(TODAY, 7) });
+  await call("schedule", { op: "resume", name: "bins" });
+  assert.deepEqual(store.file().recurringTasks[0].pauses, [{ from: TOMORROW, resumeOn: addDays(TODAY, 2), skip: true }]);
+  // A skip isn't a pause: "resume" with only a skip says it isn't paused.
+  assert.equal((await call("schedule", { op: "resume", name: "floss" })).status, "rejected");
+  // Undone through more_actions.
+  assert.equal((await call("more_actions", { action: "unskip", args: { name: "floss" } })).status, "ok");
+  assert.deepEqual(floss().pauses, []);
+  assert.equal((await call("more_actions", { action: "unskip", args: { name: "floss" } })).status, "rejected");
   assert.equal((await call("schedule", { op: "skip", name: "gym", date: "soon" })).status, "invalid_date");
-  assert.equal(store.version(), version);
 }
 
 // --- get_history (§66) ----------------------------------------------------------------------

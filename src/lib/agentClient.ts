@@ -173,6 +173,12 @@ export interface SetNoteToolCall {
   input: { name: string; categoryId?: string; date?: string; note: string };
 }
 
+// §68: one day of a habit or recurring task; undo takes the skip back.
+export interface SkipDayToolCall {
+  name: "skipDay";
+  input: { name: string; categoryId?: string; date?: string; undo?: boolean };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -201,7 +207,8 @@ export type AgentToolCall =
   | SetHabitDoneToolCall
   | SetRecurringTaskDoneToolCall
   | GetHistoryToolCall
-  | SetNoteToolCall;
+  | SetNoteToolCall
+  | SkipDayToolCall;
 
 export interface AgentResponse {
   reply?: string;

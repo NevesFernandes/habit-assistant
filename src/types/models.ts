@@ -75,6 +75,7 @@ export type CompletionType = "yesno" | "value" | "timer" | "checklist";
 export interface PausePeriod {
   from: string; // ISO date, always today or later when created
   resumeOn?: string; // ISO date, exclusive — the first day the item is due again
+  skip?: true; // §68: a one-day pause the user asked for as "skip": shown as skipped, kept by pause/resume
 }
 
 // BYOK settings, synced across devices via AppData.byokSettings — see §30 in

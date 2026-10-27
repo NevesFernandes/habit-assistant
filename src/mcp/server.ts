@@ -45,6 +45,7 @@ import {
   planChecklist,
   planDelete,
   planSchedule,
+  planSkip,
   type Change,
   type ChecklistOp,
   type Plan,
@@ -135,7 +136,6 @@ It asks first (status "needs_confirm"): ask the user the question word for word,
 const NOT_AVAILABLE = {
   taskStats: "Stats for recurring and one-off tasks aren't available yet; only habits have them so far.",
   resetStats: "Resetting stats isn't available yet.",
-  skip: "Skipping a single day isn't available yet; pausing (from today) is.",
 };
 
 const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
@@ -479,8 +479,6 @@ export function buildServer(deps: McpDeps): McpServer {
       timed(deps, "schedule", async () => {
         const invalid = invalidInput(from, timeZone) ?? invalidInput(resumeOn, undefined) ?? invalidInput(date, undefined);
         if (invalid) return invalid;
-        // §68: in the frozen tool list from launch; not built yet.
-        if (op === "skip") return { status: "not_available", message: NOT_AVAILABLE.skip };
         const loaded = await deps.store.load();
         const today = userToday(loaded.data, timeZone);
         if (!today) return NEED_TIMEZONE;
@@ -490,8 +488,9 @@ export function buildServer(deps: McpDeps): McpServer {
         if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
         const item = resolved.items[0];
         if (item.kind === "singleTask") {
-          return { status: "rejected", message: `"${item.name}" is a one-off task, which can't be paused or archived. It can be moved to another day (update_item) or deleted.` };
+          return { status: "rejected", message: `"${item.name}" is a one-off task, which can't be paused, skipped or archived. It can be moved to another day (update_item) or deleted.` };
         }
+        if (op === "skip") return runPlan(deps.store, loaded, today, planSkip(loaded.data, item, date ?? today, today));
         return runPlan(deps.store, loaded, today, planSchedule(item, op as ScheduleOp, { from, resumeOn }, today));
       }),
   );

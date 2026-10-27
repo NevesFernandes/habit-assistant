@@ -102,6 +102,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "pauseRecurringTask", buckets: ["schedule"], listBlurb: "temporarily pause an existing recurring task, with or without a known resume date." },
   { name: "resumeHabit", buckets: ["schedule"], listBlurb: "resume a paused habit from today." },
   { name: "resumeRecurringTask", buckets: ["schedule"], listBlurb: "resume a paused recurring task from today." },
+  { name: "skipDay", buckets: ["schedule"], listBlurb: "skip one day (today or later) of a habit or recurring task, or undo a skip." },
   { name: "setHabitDone", buckets: ["progress", "checklist"], listBlurb: "mark a habit done (or not done) for a day." },
   { name: "setRecurringTaskDone", buckets: ["progress", "checklist"], listBlurb: "mark a recurring task done (or not done) for a day." },
   { name: "logHabitProgress", buckets: ["progress"], listBlurb: "log or adjust a Numeric-value or Timer habit's progress for a specific day (not for Yes/No or Checklist habits, and not for changing a habit's target/settings — see below)." },
@@ -1029,6 +1030,21 @@ export function buildTools(
           },
         },
         required: ["name", "items"],
+      },
+    },
+    {
+      name: "skipDay",
+      description:
+        "Skip one day of a habit or recurring task, today or later: it counts as neither done nor missed, so the streak survives. Use for 'skip gym today', 'I'm sick, skip my run', 'skip the bins on Thursday'. undo: true for 'unskip gym', 'actually I'll do it'. Lighter than a pause. Never for a past day.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the habit's or recurring task's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          date: { type: "string", description: "ISO date (YYYY-MM-DD), today or later. Omit for today." },
+          undo: { type: "boolean", description: "true to undo a skip on that day." },
+        },
+        required: ["name"],
       },
     },
     {

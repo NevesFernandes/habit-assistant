@@ -60,6 +60,8 @@ function itemLine(history: History, item: HistoryItemSummary, today: string, fle
   if (item.due > past) bits.push("today still to do");
   const paused = listed("paused", datesWith(history, item.id, "paused"), item.paused, today);
   if (paused) bits.push(paused);
+  const skipped = listed("skipped", datesWith(history, item.id, "skipped"), item.skipped, today);
+  if (skipped) bits.push(skipped);
   // Days ahead are listed only when there are one or two; otherwise counted.
   if (item.upcoming > 2) bits.push(`due ${item.upcoming} more days`);
   else if (item.upcoming > 0) bits.push(listed("due", datesWith(history, item.id, "upcoming"), item.upcoming, today));
@@ -95,7 +97,7 @@ export function describeHistory(
   if (single) {
     const item = history.items[0];
     const last = item?.lastDone ? `Last done ${shortDate(item.lastDone, today)}.` : "Not done yet.";
-    const nothing = item && item.due === 0 && item.upcoming === 0 && item.paused === 0 && !item.periods?.length;
+    const nothing = item && item.due === 0 && item.upcoming === 0 && item.paused === 0 && item.skipped === 0 && !item.periods?.length;
     if (!item || (nothing && noteLines(history, item.id, today).length === 0)) {
       return `"${single.name}" wasn't due ${within}. ${last}`;
     }

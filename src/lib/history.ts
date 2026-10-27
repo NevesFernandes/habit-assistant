@@ -7,6 +7,7 @@ import { checklistProgress, isHabitEntryComplete } from "./habitStats.ts";
 import { recurringTaskChecklistOn } from "./recurringChecklist.ts";
 import { compareForDay } from "./dayParts.ts";
 import { noteOn } from "./dayNotes.ts";
+import { skipOn } from "./skip.ts";
 
 /** Longest range one call covers; a longer one is refused so the answer stays readable. */
 export const HISTORY_MAX_DAYS = 366;
@@ -16,10 +17,11 @@ export const HISTORY_MAX_ENTRIES = 400;
 /**
  * done / missed: a past or current day that was due. open: today, due, not done yet.
  * upcoming: a later day that is due. paused: would have been due, but paused.
+ * skipped: the same, for one day the user skipped (§68).
  * not_due: a day it wasn't due (nor done) but has a note (§67).
  * For "N times a week/month" habits no single day is due, so only done days are listed.
  */
-export type HistoryStatus = "done" | "missed" | "open" | "upcoming" | "paused" | "not_due";
+export type HistoryStatus = "done" | "missed" | "open" | "upcoming" | "paused" | "skipped" | "not_due";
 
 export interface HistoryEntry {
   id: string;
@@ -52,6 +54,7 @@ export interface HistoryItemSummary {
   done: number;
   missed: number;
   paused: number;
+  skipped: number;
   upcoming: number;
   /** Last day it was done, on or before the range's end, even if that's before the range. */
   lastDone?: string;
@@ -99,7 +102,8 @@ function recurringEntry(data: AppData, item: Habit | RecurringTask, date: string
   if (!due) {
     // A paused day shows only if the rule would have made it due.
     const wouldBeDue = isPausedOn(item, date) && occursOn({ ...item, pauses: [] }, date);
-    return wouldBeDue && item.recurrence.type !== "timesPerPeriod" ? { ...base, status: "paused" } : undefined;
+    if (!wouldBeDue || item.recurrence.type === "timesPerPeriod") return undefined;
+    return { ...base, status: skipOn(item, date) ? "skipped" : "paused" };
   }
   const entry = entryFor(data.completionLog, item.id, date);
   const done = item.kind === "habit" ? isHabitEntryComplete(item, entry) : entry !== undefined;
@@ -179,10 +183,11 @@ export function getHistory(
           : undefined;
       if (!entry) continue;
       entries.push(entry);
-      const summary = counts.get(item.id) ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, upcoming: 0 };
+      const summary = counts.get(item.id) ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, skipped: 0, upcoming: 0 };
       if (entry.status === "done") summary.done += 1;
       if (entry.status === "missed") summary.missed += 1;
       if (entry.status === "paused") summary.paused += 1;
+      if (entry.status === "skipped") summary.skipped += 1;
       if (entry.status === "upcoming") summary.upcoming += 1;
       if (entry.status === "done" || entry.status === "missed" || entry.status === "open") summary.due += 1;
       counts.set(item.id, summary);
@@ -193,7 +198,7 @@ export function getHistory(
     const periods = item.kind === "habit" ? periodsOf(data, item, from, to) : undefined;
     const counted = counts.get(item.id);
     if (!counted && !periods?.length && !options.keepEmpty) return [];
-    const summary = counted ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, upcoming: 0 };
+    const summary = counted ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, skipped: 0, upcoming: 0 };
     const lastDone = lastDoneOf(data, item, to);
     return [{ ...summary, ...(lastDone ? { lastDone } : {}), ...(periods ? { periods } : {}) }];
   });

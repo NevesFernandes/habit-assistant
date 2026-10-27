@@ -70,6 +70,7 @@ import { describeHistory } from "./historyReply";
 import { rolloverPersistentTasks } from "./dataStore";
 import { isISODate } from "./today";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
+import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "./skip";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -399,6 +400,8 @@ export class ChatSession {
       this.handleGetHistory(toolCall.input, toolCall);
     } else if (toolCall.name === "setNote") {
       await this.handleSetNote(toolCall.input, toolCall);
+    } else if (toolCall.name === "skipDay") {
+      await this.handleSkipDay(toolCall.input, toolCall);
     }
   }
 
@@ -1114,6 +1117,41 @@ export class ChatSession {
 
   // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
   // when the list still has items, since they go with it.
+  // §68: one excused day, today or later; undo takes it back. Not for one-off tasks.
+  private async handleSkipDay(input: ItemSelector & { date?: string; undo?: boolean }, toolCall: ToolCallRef) {
+    const today = this.todayISO;
+    const dateISO = input.date && isISODate(input.date) ? input.date : today;
+    const selector = { name: input.name, categoryId: input.categoryId };
+    const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
+    if (kind === "singleTask") {
+      const task = this.pickItem("singleTask", selector, toolCall);
+      if (task) {
+        this.pushAssistantMessage(`"${task.name}" is a one-off task, so there's no day to skip. You can move it to another day instead.`, toolCall);
+      }
+      return;
+    }
+    const item = kind === "habit" ? this.pickItem("habit", selector, toolCall) : this.pickItem("recurringTask", selector, toolCall);
+    if (!item) return;
+    const data = this.deps.getData();
+    if (!data) return;
+    if (input.undo) {
+      if (dateISO < today || !skipOn(item, dateISO)) {
+        this.pushAssistantMessage(`"${item.name}" isn't skipped on ${formatDate(dateISO, today)}.`, toolCall);
+        return;
+      }
+      const saved = await this.deps.persist((current) => unskipDay(current, item, dateISO));
+      if (saved) this.pushAssistantMessage(describeUnskip(item, dateISO, today), toolCall);
+      return;
+    }
+    const refusal = skipRefusal(data, item, dateISO, today);
+    if (refusal) {
+      this.pushAssistantMessage(refusal, toolCall);
+      return;
+    }
+    const saved = await this.deps.persist((current) => skipDay(current, item, dateISO));
+    if (saved) this.pushAssistantMessage(describeSkip(item, dateISO, today), toolCall);
+  }
+
   /** §67: a usable note, undefined for none, or null after replying that it's too long. */
   private noteFrom(raw: string | undefined, toolCall: ToolCallRef): string | undefined | null {
     const text = raw?.trim();

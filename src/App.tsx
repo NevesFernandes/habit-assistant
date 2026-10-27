@@ -1,3 +1,4 @@
+import { unskipDay } from "./lib/skip";
 import { useEffect, useRef, useState } from "react";
 import { Settings as SettingsIcon, CircleHelp, MessageCircle, Calendar, Tags, List, ChartColumn, Timer as TimerIcon } from "lucide-react";
 import SignIn from "./components/SignIn";
@@ -592,6 +593,15 @@ export default function App() {
     );
   }
 
+  // §68: Undo on a skipped row of the Today tab.
+  function handleUnskip(kind: "habit" | "recurringTask", id: string, dateISO: string) {
+    if (!data) return;
+    void persist((current) => {
+      const item = kind === "habit" ? current.habits.find((h) => h.id === id) : current.recurringTasks.find((t) => t.id === id);
+      return item ? unskipDay(current, item, dateISO) : current;
+    });
+  }
+
   // §56: the × next to a checklist item. On a recurring task it's gone from that day on.
   function handleRecurringTaskChecklistRemove(taskId: string, itemId: string, dateISO: string) {
     if (!data) return;
@@ -776,6 +786,7 @@ export default function App() {
                   handleRecurringTaskChecklistRemove(taskId, itemId, selectedDate)
                 }
                 onPlaceItem={handlePlaceItem}
+                onUnskip={handleUnskip}
               />
             </div>
           )}

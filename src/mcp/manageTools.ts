@@ -33,6 +33,7 @@ import { hasChecklist, resolveChecklistItemMatches } from "../lib/itemSelection.
 import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } from "./writeTools.ts";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
+import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
 
 /** A change that's allowed: `apply` replays on a conflict (§21), `describe` reads the saved result. */
 export interface Change {
@@ -304,6 +305,17 @@ export function overallStats(data: AppData, todayISO: string) {
   };
 }
 
+/** §68: one excused day, today or later, through schedule's frozen `skip` op. */
+export function planSkip(data: AppData, item: Habit | RecurringTask, dateISO: string, todayISO: string): Plan {
+  const refusal = skipRefusal(data, item, dateISO, todayISO);
+  if (refusal) return { status: "rejected", message: refusal };
+  return {
+    status: "ok",
+    apply: (d) => skipDay(d, item, dateISO),
+    describe: () => ({ message: describeSkip(item, dateISO, todayISO), ownerId: item.id, date: dateISO }),
+  };
+}
+
 // --- more_actions ----------------------------------------------------------------------
 // §61: claude.ai keeps the tool list it fetched when the user connected, and there's no way
 // for users to refresh it short of reconnecting. So the tool list is fixed at launch, and
@@ -344,6 +356,31 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
         // "square" is DEFAULT_ICON_NAME in src/lib/icons.ts, which can't be imported here (it pulls in the icon library).
         apply: (d) => addCategory(d, { name, icon: "square" }),
         describe: () => ({ message: `Added the category "${name}".` }),
+      };
+    },
+  },
+  // §68: skipping is schedule's `skip` op, frozen at launch; taking one back came later.
+  unskip: {
+    description: 'Takes back a skipped day (today or later) of a habit or recurring task: "unskip gym", "actually I\'ll run today".',
+    args: { id: "string, the item's id (or name)", name: "string, the item's name in the user's words (or id)", date: "YYYY-MM-DD, defaults to today" },
+    run: (data, args, todayISO) => {
+      const date = typeof args.date === "string" && args.date ? args.date : todayISO;
+      if (!isISODate(date)) return { status: "rejected", message: `"${date}" is not a YYYY-MM-DD date.` };
+      const id = typeof args.id === "string" ? args.id : undefined;
+      const name = typeof args.name === "string" ? args.name : undefined;
+      const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name }, (item) => item.kind !== "singleTask");
+      if (resolved.status === "not_found") return { status: "rejected", message: resolved.message };
+      if (resolved.status === "ambiguous") {
+        const list = resolved.candidates.map((c) => `${c.name} (${c.type}, id ${c.id})`).join("; ");
+        return { status: "need_info", message: `Several items match: ${list}. Ask which one, then call again with its id.` };
+      }
+      const item = resolved.status === "ok" ? resolved.items[0] : undefined;
+      if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be skipped." };
+      if (date < todayISO || !skipOn(item, date)) return { status: "rejected", message: `"${item.name}" isn't skipped on ${date}.` };
+      return {
+        status: "ok",
+        apply: (d) => unskipDay(d, item, date),
+        describe: () => ({ message: describeUnskip(item, date, todayISO), ownerId: item.id, date }),
       };
     },
   },
