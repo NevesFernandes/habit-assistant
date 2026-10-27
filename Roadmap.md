@@ -16,18 +16,16 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-## Next
-
-## Later
+### §77 — Un-archive from the item's page
+Bringing an archived habit or recurring task back. By chat (app or Claude) it's already possible by removing the end date (§55); the item's page has no button for it. Small UI item.
 
 ### §69 — Settings by chat
 Change settings by asking: where the week starts (Sunday or Monday), replies read aloud on or off. In the connector, `more_actions` actions (no reconnect). Device-local settings (read-aloud is per device) need a decision on what "by chat" means for them.
 
-### §70 — Undo the last change
-"Undo that" right after a change made by chat (app or Claude). Needs care: what counts as the last change when the app and the connector both write the same file, and how far back it goes. Probably not a general history (see the Completion log rule in CLAUDE.md). In the connector, a `more_actions` action.
+### §73 — What did I miss
+"What did I miss this week?": the due items that weren't done over a period, as a list to act on. Mostly a reading of §66's history; in the app it could be a view or a chat answer. Depends on §66.
 
-### §71 — Goals and challenges
-A target with a deadline and visible progress: "read 20 books by December", "a 30-day no-sugar challenge". Builds on the stats (§63) and history (§66). In the connector, `more_actions` actions or a bigger `get_stats` result (no reconnect).
+## Next
 
 ### §72 — Export
 "Give me my October as a spreadsheet": history for a period as a file. The data is already the user's own JSON in Drive; this is about a readable table. In Claude, Claude can build the file from §66's history; in the app, a download. Depends on §66.
@@ -41,11 +39,13 @@ A target with a deadline and visible progress: "read 20 books by December", "a 3
 ### §76 — Habit packs
 "Set me up a morning routine": a ready-made set of items created in one go. In Claude this already works (several `create_item` calls). For the app, either the same through its chat or a small set of templates; to decide.
 
-### §77 — Un-archive from the item's page
-Bringing an archived habit or recurring task back. By chat (app or Claude) it's already possible by removing the end date (§55); the item's page has no button for it. Small UI item.
+## Later
 
-### §73 — What did I miss
-"What did I miss this week?": the due items that weren't done over a period, as a list to act on. Mostly a reading of §66's history; in the app it could be a view or a chat answer. Depends on §66.
+### §70 — Undo the last change
+"Undo that" right after a change made by chat (app or Claude). Needs care: what counts as the last change when the app and the connector both write the same file, and how far back it goes. Probably not a general history (see the Completion log rule in CLAUDE.md). In the connector, a `more_actions` action.
+
+### §71 — Goals and challenges
+A target with a deadline and visible progress: "read 20 books by December", "a 30-day no-sugar challenge". Builds on the stats (§63) and history (§66). In the connector, `more_actions` actions or a bigger `get_stats` result (no reconnect).
 
 ### §45 — Voice: slide-to-lock recording (trial on a branch)
 Today the mic button must be held for the whole message. Slide-to-lock (as in WhatsApp): while holding, slide the finger to a lock icon, then talk hands-free and tap to send (or cancel). Makes longer voice messages comfortable. UI-only; the transcription pipeline is unchanged.
