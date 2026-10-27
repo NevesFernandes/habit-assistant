@@ -120,6 +120,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "resetStats", buckets: ["history"], listBlurb: "start the stats over (history kept) for one item, a category or everything, or undo that; the app asks first." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
+  { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
 
@@ -1103,6 +1104,25 @@ export function buildTools(
           weekStartsOn: { type: "string", enum: ["sunday", "monday"], description: "The first day of the week." },
           readAloud: { type: "boolean", description: "Read the assistant's replies aloud on this device." },
         },
+      },
+    },
+    {
+      name: "applyToMany",
+      description:
+        "One action on several items at once: 'mark floss and water done', 'mark all my morning habits done', 'skip everything in Sports today', 'pause my Work tasks for a week', 'resume all my habits'. Use it whenever the user names two or more items or says all/every/everything; for one item use the single-item tools. Give names (each item as the user said it) or filters (dayPart, categoryId, kind), not both. The app leaves out items the action doesn't fit and says so, and asks first only for everything with no filter.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["done", "undone", "skip", "pause", "resume"], description: "undone = mark not done." },
+          names: { type: "array", items: { type: "string" }, description: "The items the user named, one fragment each." },
+          dayPart: { type: "string", enum: DAY_PART_IDS, description: "Only items in this part of the day." },
+          categoryId: { type: "string", description: `Only items in this category. Valid ids: ${categoryList}.` },
+          kind: { type: "string", enum: ["habit", "recurringTask", "singleTask"], description: "Only this kind, when the user said habits, routines/chores or tasks." },
+          date: { type: "string", description: "done, undone, skip: the day, ISO date. Omit for today." },
+          from: { type: "string", description: "pause: first paused day, ISO date. Omit for today." },
+          resumeOn: { type: "string", description: "pause: first day back, ISO date. Omit for open-ended." },
+        },
+        required: ["action"],
       },
     },
     {

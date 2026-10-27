@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "apply_to_many", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,30 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- Bulk actions (§75) --------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  // Named items: Read is already done today, so it's left out and named.
+  const named = await call("more_actions", { action: "apply_to_many", args: { action: "done", names: ["floss", "read"] } });
+  assert.equal(named.status, "ok");
+  assert.equal(named.message, "Marked done today: Floss.\nLeft out: Read (already done today).");
+  assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss" && e.date === TODAY));
+  // A category, with a pause for a week.
+  const sports = await call("more_actions", { action: "apply_to_many", args: { action: "pause", category: "Sports", resumeOn: addDays(TODAY, 7) } });
+  assert.match(sports.message, /^Paused from today, back on .*: Gym\.$/);
+  // Everything asks first, then goes with confirm.
+  const asked = await call("more_actions", { action: "apply_to_many", args: { action: "skip" } });
+  assert.equal(asked.status, "needs_confirm");
+  assert.match(asked.question, /^That's every item/);
+  const skipped = await call("more_actions", { action: "apply_to_many", args: { action: "skip", confirm: true } });
+  assert.match(skipped.message, /^Skipped today/);
+  // Refusals: no action, an unknown category, a future day to mark.
+  assert.equal((await call("more_actions", { action: "apply_to_many", args: {} })).status, "need_info");
+  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "done", category: "Piano" } })).status, "rejected");
+  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "done", kind: "habit", date: TOMORROW } })).status, "rejected");
 }
 
 // --- What did I miss (§73) -----------------------------------------------------------------

@@ -38,6 +38,7 @@
     "test:unarchive": "tsx src/lib/unarchive.test.ts",
     "test:settingsByChat": "tsx src/lib/settingsByChat.test.ts",
     "test:missed": "tsx src/lib/missed.test.ts",
+    "test:bulk": "tsx src/lib/bulk.test.ts",
     "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/manageTools.test.ts && tsx src/mcp/scenarios.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",
