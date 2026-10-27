@@ -10,7 +10,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 - Each entry also carries a **Now / Next / Later** tag — a visual/query layer on top of the ordering, not a replacement for it. A Later item never outranks a Next item, and a Next item never outranks a Now item: all Now entries stay above all Next entries, which stay above all Later entries. Ordering *within* a tier is still just top-to-bottom position, same as before.
 - **Item numbers are permanent IDs, written as `§N` — never `#N`.** `#N` auto-links to GitHub issue/PR number N in commit messages, and this repo already had real collisions (roadmap items reused the same digit as unrelated GitHub issues after renumbering, polluting their timelines — fixed 2026-08-20). An ID is assigned once, when an item is first added, and is **never reused**, even after that item is completed and removed — so position (priority rank) and ID are independent: an item's position can change freely, but its `§N` never does. IDs `§1`–`§3` are already retired to historical, now-removed entries (see commits `ff9eaf1`/`2b5bdac` for §1, `d5254af` for §2, `bc8446c`/`c640cae` for §3) — don't reuse them even though they don't appear below.
 - **The commit(s) that close an item are the permanent record once its entry is removed here, so they must carry the ID and a real description** — not just `§N` on its own. Convention (settled by practice, e.g. `Close §26: add Cloudflare Workers AI as a third-tier, last-resort fallback` / `Merge §26: add Cloudflare Workers AI as a third-tier, last-resort fallback`): the commit implementing the item and the commit merging it to `main` are both titled `Close §N: <short description>` / `Merge §N: <short description>`, using the same description both times. Commits that aren't closing a specific numbered item (bug fixes found in passing, doc-only edits, mid-item registration/retagging commits) don't need a `§N` prefix.
-- **Next available ID: §65** (§62, "today" as the local date rather than UTC, was used directly for §61 Phase 2 — see `Close §62`) (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
+- **Next available ID: §66** (§62, "today" as the local date rather than UTC, was used directly for §61 Phase 2 — see `Close §62`) (§30 used directly — see `Close §30`/`Merge §30` commits syncing BYOK settings across devices via the Drive data file — without a queued entry here, since it was implemented in the same session it was requested)
 
 ---
 
@@ -44,6 +44,13 @@ Today only habits have stats (streak, best streak, completion %, counts per week
 
 - Build it in `src/lib` next to `habitStats.ts`, so the app and the connector share it.
 - Connector (ready, 2026-10-27): `get_stats` already takes any item, and a `type` for a category or everything; for tasks it answers `not_available` (`NOT_AVAILABLE` in `src/mcp/server.ts`). Once this is built, it returns task stats with no reconnect. Its description already describes the finished feature, since descriptions freeze with the tool list.
+
+### §65 — Stats summaries in Claude (dashboard-style)
+Summaries of how the user is doing, like the app's stats tab and its calendar widget, asked for in Claude ("how did my week go?", "show my month").
+
+- Decided 2026-10-27: the app's code computes, Claude draws. The numbers come from `src/lib` (no streaks or percentages worked out by the model); Claude writes the summary, or builds a chart when asked.
+- Connector: only `get_stats`' **result** grows (e.g. a day-by-day series for the calendar/heatmap, per-period totals), so no reconnect is needed. Its inputs and description stay as they are; the result itself says what its fields mean.
+- Not chosen for now: a link to the app's stats tab (leaves Claude), and an interactive widget inside Claude ("MCP Apps"), which is unconfirmed on claude.ai mobile and would change the tool list (a reconnect for everyone if added after launch).
 
 ### §64 — Reset stats
 Start the stats over for one item, a category, or everything, for habits, recurring tasks and one-off tasks.
