@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §73 — What did I miss
-"What did I miss this week?": the due items that weren't done over a period, as a list to act on. Mostly a reading of §66's history; in the app it could be a view or a chat answer. Depends on §66.
-
 ## Next
 
 ### §72 — Export

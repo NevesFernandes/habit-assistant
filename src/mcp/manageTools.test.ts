@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,27 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- What did I miss (§73) -----------------------------------------------------------------
+
+{
+  const { call } = fresh();
+  // No period named: this week up to yesterday (or last week), and `period` says so.
+  const week = await call("more_actions", { action: "missed" });
+  assert.equal(week.status, "ok");
+  assert.match(week.period, /You didn't name a period/);
+  assert.ok(week.to < TODAY);
+  // Floss was done only yesterday; the 20 days before it are misses, with a suggestion.
+  const month = await call("more_actions", { action: "missed", args: { from: addDays(TODAY, -20), to: TODAY } });
+  assert.equal(month.to, addDays(TODAY, -1)); // today isn't over
+  assert.equal(month.period.includes("You didn't"), false);
+  const floss = month.items.find((item: { id: string }) => item.id === "Floss");
+  assert.deepEqual([floss.missed, floss.due], [19, 20]);
+  // Two suggestions at most, for the most missed (never done in 20 days).
+  assert.equal(month.suggestions.length, 2);
+  assert.match(month.suggestions[0], /was missed 20 of 20 times\. Want to change its days, or pause it for a while\?/);
+  assert.equal((await call("more_actions", { action: "missed", args: { from: TODAY } })).status, "rejected");
 }
 
 // --- Settings (§69) -----------------------------------------------------------------------

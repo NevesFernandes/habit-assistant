@@ -63,7 +63,7 @@ import {
   formatDate,
   formatGoalMinutes,
 } from "./confirmations";
-import { archiveGap, currentPause, isArchived, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
+import { addDays, archiveGap, currentPause, isArchived, isFutureDate, isPaused, occursOn, upcomingPause } from "./recurrence";
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "./recurringChecklist";
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
@@ -83,6 +83,7 @@ import {
   type ResetScope,
 } from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
+import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
@@ -430,6 +431,8 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "getMissed") {
+      this.handleGetMissed(toolCall.input, toolCall);
     } else if (toolCall.name === "settings") {
       await this.handleSettings(toolCall.input, toolCall);
     }
@@ -1372,6 +1375,37 @@ export class ChatSession {
 
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
+  // §73: only the misses of a period, read-only, with a nudge forward when something slips a lot.
+  private handleGetMissed(input: { from?: string; to?: string }, toolCall: ToolCallRef) {
+    const stored = this.deps.getData();
+    if (!stored) return;
+    const today = this.todayISO;
+    const data = rolloverPersistentTasks(stored, today);
+    const yesterday = addDays(today, -1);
+    let period: { from: string; to: string; assumed?: "thisWeek" | "lastWeek" };
+    if (!input.from && !input.to) {
+      period = defaultMissedPeriod(today, weekStartOf(data));
+    } else {
+      const from = input.from ?? input.to!;
+      const to = input.to ?? input.from!;
+      if (!isISODate(from) || !isISODate(to) || to < from) {
+        this.pushAssistantMessage("I couldn't work out which days you meant. Could you say the period again?", toolCall);
+        return;
+      }
+      if (from >= today) {
+        this.pushAssistantMessage("Nothing counts as missed until the day is over. Ask about yesterday or earlier.", toolCall);
+        return;
+      }
+      // Today isn't over, so a period reaching it stops at yesterday.
+      period = { from, to: to < today ? to : yesterday };
+      if (historyRangeDays(period.from, period.to) > HISTORY_MAX_DAYS) {
+        this.pushAssistantMessage("That's more than a year. Ask about a shorter period.", toolCall);
+        return;
+      }
+    }
+    this.pushAssistantMessage(describeMissed(getMissed(data, period.from, period.to, today, period.assumed), today), toolCall);
+  }
+
   private handleGetHistory(input: { from: string; to: string; name?: string; categoryId?: string }, toolCall: ToolCallRef) {
     const { from, to } = input;
     if (!isISODate(from) || !isISODate(to) || to < from) {

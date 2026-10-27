@@ -121,6 +121,8 @@ const HISTORY_PATTERNS: RegExp[] = [
   /\bwhen did i last\b/, /\bwhen was the last time\b/, /\bthe last time i\b/,
   /\bhow (?:many times|often) (?:did|have|do) i\b/,
   /\bwhat (?:did|have) i (?:miss|missed|skip|skipped|forget|forgotten|do|done|achieve|achieved)\b/,
+  // §73
+  /\bslipped\b/, /\banything i missed\b/,
   /\bdid i\b[\s\S]*\b(?:yesterday|last week|this week|last month|this month|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/,
   /\b(?:my|the) history\b/, /\b(?:recap|review|summary of) (?:my|the|this|last)\b/,
   /\bwhat(?:'s| is| do i have)\b[\s\S]*\b(?:this|next|coming) (?:week|month)\b/, /\bplan (?:my|the) (?:week|month)\b/,

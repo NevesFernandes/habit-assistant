@@ -25,7 +25,7 @@ import {
   updateHabit,
   updateRecurringTask,
 } from "../lib/dataStore.ts";
-import { archiveGap, currentPause, daysBetween, isArchived, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
+import { addDays, archiveGap, currentPause, daysBetween, isArchived, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
 import { habitChecklistOn, currentHabitChecklist } from "../lib/habitChecklist.ts";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "../lib/recurringChecklist.ts";
 import { describeArchive, describeDeleteQuestion, describePause, describeResume, describeUnarchive, formatDate } from "../lib/confirmations.ts";
@@ -37,6 +37,8 @@ import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } fr
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
+import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
+import { HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import { NOT_BY_CHAT, describeReadAloudEverywhere, describeWeekStart, readAloudEverywhere, withReadAloudEverywhere, withWeekStart } from "../lib/settingsByChat.ts";
 import { describeUndoReset, resetTargets, undoable, undoReset, type ResetScope } from "../lib/statsReset.ts";
 
@@ -471,6 +473,38 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §73: get_history froze at launch; the misses-only reading, with the same nudges as the app.
+  missed: {
+    description:
+      'Only what the user missed over a period, plus one-off tasks still carried over (not done since their day), and up to two suggestions to put to the user: "what did I miss?", "what did I miss last week?". Leave from and to out unless the user named a period: it then uses this week up to yesterday (last week on the week\'s first day), and `period` says so; tell the user which period it was. Never offer to mark the missed days done: the app looks forward.',
+    args: { from: "YYYY-MM-DD, optional", to: "YYYY-MM-DD, optional" },
+    run: (data, args, todayISO) => {
+      const given = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+      let from = given(args.from) ?? given(args.to);
+      let to = given(args.to) ?? given(args.from);
+      let assumed: "thisWeek" | "lastWeek" | undefined;
+      if (!from || !to) {
+        ({ from, to, assumed } = defaultMissedPeriod(todayISO, weekStartOf(data)));
+      } else {
+        if (!isISODate(from) || !isISODate(to) || to < from) return { status: "rejected", message: "from and to are YYYY-MM-DD dates, from first." };
+        if (from >= todayISO) return { status: "rejected", message: "Nothing counts as missed until the day is over; ask about yesterday or earlier." };
+        if (to >= todayISO) to = addDays(todayISO, -1);
+        if (historyRangeDays(from, to) > HISTORY_MAX_DAYS) return { status: "rejected", message: `At most ${HISTORY_MAX_DAYS} days at a time.` };
+      }
+      const missed = getMissed(rolloverPersistentTasks(data, todayISO), from, to, todayISO, assumed);
+      return {
+        result: {
+          from: missed.from,
+          to: missed.to,
+          period: describeMissedPeriod(missed, todayISO),
+          total: missed.total,
+          items: missed.items,
+          carriedOver: missed.carried,
+          suggestions: missed.nudges.map(describeNudge),
+        },
+      };
     },
   },
   // §69: the app's two chat-changeable settings. Claude has no device of its own, so
