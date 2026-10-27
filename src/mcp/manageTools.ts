@@ -18,16 +18,17 @@ import {
   removeSingleTaskChecklistItem,
   resolveCategoryId,
   resumeItem,
+  unarchiveItem,
   setHabitChecklistItemChecked,
   setRecurringTaskChecklistItemChecked,
   setSingleTaskChecklistItemChecked,
   updateHabit,
   updateRecurringTask,
 } from "../lib/dataStore.ts";
-import { currentPause, daysBetween, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
+import { archiveGap, currentPause, daysBetween, isArchived, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
 import { habitChecklistOn, currentHabitChecklist } from "../lib/habitChecklist.ts";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "../lib/recurringChecklist.ts";
-import { describeArchive, describeDeleteQuestion, describePause, describeResume, formatDate } from "../lib/confirmations.ts";
+import { describeArchive, describeDeleteQuestion, describePause, describeResume, describeUnarchive, formatDate } from "../lib/confirmations.ts";
 import { aggregateCategoryStats, computeHabitStats } from "../lib/habitStats.ts";
 import { computeRecurringTaskStats, statsByKind } from "../lib/taskStats.ts";
 import { rolloverPersistentTasks } from "../lib/dataStore.ts";
@@ -232,6 +233,8 @@ export function planSchedule(item: Habit | RecurringTask, op: ScheduleOp, input:
     };
   }
   if (op === "resume") {
+    // §77: resuming an archived item brings it back, as in the app's chat.
+    if (isArchived(item, todayISO)) return planUnarchive(item, todayISO);
     if (!isPaused(item, todayISO) && !upcomingPause(item, todayISO)) {
       return { status: "rejected", message: `"${item.name}" isn't paused: it's already running.` };
     }
@@ -256,6 +259,24 @@ export function planSchedule(item: Habit | RecurringTask, op: ScheduleOp, input:
       const after = itemsOf(saved).find((entry) => entry.id === item.id) ?? item;
       return { message: describeArchive(after), ownerId: item.id };
     },
+  };
+}
+
+/** §77: no end date, the archived days kept as a pause, and any pause it had ended today. */
+export function planUnarchive(item: Habit | RecurringTask, todayISO: string): Refusal | Change {
+  if (!isArchived(item, todayISO)) {
+    return {
+      status: "rejected",
+      message: item.endDate
+        ? `"${item.name}" isn't archived: it runs until ${formatDate(item.endDate, todayISO)}. To keep it going, remove the end date (update_item, newEndDate "").`
+        : `"${item.name}" isn't archived.`,
+    };
+  }
+  const gap = archiveGap(item, undefined, todayISO);
+  return {
+    status: "ok",
+    apply: (data) => resumeItem(unarchiveItem(data, item.kind, item.id, todayISO), item.kind, item.id, todayISO),
+    describe: () => ({ message: describeUnarchive(item.name, gap, todayISO), ownerId: item.id }),
   };
 }
 
@@ -430,6 +451,25 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
           message: describeUndoReset(itemsOf(saved).filter((item) => ids.has(item.id)), scope, saved.categories, todayISO),
         }),
       };
+    },
+  },
+  // §77: schedule's `resume` also does it; this names it for "unarchive gym".
+  unarchive: {
+    description:
+      'Brings back an archived habit or recurring task: due again from today, and the days it was archived count as paused, not missed. "unarchive gym", "bring back my reading habit". Archived items show in find_items with includeInactive.',
+    args: { id: "string, the item's id (or name)", name: "string, the item's name in the user's words (or id)" },
+    run: (data, args, todayISO) => {
+      const id = typeof args.id === "string" ? args.id : undefined;
+      const name = typeof args.name === "string" ? args.name : undefined;
+      const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name }, (item) => item.kind !== "singleTask");
+      if (resolved.status === "not_found") return { status: "rejected", message: resolved.message };
+      if (resolved.status === "ambiguous") {
+        const list = resolved.candidates.map((c) => `${c.name} (${c.type}, id ${c.id})`).join("; ");
+        return { status: "need_info", message: `Several items match: ${list}. Ask which one, then call again with its id.` };
+      }
+      const item = resolved.status === "ok" ? resolved.items[0] : undefined;
+      if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
+      return planUnarchive(item, todayISO);
     },
   },
   // §68: skipping is schedule's `skip` op, frozen at launch; taking one back came later.

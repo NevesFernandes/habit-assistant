@@ -7,12 +7,14 @@ import CategoryIcon from "./CategoryIcon";
 import DayPartPicker, { ImportantMark, type PlacementPatch } from "./DayPartPicker";
 import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
+import ArchiveRow from "./ArchiveRow";
 import ItemStats from "./ItemStats";
 
 interface HabitsViewProps {
   habits: Habit[];
   categories: Category[];
   onPlace: (id: string, patch: PlacementPatch) => void;
+  onUnarchive: (id: string) => void;
   completionLog: CompletionLogEntry[];
   onToggleChecklistItem: (habitId: string, itemId: string) => void;
 }
@@ -24,7 +26,7 @@ const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
   checklist: "Checklist",
 };
 
-export default function HabitsView({ habits, categories, onPlace, completionLog, onToggleChecklistItem }: HabitsViewProps) {
+export default function HabitsView({ habits, categories, onPlace, onUnarchive, completionLog, onToggleChecklistItem }: HabitsViewProps) {
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
@@ -35,6 +37,7 @@ export default function HabitsView({ habits, categories, onPlace, completionLog,
         habit={selectedHabit}
         categories={categories}
         onPlace={onPlace}
+        onUnarchive={onUnarchive}
         completionLog={completionLog}
         onToggleChecklistItem={onToggleChecklistItem}
         onBack={() => setSelectedHabitId(null)}
@@ -85,6 +88,7 @@ function HabitDetail({
   habit,
   categories,
   onPlace,
+  onUnarchive,
   completionLog,
   onToggleChecklistItem,
   onBack,
@@ -92,12 +96,12 @@ function HabitDetail({
   habit: Habit;
   categories: Category[];
   onPlace: (id: string, patch: PlacementPatch) => void;
+  onUnarchive: (id: string) => void;
   completionLog: CompletionLogEntry[];
   onToggleChecklistItem: (habitId: string, itemId: string) => void;
   onBack: () => void;
 }) {
   const category = categories.find((c) => c.id === habit.categoryId);
-  const archived = isArchived(habit);
   const pause = currentPause(habit, todayISO()) ?? upcomingPause(habit, todayISO());
   const todayEntry = completionLog.find((e) => e.itemId === habit.id && e.date === todayISO());
   const todayChecklistItems = checklistItemsForEntry(habit, todayEntry, todayISO());
@@ -136,11 +140,7 @@ function HabitDetail({
           <span>{habit.startDate}</span>
         </DetailRow>
 
-        {habit.endDate && (
-          <DetailRow label={archived ? "Archived since" : "End date"}>
-            <span>{habit.endDate}</span>
-          </DetailRow>
-        )}
+        <ArchiveRow item={habit} onUnarchive={onUnarchive} />
 
         {/* §28: a pause is distinct from archiving — it ends by itself, or when asked. */}
         {pause && (

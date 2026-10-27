@@ -16,7 +16,7 @@ import type {
   RecurringTask,
   SingleTask,
 } from "../types/models";
-import { resolveWeekdayDate } from "./recurrence";
+import { archiveGap, resolveWeekdayDate } from "./recurrence";
 import { withoutNotesOf } from "./dayNotes";
 import {
   isRecurringTaskChecklistItemChecked,
@@ -510,6 +510,28 @@ export function resumeItem(data: AppData, kind: "habit" | "recurringTask", id: s
   );
 }
 
+/**
+ * §77: bring an archived Habit or Recurring Task back: no end date, and the days it sat
+ * archived become a finished pause (archiveGap), so they count as neither done nor missed.
+ */
+export function unarchiveItem(data: AppData, kind: "habit" | "recurringTask", id: string, todayISO: string): AppData {
+  const apply = <T extends Habit | RecurringTask>(item: T): T =>
+    item.id === id ? { ...item, endDate: undefined, ...withArchiveGap(item, undefined, todayISO) } : item;
+  return kind === "habit"
+    ? { ...data, habits: data.habits.map(apply) }
+    : { ...data, recurringTasks: data.recurringTasks.map(apply) };
+}
+
+/** §77: the archived days as an added pause, when the end date goes or moves later (else nothing to spread). */
+function withArchiveGap(item: Habit | RecurringTask, newEndDate: string | undefined, todayISO: string): { pauses?: PausePeriod[] } {
+  const gap = archiveGap(item, newEndDate, todayISO);
+  return gap ? { pauses: [...(item.pauses ?? []), gap] } : {};
+}
+
+function pausesAfterPatch(item: Habit | RecurringTask, patch: UpdatePatch, todayISO: string): { pauses?: PausePeriod[] } {
+  return patch.newEndDate === undefined ? {} : withArchiveGap(item, patch.newEndDate || undefined, todayISO);
+}
+
 function mapPausable(
   data: AppData,
   kind: "habit" | "recurringTask",
@@ -569,6 +591,7 @@ export function updateHabit(data: AppData, id: string, patch: UpdatePatch, today
       const unit = completionType === "value" ? (patch.newUnit !== undefined ? patch.newUnit : habit.unit) : undefined;
       return {
         ...base,
+        ...pausesAfterPatch(habit, patch, todayISO),
         categoryId,
         recurrence: resolveRecurrence(habit.recurrence, patch),
         completionType,
@@ -605,6 +628,7 @@ export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatc
       const base = applyBaseItemPatch(task, patch, todayISO);
       const updated: RecurringTask = {
         ...base,
+        ...pausesAfterPatch(task, patch, todayISO),
         categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
         recurrence: resolveRecurrence(task.recurrence, patch),
       };
