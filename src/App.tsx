@@ -164,7 +164,14 @@ export default function App() {
   // read again. Only the items are refreshed (setData, not applyRemoteData): BYOK settings
   // still sync at sign-in only, for the reason given there. A save racing this is safe: the
   // next write's conflict check catches any mismatch and replays.
+  // §61 Phase 3: the device's time zone is stored again here, not only at sign-in, so the
+  // connector follows a user who travelled. A quiet write: a failure just waits for the next
+  // return or sign-in, never a chat message.
   const checkingRemoteRef = useRef(false);
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
   useEffect(() => {
     if (!fileRef) return;
     const refresh = async () => {
@@ -172,11 +179,26 @@ export default function App() {
       if (document.visibilityState !== "visible" || !current || tokenNeedsRefresh(current) || checkingRemoteRef.current) return;
       checkingRemoteRef.current = true;
       try {
+        let ref = fileRef;
+        let latest = dataRef.current;
         const modifiedTime = await getModifiedTime(current, fileRef.fileId);
-        if (modifiedTime === fileRef.modifiedTime) return;
-        const fresh = await readDataFile(current, fileRef.fileId);
-        setFileRef({ fileId: fileRef.fileId, modifiedTime });
-        setData(fresh);
+        if (modifiedTime !== fileRef.modifiedTime) {
+          latest = await readDataFile(current, fileRef.fileId);
+          ref = { fileId: fileRef.fileId, modifiedTime };
+        }
+        if (latest) {
+          const zoned = withTimeZone(latest, deviceTimeZone());
+          if (zoned !== latest) {
+            try {
+              ref = await writeDataFile(current, ref, zoned);
+              latest = zoned;
+            } catch {
+              // Conflict, expiry or offline: the next return to the app tries again.
+            }
+          }
+        }
+        if (ref !== fileRef) setFileRef(ref);
+        if (latest && latest !== dataRef.current) setData(latest);
       } catch {
         // Offline or signed out: keep what's on screen; the next save's own checks report it.
       } finally {

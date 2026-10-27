@@ -7,7 +7,7 @@ import { todayIn } from "../lib/today.ts";
 import { addDays } from "../lib/recurrence.ts";
 import { addHabit, updateSingleTask } from "../lib/dataStore.ts";
 import type { McpDeps } from "./server.ts";
-import { callTool, memoryStore, type MemoryStore } from "./testing/fakes.ts";
+import { callTool, memoryStore, rpc, type MemoryStore } from "./testing/fakes.ts";
 import { DEFAULT_CATEGORIES, type AppData, type Habit, type SingleTask } from "../types/models.ts";
 
 const ZONE = "Europe/Lisbon";
@@ -391,6 +391,36 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
   const dentist = (await update({ id: "dentist", newStartDate: TOMORROW, newCategory: "Health" })).body;
   assert.deepEqual([dentist.item.startDate, dentist.item.category], [TOMORROW, "Health"]);
   assert.equal(store.file().singleTasks.find((t) => t.id === "dentist")?.categoryId, "health");
+}
+
+// --- set_time_zone (travel) --------------------------------------------------------------
+
+{
+  const { store, deps } = fresh({ ...fixture(), timeZone: undefined });
+  assert.equal((await callTool(deps, "get_day", {})).body.status, "need_timezone");
+  const set = (await callTool(deps, "set_time_zone", { timeZone: "Asia/Tokyo" })).body;
+  assert.deepEqual([set.status, set.today, set.changed], ["ok", todayIn("Asia/Tokyo"), true]);
+  assert.equal(store.file().timeZone, "Asia/Tokyo");
+  // It sticks: later calls need no zone, and today is Tokyo's.
+  assert.equal((await callTool(deps, "get_day", {})).body.today, todayIn("Asia/Tokyo"));
+  // The same zone again writes nothing; a made-up one is refused.
+  const version = store.version();
+  assert.equal((await callTool(deps, "set_time_zone", { timeZone: "Asia/Tokyo" })).body.changed, false);
+  assert.equal(store.version(), version);
+  const bad = await callTool(deps, "set_time_zone", { timeZone: "Tokyo" });
+  assert.deepEqual([bad.isError, bad.body.status], [true, "invalid_time_zone"]);
+  assert.deepEqual((store.file() as AppData & { someFutureField?: unknown }).someFutureField, { kept: true });
+}
+
+// Phase 1 found "what's on today?" alone reached for the calendar: the descriptions now name it.
+{
+  const { deps } = fresh();
+  const { result } = await rpc(deps, "tools/list");
+  const getDayTool = result.tools.find((t: { name: string }) => t.name === "get_day");
+  assert.match(getDayTool.description, /what's on today\?/);
+  assert.match(getDayTool.description, /Calendar events aren't in it/);
+  const { result: init } = await rpc(deps, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } });
+  assert.match(init.instructions, /call get_day/);
 }
 
 for (const event of logged) assert.deepEqual(Object.keys(event).sort(), ["ms", "status", "tool"]);

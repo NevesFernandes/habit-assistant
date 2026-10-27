@@ -31,6 +31,7 @@ import {
   type ItemKind,
 } from "./writeTools.ts";
 import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
+import { withTimeZone } from "../lib/dataStore.ts";
 import { DAY_PARTS } from "../lib/dayParts.ts";
 
 export interface McpDeps {
@@ -38,14 +39,17 @@ export interface McpDeps {
   log?: (event: Record<string, unknown>) => void;
 }
 
-const INSTRUCTIONS = `Habit Assistant: the user's habits, recurring tasks and one-off tasks, stored in their own Google Drive and shared with the Habit Assistant app.
+const INSTRUCTIONS = `Habit Assistant: the user's habits, routines, chores and to-dos (habits, recurring tasks and one-off tasks), stored in their own Google Drive and shared with the Habit Assistant app.
+For any question about the user's day, plans or to-dos ("what's on today?", "what do I have left?", "what's planned for tomorrow?"), call get_day. Calendar events aren't in it: when a calendar is connected too, use both.
 Act directly; ask a question only when a tool can't run without the answer.
 Present days grouped by part of the day (Wake-up, Morning, Work day, Afternoon, Evening, Bedtime), in the order the tool returns them; important items carry a star.`;
 
-const GET_DAY_DESCRIPTION = `What the user has on a given day: habits, recurring tasks and one-off tasks that are due, grouped by part of the day, in the same order as the app's Today tab, with what's done, logged amounts, checklist progress and "N times a week" progress.
-For today, call it with no arguments: the user's time zone is stored with their data. Pass \`date\` (YYYY-MM-DD) for another day, and \`timeZone\` (IANA, e.g. "Europe/Lisbon") only when the user says they're somewhere else.
-If the result's status is "need_timezone", ask the user which city or time zone they're in, then call again with \`timeZone\`.
+const GET_DAY_DESCRIPTION = `The user's to-do list and habits for a day. Use it for "what's on today?", "what do I have to do?", "what's left?", "did I do X today?", "what's planned tomorrow?". It holds habits, recurring tasks and one-off tasks due that day, grouped by part of the day in the same order as the app's Today tab, with what's done, logged amounts, checklist progress and "N times a week" progress. Calendar events aren't in it.
+For today, call it with no arguments: the user's time zone is stored with their data. Pass \`date\` (YYYY-MM-DD) for another day. When the user says they're somewhere else now, call set_time_zone so it sticks.
+If the result's status is "need_timezone", ask the user which city or time zone they're in, then call set_time_zone and try again.
 Reply briefly: list what's left first, then what's done; mention a part of the day only when it has items. Never invent items that aren't in the result.`;
+
+const SET_TIME_ZONE_DESCRIPTION = `Saves the user's time zone, which decides what "today" is for every Habit Assistant tool. Call it when the user says where they are now ("I'm in Tokyo this week", "I moved to Lisbon"), or answers a need_timezone question. Pass an IANA name, e.g. "Asia/Tokyo". The app also sets it from the phone's clock whenever it's opened, so a trip is followed either way. Reply in one line with the new today.`;
 
 const FIND_ITEMS_DESCRIPTION = `Looks up the user's habits, recurring tasks and one-off tasks by name, or lists them all, with ids, schedule, part of the day, pause/archive state, goal and checklist.
 Use it to answer "what habits do I have?" and to get ids when a name is unclear. Archived items and finished one-off tasks are left out unless \`includeInactive\` is true or they're the only match.`;
@@ -78,7 +82,7 @@ Statuses: "ok": reply with \`confirmation\`. "ambiguous": list the candidates an
 
 const NEED_TIMEZONE = {
   status: "need_timezone",
-  message: "Ask the user which city or time zone they're in, then call again with `timeZone`.",
+  message: "Ask the user which city or time zone they're in, then call set_time_zone and try again.",
 };
 
 type Body = { status: string } & Record<string, unknown>;
@@ -154,7 +158,10 @@ function userToday(data: AppData, timeZone: string | undefined): string | undefi
 
 const ITEM_TYPE = z.enum(["habit", "recurringTask", "singleTask"]);
 const DATE = z.string().optional().describe("YYYY-MM-DD in the user's local calendar. Defaults to today.");
-const TIME_ZONE = z.string().optional().describe('The user\'s IANA time zone, e.g. "Europe/Lisbon". Only when they say they\'re somewhere else.');
+const TIME_ZONE = z
+  .string()
+  .optional()
+  .describe('The user\'s IANA time zone for this call only, e.g. "Europe/Lisbon". To change it for good, use set_time_zone.');
 
 function ambiguous(candidates: ReturnType<typeof candidate>[], pick: "ids" | "id" = "ids"): Body {
   return {
@@ -201,7 +208,7 @@ export function buildServer(deps: McpDeps): McpServer {
       description: GET_DAY_DESCRIPTION,
       inputSchema: {
         date: z.string().optional().describe("The day to show, YYYY-MM-DD, in the user's local calendar. Defaults to today."),
-        timeZone: z.string().optional().describe('The user\'s IANA time zone, e.g. "Europe/Lisbon".'),
+        timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -317,6 +324,27 @@ export function buildServer(deps: McpDeps): McpServer {
         const decision = decideLogProgress(item, dateISO, today, { value, add });
         const saved = await applyDecisions(deps.store, loaded, today, [decision]);
         return { date: dateISO, today, ...describeResult(saved, decision, dateISO) };
+      }),
+  );
+
+  server.registerTool(
+    "set_time_zone",
+    {
+      title: "Set time zone",
+      description: SET_TIME_ZONE_DESCRIPTION,
+      inputSchema: { timeZone: z.string().describe('IANA time zone, e.g. "Asia/Tokyo".') },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ timeZone }) =>
+      timed(deps, "set_time_zone", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = todayIn(timeZone);
+        const changed = loaded.data.timeZone !== timeZone;
+        // The same §62 helper the app uses at sign-in and on returning to the foreground.
+        if (changed) await persist(deps.store, loaded, today, (data) => withTimeZone(data, timeZone));
+        return { status: "ok", timeZone, today, changed };
       }),
   );
 
