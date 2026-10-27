@@ -105,6 +105,11 @@ const AMOUNT_CHANGE_VERBS = ["increase", "decrease", "adjust", "update", "change
 const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with", "practiced", "studied", "tracked"];
 const DURATION_WORDS = ["minute", "minutes", "hour", "hours", "glass", "glasses", "page", "pages", "rep", "reps", "mile", "miles", "step", "steps", "cup", "cups", "time", "times"];
 
+// §67: a note about one day ("today's run", "yesterday", "on Monday", a date) is a day
+// note, not the item's description; "notes" with no day stays the description (§55).
+const DAY_PATTERN =
+  /\b(?:today'?s?|tonight'?s?|yesterday'?s?|tomorrow'?s?|this morning|last night|(?:on|last|next|this) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|\d{4}-\d{2}-\d{2})\b/;
+
 // §66: questions about a period — how it went, what was missed, when something was last
 // done, what's coming up. Questions only: "I did my stretching" is a report (progress).
 const HISTORY_PATTERNS: RegExp[] = [
@@ -158,6 +163,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const hasLogVerb = matchesAny(text, LOG_VERBS);
   const hasNumberOrDuration = /\d/.test(text) || matchesAny(text, DURATION_WORDS);
   const asksHistory = HISTORY_PATTERNS.some((pattern) => pattern.test(text));
+  const dayNote = /\bnotes?\b/.test(text) && DAY_PATTERN.test(text);
 
   const buckets = new Set<IntentBucket>();
 
@@ -184,7 +190,8 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // (§54), or changing what a recurring task's checklist does between occurrences (§42:
   // "make the cleaning checklist reset every time", which is updateRecurringTask's job).
   const changesChecklistMode = hasListNoun && CHECKLIST_MODE_PATTERN.test(text);
-  if (hasEditVerb || mentionsFieldToClear || changesChecklistMode) buckets.add("edit");
+  if (hasEditVerb || (mentionsFieldToClear && !dayNote) || changesChecklistMode) buckets.add("edit");
+  if (dayNote) buckets.add("progress");
 
   // Progress: marking done, or logging an amount. A change verb with an amount is either
   // an edit or a log ("increase my water by 2 glasses"), so it gets both — unless it

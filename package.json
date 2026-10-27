@@ -30,6 +30,7 @@
     "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:taskCategory": "tsx src/lib/taskCategory.test.ts",
     "test:history": "tsx src/lib/history.test.ts",
+    "test:dayNotes": "tsx src/lib/dayNotes.test.ts",
     "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/manageTools.test.ts && tsx src/mcp/scenarios.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",

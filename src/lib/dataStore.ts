@@ -17,6 +17,7 @@ import type {
   SingleTask,
 } from "../types/models";
 import { resolveWeekdayDate } from "./recurrence";
+import { withoutNotesOf } from "./dayNotes";
 import {
   isRecurringTaskChecklistItemChecked,
   withChecklistMode,
@@ -377,27 +378,27 @@ export function resolveRecurringTasks(data: AppData, criteria: DeleteCriteria): 
 
 export function deleteSingleTasks(data: AppData, ids: string[]): AppData {
   const idSet = new Set(ids);
-  return { ...data, singleTasks: data.singleTasks.filter((task) => !idSet.has(task.id)) };
+  return withoutNotesOf({ ...data, singleTasks: data.singleTasks.filter((task) => !idSet.has(task.id)) }, idSet);
 }
 
 /** Cascade-deletes matching CompletionLogEntry rows too — the "tracked history" the confirmation warns about. */
 export function deleteHabits(data: AppData, ids: string[]): AppData {
   const idSet = new Set(ids);
-  return {
+  return withoutNotesOf({
     ...data,
     habits: data.habits.filter((habit) => !idSet.has(habit.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
-  };
+  }, idSet);
 }
 
 /** Cascade-deletes matching CompletionLogEntry rows too, mirroring deleteHabits. */
 export function deleteRecurringTasks(data: AppData, ids: string[]): AppData {
   const idSet = new Set(ids);
-  return {
+  return withoutNotesOf({
     ...data,
     recurringTasks: data.recurringTasks.filter((task) => !idSet.has(task.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
-  };
+  }, idSet);
 }
 
 // All fields optional; a field is only changed when its key is present with

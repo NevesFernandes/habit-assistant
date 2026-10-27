@@ -114,6 +114,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   // must not be left with only the tools that delete the whole task.
   { name: "removeChecklistItems", buckets: ["checklist", "delete"], listBlurb: "take one or more items off a task's or a checklist habit's checklist." },
   { name: "removeTaskChecklist", buckets: ["checklist", "delete"], listBlurb: "remove the whole checklist from a task, leaving a plain task." },
+  { name: "setNote", buckets: ["progress"], listBlurb: "add, change or remove the note on an item's day." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
 ];
 
@@ -178,7 +179,7 @@ const PAUSE_PROSE = `For pauseHabit, pauseRecurringTask, resumeHabit, and resume
 Resolve every relative phrase ("next Monday", "for two weeks", "until the end of the month") to an exact ISO date yourself before calling — you know today's date. resumeHabit/resumeRecurringTask take just name and bring the item back from today; use them for "resume", "unpause", "start my gym habit again". You do NOT decide what happens if name matches zero items or more than one — the app resolves that and asks if needed.`;
 
 function buildEditProse(categoryList: string): string {
-  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newDayPart, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
+  return `For updateSingleTask, updateHabit, and updateRecurringTask: name is always required and selects which single item to change — it's the same kind of text fragment as delete's name filter (e.g. "rename the gym habit to..." → name: "gym"), never a full replacement value. Every other field is prefixed "new" (newName, newDayPart, newRecurrenceType, etc.) and, when you set it, replaces that field on the item; leave a "new" field out entirely if it shouldn't change. Never call an update tool with only name set and no "new" fields — if you know which item but not what to change, ask. You do NOT decide what happens if name matches zero items or more than one — the app resolves that against the user's real data and asks a clarifying question itself if needed; just pass your best-effort name fragment and "new" fields. When the user asks to remove, delete or clear one field of an item ("remove the comments of the task Reply to Family", "clear the end date on gym", "take the category off my shopping task"), that is an update with that field set to "" — the item itself stays. The description is what users may call an item's notes, comments or details — unless they name a day ("today's run", "yesterday", "on Monday"): a note about one day is setNote, never the description. "" (empty string) explicitly clears newDescription, newEndDate, and — for updateSingleTask/updateRecurringTask only — newCategoryId (updateHabit's newCategoryId can't be cleared, since a habit always needs a category; pick from ${categoryList} same as createHabit). newStartDate follows the same today-or-later rule as creating an item. For updateHabit and updateRecurringTask, newRecurrence (if set) replaces the entire recurrence rule, using the same compact format as createHabit's recurrence field — for a "dates:" spec specifically, you can't see a habit's already-stored dates, so if the user wants to add one more date to an existing one, ask for the complete list rather than guessing what's already there. For updateHabit, setting newCompletionType to "checklist" needs newChecklistItems in the same call — ask what the items are if the user hasn't said, don't guess an empty list; setting newCompletionType away from "checklist" clears the habit's checklist. newChecklistItems, when given, is the habit's whole list of steps from now on, not an addition to it — the app applies it from today and earlier days keep the steps they had, so only set newChecklistItemsFrom when the user explicitly names an earlier day the change should count from ("since Monday"). Setting newCompletionType to "value" or "timer" likewise needs a valid newTarget (> 0) in the same call — ask what the goal amount should be if the user hasn't said, don't guess or omit it. newTarget/newUnit change the habit's *goal* (e.g. "change my water goal to 10 glasses") — use logHabitProgress instead when the user is reporting today's (or another day's) actual progress, not changing the goal itself. None of this ever touches a habit's already-logged completion history.
 
 ${PICK_FROM_LIST_PROSE}`;
 }
@@ -311,6 +312,12 @@ const DAY_PART_FIELD = {
 const IMPORTANT_FIELD = {
   type: "boolean",
   description: "true only when the user calls it important, a top priority or a must-do.",
+} as const;
+
+// §67: a short note kept with that day, on the three progress tools.
+const NOTE_FIELD = {
+  type: "string",
+  description: "Optional. Anything the user added about how it went, in their words (e.g. '5 km, legs tired'). Omit when they added nothing.",
 } as const;
 
 // §28: shared by pauseHabit and pauseRecurringTask.
@@ -863,6 +870,7 @@ export function buildTools(
           categoryId: CATEGORY_SELECTOR_FIELD,
           date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
           done: { type: "boolean", description: "true (the default) = done; false = not done (undo)." },
+          note: NOTE_FIELD,
         },
         required: ["name"],
       },
@@ -878,6 +886,7 @@ export function buildTools(
           categoryId: CATEGORY_SELECTOR_FIELD,
           date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
           done: { type: "boolean", description: "true (the default) = done; false = not done (undo)." },
+          note: NOTE_FIELD,
         },
         required: ["name"],
       },
@@ -902,6 +911,7 @@ export function buildTools(
             description:
               "Amount to add to (or, if negative, subtract from) whatever's already logged for that date. Use for 'add N', 'increase by N', 'do N more'.",
           },
+          note: NOTE_FIELD,
         },
         required: ["name"],
       },
@@ -1019,6 +1029,21 @@ export function buildTools(
           },
         },
         required: ["name", "items"],
+      },
+    },
+    {
+      name: "setNote",
+      description:
+        "Add, change or remove the note on one day of an item, without marking anything: 'add a note to today's run: legs tired', 'note for tomorrow's gym: bring a towel', 'remove the note from yesterday's gym'. Only when the user names a day; 'notes' with no day means the item's description (an update tool). A new note replaces the old one.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment to match against the item's name (habit or task)." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          date: { type: "string", description: "ISO date (YYYY-MM-DD). Omit to default to today." },
+          note: { type: "string", description: "The note, in the user's words. \"\" removes it." },
+        },
+        required: ["name", "note"],
       },
     },
     {

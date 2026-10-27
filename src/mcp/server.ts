@@ -33,6 +33,7 @@ import {
 import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
 import { resolveCategoryId, rolloverPersistentTasks, withTimeZone } from "../lib/dataStore.ts";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
+import { NOTE_MAX_LENGTH, setDayNote } from "../lib/dayNotes.ts";
 import {
   canTakeChecklistOp,
   categoryStats,
@@ -134,7 +135,6 @@ It asks first (status "needs_confirm"): ask the user the question word for word,
 const NOT_AVAILABLE = {
   taskStats: "Stats for recurring and one-off tasks aren't available yet; only habits have them so far.",
   resetStats: "Resetting stats isn't available yet.",
-  notes: "Notes aren't available yet: the rest was saved, without the note.",
   skip: "Skipping a single day isn't available yet; pausing (from today) is.",
 };
 
@@ -241,6 +241,18 @@ function describeResult(saved: AppData, decision: Decision, dateISO: string): Bo
   const item = itemsOf(saved).find((entry) => entry.id === decision.item.id);
   if (!item) return { status: "rejected", ...candidate(decision.item), reason: `"${decision.item.name}" was deleted in the meantime.` };
   return { status: "ok", changed: decision.changed, item: dayItemView(saved, item, item.kind === "singleTask" ? item.startDate : dateISO) };
+}
+
+/** §67: an allowed change also saves the note on that day (even when nothing else changes). */
+function withNote(decision: Decision, note: string | undefined, dateISO: string): Decision {
+  const text = note?.trim().slice(0, NOTE_MAX_LENGTH);
+  if (!text || decision.status !== "ok") return decision;
+  const mutate = decision.mutate;
+  return {
+    ...decision,
+    changed: true,
+    mutate: (data) => setDayNote(mutate && decision.changed ? mutate(data) : data, decision.item.id, dateISO, text),
+  };
 }
 
 /** Saves every allowed change in one write, replayed together on a conflict. */
@@ -365,18 +377,14 @@ export function buildServer(deps: McpDeps): McpServer {
         );
         if (resolved.status === "not_found") return resolved;
         if (resolved.status === "ambiguous") return ambiguous(resolved.candidates);
-        const decisions = resolved.items.map((item) => decideSetDone(loaded.data, item, dateISO, today, done, moveToToday));
+        const decisions = resolved.items
+          .map((item) => decideSetDone(loaded.data, item, dateISO, today, done, moveToToday))
+          // §67: each item's note on that day (a one-off task's on today) rides in the same save.
+          .map((decision) => withNote(decision, note, decision.item.kind === "singleTask" ? today : dateISO));
         const saved = await applyDecisions(deps.store, loaded, today, decisions);
         const results = decisions.map((decision) => describeResult(saved, decision, dateISO));
         const statuses = new Set(results.map((result) => result.status));
-        // §67: the input is in place for the frozen tool list; notes aren't stored yet.
-        return {
-          status: statuses.size === 1 ? results[0].status : "partial",
-          date: dateISO,
-          today,
-          results,
-          ...(note ? { noteNotSaved: NOT_AVAILABLE.notes } : {}),
-        };
+        return { status: statuses.size === 1 ? results[0].status : "partial", date: dateISO, today, results };
       }),
   );
 
@@ -412,9 +420,9 @@ export function buildServer(deps: McpDeps): McpServer {
         if (resolved.status === "ineligible" || !loggable(item)) {
           return { status: "rejected", ...candidate(item), reason: `"${item.name}" isn't tracked with a number or timer, so there's nothing to log. Use set_done.` };
         }
-        const decision = decideLogProgress(item, dateISO, today, { value, add });
+        const decision = withNote(decideLogProgress(item, dateISO, today, { value, add }), note, dateISO);
         const saved = await applyDecisions(deps.store, loaded, today, [decision]);
-        return { date: dateISO, today, ...describeResult(saved, decision, dateISO), ...(note ? { noteNotSaved: NOT_AVAILABLE.notes } : {}) };
+        return { date: dateISO, today, ...describeResult(saved, decision, dateISO) };
       }),
   );
 

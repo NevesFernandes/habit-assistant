@@ -16,12 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §67 — A note on a completion
-"Mark run done, 5 km, legs tired": a short note kept with that day's completion, like a journal line, shown with the day in the app.
-
-- Data: a new optional field on a completion log entry. It must survive an un-completion only if that's decided (today un-completing deletes the entry; see the Completion log rule in CLAUDE.md).
-- Connector (inputs ready, 2026-10-27): `set_done` and `log_progress` take a `note`; until this is built the completion is saved and the result says the note wasn't (`noteNotSaved`). Once built, `get_day` and §66's history return the notes.
-
 ### §68 — Skip a day
 "I'm sick today, skip gym": one excused day that counts as neither done nor missed, so the streak survives, lighter than a pause.
 

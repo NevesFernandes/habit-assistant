@@ -42,7 +42,9 @@ function periodLine(item: HistoryItemSummary, today: string, period: "week" | "m
 function itemLine(history: History, item: HistoryItemSummary, today: string, flexible?: "week" | "month"): string {
   if (flexible) return periodLine(item, today, flexible);
   if (item.kind === "singleTask") {
-    const status = (history.days ?? []).flatMap((day) => day.items.filter((i) => i.id === item.id).map((i) => ({ date: day.date, status: i.status })))[0];
+    const status = (history.days ?? []).flatMap((day) =>
+      day.items.filter((i) => i.id === item.id && i.status !== "not_due").map((i) => ({ date: day.date, status: i.status })),
+    )[0];
     if (!status) return `${item.name}: ${item.done ? "done" : item.missed ? "not done" : "still to do"}`;
     const when = shortDate(status.date, today);
     if (status.status === "done") return `${item.name}: done (${when})`;
@@ -64,6 +66,20 @@ function itemLine(history: History, item: HistoryItemSummary, today: string, fle
   return `${item.name}: ${bits.join(", ")}`;
 }
 
+/** §67: the item's notes in the range, one indented line each, oldest first. */
+function noteLines(history: History, id: string, today: string): string[] {
+  return (history.days ?? []).flatMap((day) =>
+    day.items.filter((i) => i.id === id && i.note).map((i) => `  ${shortDate(day.date, today)}: "${i.note}"`),
+  );
+}
+
+function itemBlock(history: History, item: HistoryItemSummary, today: string, flexible?: "week" | "month"): string[] {
+  const line = itemLine(history, item, today, flexible);
+  // An item with only notes in the range has no counts to show.
+  const counted = !/: $/.test(line);
+  return [...(counted ? [line] : [`${item.name}:`]), ...noteLines(history, item.id, today)];
+}
+
 /**
  * The reply. `flexibleOf` says which items are "N times a week/month" (their line reads per
  * period); `single` is set when the user asked about one item, which adds when it was last done.
@@ -79,11 +95,12 @@ export function describeHistory(
   if (single) {
     const item = history.items[0];
     const last = item?.lastDone ? `Last done ${shortDate(item.lastDone, today)}.` : "Not done yet.";
-    if (!item || (item.due === 0 && item.upcoming === 0 && item.paused === 0 && !item.periods?.length)) {
+    const nothing = item && item.due === 0 && item.upcoming === 0 && item.paused === 0 && !item.periods?.length;
+    if (!item || (nothing && noteLines(history, item.id, today).length === 0)) {
       return `"${single.name}" wasn't due ${within}. ${last}`;
     }
-    return `${range}\n${itemLine(history, item, today, flexibleOf(item.id))}\n${last}`;
+    return [range, ...itemBlock(history, item, today, flexibleOf(item.id)), last].join("\n");
   }
   if (history.items.length === 0) return `Nothing was due ${within}.`;
-  return [range, ...history.items.map((item) => itemLine(history, item, today, flexibleOf(item.id)))].join("\n");
+  return [range, ...history.items.flatMap((item) => itemBlock(history, item, today, flexibleOf(item.id)))].join("\n");
 }

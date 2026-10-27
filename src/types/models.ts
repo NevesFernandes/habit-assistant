@@ -155,6 +155,16 @@ export interface AppData {
   // written by the app on sign-in when it differs. The MCP Worker runs in UTC and reads
   // "today" from it. Absent until the app first runs a version that writes it.
   timeZone?: string;
+  // §67: a short note per item per day ("5 km, legs tired"), kept apart from the completion
+  // log so it survives un-ticking and can sit on a missed day too. Absent = none yet.
+  notes?: DayNote[];
+}
+
+export interface DayNote {
+  id: string;
+  itemId: string;
+  date: string; // the day it's about, YYYY-MM-DD
+  text: string;
 }
 
 /** 0 = Sunday, 1 = Monday — the same numbering as dayOfWeek. */

@@ -6,6 +6,7 @@ import { addDays, isPausedOn, occursOn, startOfMonth, startOfWeek } from "./recu
 import { checklistProgress, isHabitEntryComplete } from "./habitStats.ts";
 import { recurringTaskChecklistOn } from "./recurringChecklist.ts";
 import { compareForDay } from "./dayParts.ts";
+import { noteOn } from "./dayNotes.ts";
 
 /** Longest range one call covers; a longer one is refused so the answer stays readable. */
 export const HISTORY_MAX_DAYS = 366;
@@ -15,9 +16,10 @@ export const HISTORY_MAX_ENTRIES = 400;
 /**
  * done / missed: a past or current day that was due. open: today, due, not done yet.
  * upcoming: a later day that is due. paused: would have been due, but paused.
+ * not_due: a day it wasn't due (nor done) but has a note (§67).
  * For "N times a week/month" habits no single day is due, so only done days are listed.
  */
-export type HistoryStatus = "done" | "missed" | "open" | "upcoming" | "paused";
+export type HistoryStatus = "done" | "missed" | "open" | "upcoming" | "paused" | "not_due";
 
 export interface HistoryEntry {
   id: string;
@@ -28,6 +30,7 @@ export interface HistoryEntry {
   target?: number;
   unit?: string;
   checklist?: { checked: number; total: number };
+  note?: string; // §67
 }
 
 export interface HistoryDay {
@@ -167,7 +170,13 @@ export function getHistory(
   for (const date of datesBetween(from, to)) {
     const entries: HistoryEntry[] = [];
     for (const item of sorted) {
-      const entry = item.kind === "singleTask" ? singleTaskEntry(item, date, today) : recurringEntry(data, item, date, today);
+      const note = noteOn(data, item.id, date);
+      const found = item.kind === "singleTask" ? singleTaskEntry(item, date, today) : recurringEntry(data, item, date, today);
+      const entry: HistoryEntry | undefined = found
+        ? { ...found, ...(note ? { note } : {}) }
+        : note
+          ? { id: item.id, name: item.name, kind: item.kind, status: "not_due", note }
+          : undefined;
       if (!entry) continue;
       entries.push(entry);
       const summary = counts.get(item.id) ?? { id: item.id, name: item.name, kind: item.kind, due: 0, done: 0, missed: 0, paused: 0, upcoming: 0 };
