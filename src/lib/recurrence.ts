@@ -232,8 +232,8 @@ export function isFutureDate(dateISO: string, todayISO: string): boolean {
   return dateISO > todayISO;
 }
 
-export function isArchived(item: { endDate?: string }): boolean {
-  return !!item.endDate && item.endDate <= todayISO();
+export function isArchived(item: { endDate?: string }, today: string = todayISO()): boolean {
+  return !!item.endDate && item.endDate <= today;
 }
 
 const WEEKDAY_ABBREVIATIONS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

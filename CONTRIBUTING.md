@@ -116,7 +116,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 | `src/server/classifyIntent.ts` | Narrows which tool families are sent to the model, per message (sizes: `npm run measure:payload`) |
 | `src/server/providers/` | One adapter per LLM provider |
 | `src/types/models.ts` | The data model: items, recurrence rules, completion log |
-| `src/mcp/` | The Claude connector: `worker.ts` (OAuth wiring), `googleAuth.ts` (consent page, Google sign-in), `server.ts` (MCP tools), `getDay.ts`, `drive.ts` |
+| `src/mcp/` | The Claude connector: `worker.ts` (OAuth wiring), `googleAuth.ts` (consent page, Google sign-in), `server.ts` (MCP tools), `getDay.ts`, `writeTools.ts` (which items a write means, and whether it's allowed), `persist.ts` (save with conflict replay), `drive.ts`; tests in `*.test.ts` with fakes in `testing/` |
 | `branding/` | The logo (`logo.svg`, the one source file) and the rejected concepts. `npm run icons` regenerates every icon in `public/` from it; commit the output |
 | `branding/Screenshots/` | Full-size phone screenshots. `npm run screenshots` regenerates the web-sized copies in `public/screenshots/` (homepage and install dialog) from them; commit the output. Retake them when the UI they show changes |
 

@@ -125,6 +125,13 @@ function singleTaskView(data: AppData, task: SingleTask): DayItemView {
   };
 }
 
+/** One item as it stands on `dateISO` (a one-off task: on its own day), in get_day's shape. Write tools return this, so a reply describes what was actually saved. */
+export function dayItemView(data: AppData, item: Habit | RecurringTask | SingleTask, dateISO: string): DayItemView {
+  if (item.kind === "habit") return habitView(data, item, dateISO);
+  if (item.kind === "recurringTask") return recurringTaskView(data, item, dateISO);
+  return singleTaskView(data, item);
+}
+
 type Due =
   | { kind: "habit"; item: Habit }
   | { kind: "recurringTask"; item: RecurringTask }
@@ -145,11 +152,7 @@ export function getDay(data: AppData, dateISO: string, todayISO?: string): DayVi
   const groups = groupByDayPart(due, (entry) => entry.item).map((group) => ({
     part: group.part ?? null,
     label: group.label,
-    items: group.items.map((entry) => {
-      if (entry.kind === "habit") return habitView(view, entry.item, dateISO);
-      if (entry.kind === "recurringTask") return recurringTaskView(view, entry.item, dateISO);
-      return singleTaskView(view, entry.item);
-    }),
+    items: group.items.map((entry) => dayItemView(view, entry.item, dateISO)),
   }));
   return {
     date: dateISO,

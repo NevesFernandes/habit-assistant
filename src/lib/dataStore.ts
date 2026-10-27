@@ -54,8 +54,8 @@ function initialTaskChecklist(input: { withChecklist?: boolean; checklistItems?:
   return items.map((text) => ({ id: crypto.randomUUID(), text, checked: false }));
 }
 
-export function addSingleTask(data: AppData, input: CreateSingleTaskInput): AppData {
-  const startDate = resolveStartDate(input);
+export function addSingleTask(data: AppData, input: CreateSingleTaskInput, todayISO: string = today()): AppData {
+  const startDate = resolveStartDate(input, todayISO);
   const task: SingleTask = {
     kind: "singleTask",
     id: crypto.randomUUID(),
@@ -125,7 +125,8 @@ export interface CreateHabitInput {
   unit?: string; // meaningful when completionType is "value"
 }
 
-// §62: the device's local date. The MCP Worker runs in UTC, so its tools pass dates explicitly.
+// §62: the device's local date. The MCP Worker runs in UTC, so it passes the user's
+// today as the trailing `todayISO` argument of every function that would read this.
 function today(): string {
   return localTodayISO();
 }
@@ -162,22 +163,21 @@ function placement(input: { dayPart?: DayPart; important?: boolean }): { dayPart
 }
 
 /** Defaults to today; a past date is clamped forward rather than accepted as-is. */
-function normalizeStartDate(startDate: string | undefined): string {
-  const todayISO = today();
+function normalizeStartDate(startDate: string | undefined, todayISO: string): string {
   if (!startDate || startDate < todayISO) return todayISO;
   return startDate;
 }
 
 type StartDateInput = Pick<CreateHabitInput, "startDate" | "startWeekday" | "startWeekdayMode">;
 
-function resolveStartDate(input: StartDateInput): string {
+function resolveStartDate(input: StartDateInput, todayISO: string): string {
   if (input.startWeekday !== undefined) {
-    return resolveWeekdayDate(today(), input.startWeekday, input.startWeekdayMode ?? "closest");
+    return resolveWeekdayDate(todayISO, input.startWeekday, input.startWeekdayMode ?? "closest");
   }
-  return normalizeStartDate(input.startDate);
+  return normalizeStartDate(input.startDate, todayISO);
 }
 
-export function addHabit(data: AppData, input: CreateHabitInput): AppData {
+export function addHabit(data: AppData, input: CreateHabitInput, todayISO: string = today()): AppData {
   const categoryId =
     input.categoryId && data.categories.some((category) => category.id === input.categoryId)
       ? input.categoryId
@@ -191,7 +191,7 @@ export function addHabit(data: AppData, input: CreateHabitInput): AppData {
     description: input.description,
     categoryId,
     ...placement(input),
-    startDate: resolveStartDate(input),
+    startDate: resolveStartDate(input, todayISO),
     endDate: input.endDate,
     recurrence: input.recurrence,
     completionType,
@@ -261,7 +261,7 @@ export interface CreateRecurringTaskInput {
   checklistMode?: ChecklistMode; // §42; only stored when the task has a checklist
 }
 
-export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput): AppData {
+export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput, todayISO: string = today()): AppData {
   const task: RecurringTask = {
     kind: "recurringTask",
     id: crypto.randomUUID(),
@@ -269,7 +269,7 @@ export function addRecurringTask(data: AppData, input: CreateRecurringTaskInput)
     description: input.description,
     categoryId: resolveCategoryId(data, input.categoryId),
     ...placement(input),
-    startDate: resolveStartDate(input),
+    startDate: resolveStartDate(input, todayISO),
     endDate: input.endDate,
     recurrence: input.recurrence,
     checklist: initialTaskChecklist(input),
@@ -429,7 +429,7 @@ export interface UpdatePatch {
   newUnit?: string; // Habit only — meaningful when completionType is "value"
 }
 
-function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T {
+function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch, todayISO: string): T {
   return {
     ...item,
     name: patch.newName?.trim() ? patch.newName.trim() : item.name,
@@ -438,9 +438,9 @@ function applyBaseItemPatch<T extends BaseItem>(item: T, patch: UpdatePatch): T 
     important: patch.newImportant !== undefined ? patch.newImportant : item.important,
     startDate:
       patch.newStartWeekday !== undefined
-        ? resolveStartDate({ startWeekday: patch.newStartWeekday, startWeekdayMode: patch.newStartWeekdayMode })
+        ? resolveStartDate({ startWeekday: patch.newStartWeekday, startWeekdayMode: patch.newStartWeekdayMode }, todayISO)
         : patch.newStartDate !== undefined
-          ? normalizeStartDate(patch.newStartDate)
+          ? normalizeStartDate(patch.newStartDate, todayISO)
           : item.startDate,
     endDate: patch.newEndDate !== undefined ? patch.newEndDate || undefined : item.endDate,
   };
@@ -500,12 +500,12 @@ function mapPausable(
     : { ...data, recurringTasks: data.recurringTasks.map(apply) };
 }
 
-export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch): AppData {
+export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch, todayISO: string = today()): AppData {
   return {
     ...data,
     singleTasks: data.singleTasks.map((task) => {
       if (task.id !== id) return task;
-      const base = applyBaseItemPatch(task, patch);
+      const base = applyBaseItemPatch(task, patch, todayISO);
       return {
         ...base,
         categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
@@ -516,15 +516,16 @@ export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch):
   };
 }
 
-export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppData {
+export function updateHabit(data: AppData, id: string, patch: UpdatePatch, todayISO: string = today()): AppData {
   // §56: new steps apply from a day on (today unless an earlier one is named, never a
   // future one). That day's and later days' saved snapshots follow, keeping the ticks of
   // steps that are still on the list.
-  const stepsFrom = patch.newChecklistItemsFrom !== undefined && patch.newChecklistItemsFrom < today() ? patch.newChecklistItemsFrom : today();
+  const stepsFrom =
+    patch.newChecklistItemsFrom !== undefined && patch.newChecklistItemsFrom < todayISO ? patch.newChecklistItemsFrom : todayISO;
   let newSteps: ChecklistItem[] | undefined;
   const habits = data.habits.map((habit) => {
       if (habit.id !== id) return habit;
-      const base = applyBaseItemPatch(habit, patch);
+      const base = applyBaseItemPatch(habit, patch, todayISO);
       const categoryId =
         patch.newCategoryId !== undefined
           ? data.categories.some((category) => category.id === patch.newCategoryId)
@@ -573,18 +574,18 @@ export function updateHabit(data: AppData, id: string, patch: UpdatePatch): AppD
   };
 }
 
-export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatch): AppData {
+export function updateRecurringTask(data: AppData, id: string, patch: UpdatePatch, todayISO: string = today()): AppData {
   return {
     ...data,
     recurringTasks: data.recurringTasks.map((task) => {
       if (task.id !== id) return task;
-      const base = applyBaseItemPatch(task, patch);
+      const base = applyBaseItemPatch(task, patch, todayISO);
       const updated: RecurringTask = {
         ...base,
         categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
         recurrence: resolveRecurrence(task.recurrence, patch),
       };
-      return patch.newChecklistMode ? withChecklistMode(updated, patch.newChecklistMode, today()) : updated;
+      return patch.newChecklistMode ? withChecklistMode(updated, patch.newChecklistMode, todayISO) : updated;
     }),
   };
 }

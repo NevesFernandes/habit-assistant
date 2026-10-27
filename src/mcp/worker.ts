@@ -2,7 +2,7 @@
 // OAuthProvider guards /mcp and serves discovery, registration and the token endpoint;
 // googleAuth.ts owns /authorize and /callback; server.ts owns the tools.
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
-import { readDataFile } from "./drive.ts";
+import { readDataFile, writeDataFile } from "./drive.ts";
 import { handleDefault, refreshGoogleToken, googleTokenNeedsRefresh, tokenExchangeCallback, type Env, type Props } from "./googleAuth.ts";
 import { handleMcpRequest } from "./server.ts";
 
@@ -20,8 +20,12 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
     }
   }
   const accessToken = props.googleAccessToken;
+  const fetchFn = (input: string, init?: RequestInit) => fetch(input, init);
   return handleMcpRequest(request, {
-    loadData: async () => (await readDataFile((input, init) => fetch(input, init), accessToken)).data,
+    store: {
+      load: () => readDataFile(fetchFn, accessToken),
+      save: (ref, data) => writeDataFile(fetchFn, accessToken, ref, data),
+    },
     // Status and timing only: never item data.
     log: (event) => console.log(JSON.stringify(event)),
   });

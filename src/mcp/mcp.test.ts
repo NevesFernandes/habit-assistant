@@ -6,7 +6,8 @@
 import assert from "node:assert/strict";
 import { isISODate, isValidTimeZone, localTodayISO, todayIn } from "../lib/today.ts";
 import { getDay, type DayItemView } from "./getDay.ts";
-import { handleMcpRequest, type McpDeps } from "./server.ts";
+import type { McpDeps } from "./server.ts";
+import { callTool, memoryStore, rpc } from "./testing/fakes.ts";
 import { DriveFileNotFoundError } from "./drive.ts";
 import {
   addHabit,
@@ -173,30 +174,10 @@ assert.equal(getDay(data, "2026-10-28", DAY).isFuture, true);
 
 // --- MCP protocol ----------------------------------------------------------------------
 
-async function rpc(deps: McpDeps, method: string, params: unknown = {}): Promise<{ result?: any; error?: any }> {
-  const res = await handleMcpRequest(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2025-06-18",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    }),
-    deps,
-  );
-  assert.equal(res.status, 200, `${method}: HTTP ${res.status} ${await res.clone().text()}`);
-  return res.json();
-}
-
-const callGetDay = async (deps: McpDeps, args: Record<string, unknown>) => {
-  const { result } = await rpc(deps, "tools/call", { name: "get_day", arguments: args });
-  return { isError: result.isError === true, body: JSON.parse(result.content[0].text) };
-};
+const callGetDay = (deps: McpDeps, args: Record<string, unknown>) => callTool(deps, "get_day", args);
 
 const logged: Record<string, unknown>[] = [];
-const deps: McpDeps = { loadData: async () => data, log: (event) => logged.push(event) };
+const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(event) };
 
 {
   const { result } = await rpc(deps, "initialize", {
@@ -210,6 +191,7 @@ const deps: McpDeps = { loadData: async () => data, log: (event) => logged.push(
 
 {
   const { result } = await rpc(deps, "tools/list");
+  assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), ["find_items", "get_day", "log_progress", "set_done"]);
   const tool = result.tools.find((t: { name: string }) => t.name === "get_day");
   assert.ok(tool);
   assert.equal(tool.annotations.readOnlyHint, true);
@@ -229,7 +211,7 @@ assert.equal((await callGetDay(deps, {})).body.status, "need_timezone");
 
 // §62: the app stores the device's time zone, so "today" needs no arguments…
 {
-  const zoned: McpDeps = { loadData: async () => ({ ...data, timeZone: "Pacific/Kiritimati" }) };
+  const zoned: McpDeps = { store: memoryStore({ ...data, timeZone: "Pacific/Kiritimati" }) };
   const { body } = await callGetDay(zoned, {});
   assert.equal(body.status, "ok");
   assert.equal(body.today, todayIn("Pacific/Kiritimati"));
@@ -241,7 +223,7 @@ assert.equal((await callGetDay(deps, {})).body.status, "need_timezone");
 }
 // …and a broken stored value is ignored rather than trusted.
 {
-  const broken: McpDeps = { loadData: async () => ({ ...data, timeZone: "Not/A_Zone" }) };
+  const broken: McpDeps = { store: memoryStore({ ...data, timeZone: "Not/A_Zone" }) };
   assert.equal((await callGetDay(broken, {})).body.status, "need_timezone");
 }
 
@@ -251,9 +233,9 @@ assert.equal((await callGetDay(deps, { date: DAY, timeZone: "Lisbon" })).body.st
 // The spike's key question: a Drive with no visible file says so plainly.
 {
   const missing: McpDeps = {
-    loadData: async () => {
+    store: memoryStore(async () => {
       throw new DriveFileNotFoundError("folder");
-    },
+    }),
   };
   const { isError, body } = await callGetDay(missing, { date: DAY });
   assert.equal(isError, false);
