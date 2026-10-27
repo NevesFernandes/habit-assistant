@@ -1043,8 +1043,7 @@ const s56: ToolScenario[] = [
   removal("s56-remove-item-recurring-task", [
     {
       tool: "checklist",
-      // "weekly cleaning checklist" finds nothing: "checklist" isn't one of itemSelection's generic words (app and connector alike).
-      args: { op: "remove", name: "weekly cleaning", items: ["windows"] },
+      args: { op: "remove", name: "weekly cleaning checklist", items: ["windows"] },
       expect: { status: "ok", data: (d) => all(removalIntact(d), check(joined(recurringTaskChecklistOn(cleaning(d)!, TODAY)) === "floors", "windows still on today's list")) },
     },
   ]),

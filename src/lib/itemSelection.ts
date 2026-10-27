@@ -30,7 +30,7 @@ function normalize(text: string): string {
 // literal substring match finds nothing.
 const GENERIC_WORDS = new Set([
   "a", "an", "the", "my", "our", "your", "this", "that",
-  "item", "items", "list", "lists", "task", "tasks", "habit", "habits", "todo", "to-do",
+  "item", "items", "list", "lists", "checklist", "checklists", "task", "tasks", "habit", "habits", "todo", "to-do",
 ]);
 
 /**

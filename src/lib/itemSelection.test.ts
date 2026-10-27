@@ -75,6 +75,8 @@ const isLoggable = (h: Habit) => h.completionType === "value" || h.completionTyp
   assert.equal(picked(selectOne(items, { name: "my shopping list" })), "shop");
   assert.equal(picked(selectOne(items, { name: "the shopping list" })), "shop");
   assert.equal(picked(selectOne(items, { name: "the water habit" }, isLoggable)), "n");
+  // "Checklist" too: "the weekly shopping checklist" for a task called "Weekly shopping".
+  assert.equal(picked(selectOne(items, { name: "the weekly shopping checklist" })), "shop");
 
   // A literal match wins: an item really called "Shopping list" isn't passed over.
   assert.equal(picked(selectOne([shopping, shoppingList], { name: "shopping list" })), "shop-list");
