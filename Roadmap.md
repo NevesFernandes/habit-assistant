@@ -19,7 +19,7 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 ### §61 — Claude connector: use Habit Assistant from Claude (MCP)
 A remote MCP server, added in Claude as a custom connector, so users can manage habits by chatting with Claude (including on claude.ai mobile), on the same Drive file as the app. Full spec: the "Habit Assistant MCP Agent: Spec" doc. Decisions: a separate stateless Worker at `mcp.habitassistant.app`, a second Google OAuth client in the same project with `drive.file`, tools that call `src/lib` and add no editing logic of their own, multi-user, $0.
 
-- **Phase 1 (built, waiting on the live spike):** OAuth, read-only Drive access and `get_day`. Gate: on claude.ai mobile, "what's on today?" matches the app; the second client can see the app's file; latency measured.
+- **Phase 1 (done, verified live 2026-10-27):** OAuth, read-only Drive access and `get_day`. The second OAuth client sees the app's file; `get_day` matched the Today tab on claude.ai mobile; 1.0 to 1.2 s wall time per call (4 calls, worst 1,240 ms), so no Durable Objects. Found: "what's on today?" alone made Claude reach for the calendar; asking about habits works. Sharpen the tool descriptions in Phase 3.
 - **Phase 2:** "today" from the user's time zone everywhere (the app uses the UTC date today, a user-visible fix), `AppData.timeZone`, the app re-reading the file when it comes back to the foreground, an alternating-writes compatibility test.
 - **Phase 3:** write tools: `create_item`, `update_item`, `set_done`, `log_progress`, `find_items`, with conflict replay.
 - **Phase 4:** `checklist`, `schedule`, `delete_items`, `get_stats`.
