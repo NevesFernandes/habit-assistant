@@ -163,13 +163,34 @@ const fresh = () => {
   assert.equal(overall.overall.habitCount, 4); // the tasks don't dilute the habit numbers
 }
 
-// --- reset_stats (§64, not built yet) ------------------------------------------------------
+// --- reset_stats (§64) ---------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
+  // Asks first, saying the best streak stays (from Claude it always does).
+  const asked = await call("reset_stats", { scope: "item", name: "read" });
+  assert.equal(asked.status, "needs_confirm");
+  assert.match(asked.question, /^Start the stats over from today .* for "Read"\?.* The best streak \(3\) stays\. Resetting the best streak too can only be done in the Habit Assistant app\.$/);
+  assert.equal(store.version(), 1); // nothing written before the yes
   const reset = await call("reset_stats", { scope: "item", name: "read", confirm: true });
-  assert.equal(reset.status, "not_available");
-  assert.equal(store.version(), 1); // nothing written
+  assert.equal(reset.status, "ok");
+  const stats = await call("get_stats", { scope: "item", name: "read" });
+  // Today counts (done today), the past doesn't; the best streak and the history stay.
+  assert.deepEqual([stats.currentStreak, stats.bestStreak, stats.completionsAllTime], [1, 3, 1]);
+  assert.equal(store.file().completionLog.filter((e) => e.itemId === "Read").length, 3);
+  // A single one-off task has nothing to reset; their counts reset together.
+  assert.match((await call("reset_stats", { scope: "item", name: "buy milk" })).message, /one-off task, which has no stats of its own/);
+  const oneOff = await call("reset_stats", { scope: "all", type: "singleTask" });
+  assert.match(oneOff.question, /for 2 one-off tasks\?/);
+  assert.doesNotMatch(oneOff.question, /best streak/);
+  // A category: every item in it at that moment.
+  await call("reset_stats", { scope: "category", category: "health", confirm: true });
+  assert.deepEqual(store.file().habits.filter((h) => h.statsFrom === TODAY).map((h) => h.id).sort(), ["Floss", "Read", "Routine"]);
+  // Undo puts back the dates from before the last reset.
+  const undone = await call("more_actions", { action: "undo_reset_stats", args: { name: "read" } });
+  assert.equal(undone.status, "ok");
+  assert.equal((await call("get_stats", { scope: "item", name: "read" })).completionsAllTime, 3);
+  assert.equal((await call("more_actions", { action: "undo_reset_stats", args: { name: "read" } })).status, "rejected");
 }
 
 // --- more_actions ------------------------------------------------------------------------
@@ -177,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "list_categories", "set_note", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover

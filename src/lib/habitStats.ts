@@ -74,11 +74,11 @@ function isCompletedOn(habit: Habit, completionLog: CompletionLogEntry[], dateIS
 // extend the streak (1 scheduled+completed day = 1 completion, so day count == completion
 // count for these types). "Today" gets a one-time grace if due but not yet completed, so an
 // unfinished today doesn't look like a broken streak before the day is even over.
-function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayISO: string) {
+function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayISO: string, from: string) {
   let currentStreak = 0;
   let cursor = todayISO;
   let gaveGrace = false;
-  while (cursor >= habit.startDate) {
+  while (cursor >= from) {
     if (occursOn(habit, cursor)) {
       if (isCompletedOn(habit, completionLog, cursor)) {
         currentStreak += 1;
@@ -93,7 +93,7 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
 
   let bestStreak = 0;
   let run = 0;
-  let d = habit.startDate;
+  let d = from;
   while (d <= todayISO) {
     if (occursOn(habit, d)) {
       if (isCompletedOn(habit, completionLog, d)) {
@@ -106,7 +106,7 @@ function dayBasedStats(habit: Habit, completionLog: CompletionLogEntry[], todayI
     d = addDays(d, 1);
   }
 
-  const { launched, completed } = dayOccurrenceCounts(habit, completionLog, todayISO);
+  const { launched, completed } = dayOccurrenceCounts(habit, completionLog, todayISO, from);
   return {
     currentStreak,
     bestStreak,
@@ -122,10 +122,11 @@ function dayOccurrenceCounts(
   habit: Habit,
   completionLog: CompletionLogEntry[],
   todayISO: string,
+  from: string,
 ): { launched: number; completed: number } {
   let launched = 0;
   let completed = 0;
-  let d = habit.startDate;
+  let d = from;
   while (d <= todayISO) {
     if (occursOn(habit, d)) {
       launched += 1;
@@ -163,11 +164,12 @@ function periodBasedStats(
   completionLog: CompletionLogEntry[],
   todayISO: string,
   weekStartsOn: WeekStart,
+  from: string,
 ) {
   const { period, count: target } = habit.recurrence;
   const step = (p: string, n: number) => (period === "week" ? addDays(p, 7 * n) : addMonths(p, n));
   const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO, weekStartsOn) : startOfMonth(dateISO));
-  const startPeriod = periodStart(habit.startDate);
+  const startPeriod = periodStart(from);
   const currentPeriod = periodStart(todayISO);
 
   let currentStreak = 0;
@@ -210,25 +212,49 @@ function periodBasedStats(
   };
 }
 
+/**
+ * §64: the day stats count from: the item's start, or its last reset if later. Only the
+ * counting moves; the recurrence keeps its own anchor (startDate), and history is untouched.
+ */
+export function statsCountFrom(item: { startDate: string; statsFrom?: string }): string {
+  return item.statsFrom && item.statsFrom > item.startDate ? item.statsFrom : item.startDate;
+}
+
+/** §64: this item's log entries from `from` on; other items' entries pass through. */
+function logFrom(completionLog: CompletionLogEntry[], itemId: string, from: string): CompletionLogEntry[] {
+  return completionLog.filter((e) => e.itemId !== itemId || e.date >= from);
+}
+
+function coreStats(habit: Habit, completionLog: CompletionLogEntry[], todayISO: string, weekStartsOn: WeekStart, from: string) {
+  const log = logFrom(completionLog, habit.id, from);
+  return habit.recurrence.type === "timesPerPeriod"
+    ? periodBasedStats(
+        habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
+        log,
+        todayISO,
+        weekStartsOn,
+        from,
+      )
+    : dayBasedStats(habit, log, todayISO, from);
+}
+
 export function computeHabitStats(
   habit: Habit,
-  completionLog: CompletionLogEntry[],
+  rawLog: CompletionLogEntry[],
   todayISO: string,
   weekStartsOn: WeekStart,
 ): HabitStats {
-  const core =
-    habit.recurrence.type === "timesPerPeriod"
-      ? periodBasedStats(
-          habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
-          completionLog,
-          todayISO,
-          weekStartsOn,
-        )
-      : dayBasedStats(habit, completionLog, todayISO);
+  const from = statsCountFrom(habit);
+  const core = coreStats(habit, rawLog, todayISO, weekStartsOn, from);
+  // §64: a reset keeps the best streak unless the user explicitly reset that too.
+  const bestFrom = habit.bestStreakFrom && habit.bestStreakFrom > habit.startDate ? habit.bestStreakFrom : habit.startDate;
+  const bestStreak = bestFrom < from ? Math.max(core.bestStreak, coreStats(habit, rawLog, todayISO, weekStartsOn, bestFrom).bestStreak) : core.bestStreak;
+  const completionLog = logFrom(rawLog, habit.id, from);
 
   const habitCompletions = completionLog.filter((e) => e.itemId === habit.id);
   return {
     ...core,
+    bestStreak,
     completionsThisWeek: completionsInPeriod(completionLog, habit.id, todayISO, "week", weekStartsOn),
     completionsThisMonth: completionsInPeriod(completionLog, habit.id, todayISO, "month", weekStartsOn),
     completionsThisYear: habitCompletions.filter((e) => e.date >= startOfYear(todayISO)).length,
@@ -245,18 +271,19 @@ function periodOccurrenceCounts(
   completionLog: CompletionLogEntry[],
   todayISO: string,
   weekStartsOn: WeekStart,
+  from: string,
 ): { launched: number; completed: number } {
   const { period, count: target } = habit.recurrence;
   const periodStart = (dateISO: string) => (period === "week" ? startOfWeek(dateISO, weekStartsOn) : startOfMonth(dateISO));
   const step = (p: string) => (period === "week" ? addDays(p, 7) : addMonths(p, 1));
-  const startPeriod = periodStart(habit.startDate);
+  const startPeriod = periodStart(from);
   const currentPeriod = periodStart(todayISO);
 
   let periodsElapsed = 0;
   for (let p = startPeriod; p <= currentPeriod; p = step(p)) periodsElapsed += 1;
 
   const completed = completionLog.filter(
-    (e) => e.itemId === habit.id && e.date >= startPeriod && e.date <= todayISO && isHabitEntryComplete(habit, e),
+    (e) => e.itemId === habit.id && e.date >= from && e.date <= todayISO && isHabitEntryComplete(habit, e),
   ).length;
 
   return { launched: periodsElapsed * target, completed };
@@ -268,14 +295,16 @@ function habitOccurrenceCounts(
   todayISO: string,
   weekStartsOn: WeekStart,
 ): { launched: number; completed: number } {
+  const from = statsCountFrom(habit);
   return habit.recurrence.type === "timesPerPeriod"
     ? periodOccurrenceCounts(
         habit as Habit & { recurrence: Extract<Habit["recurrence"], { type: "timesPerPeriod" }> },
         completionLog,
         todayISO,
         weekStartsOn,
+        from,
       )
-    : dayOccurrenceCounts(habit, completionLog, todayISO);
+    : dayOccurrenceCounts(habit, completionLog, todayISO, from);
 }
 
 export interface CategoryStats {

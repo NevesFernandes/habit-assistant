@@ -185,6 +185,12 @@ export interface GetStatsToolCall {
   input: { name?: string; categoryId?: string };
 }
 
+// §64: the app asks first; undo puts back the dates from before the last reset.
+export interface ResetStatsToolCall {
+  name: "resetStats";
+  input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -215,7 +221,8 @@ export type AgentToolCall =
   | GetHistoryToolCall
   | SetNoteToolCall
   | SkipDayToolCall
-  | GetStatsToolCall;
+  | GetStatsToolCall
+  | ResetStatsToolCall;
 
 export interface AgentResponse {
   reply?: string;

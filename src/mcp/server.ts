@@ -8,7 +8,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { CfWorkerJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/cfworker-provider.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import type { AppData } from "../types/models.ts";
+import { weekStartOf, type AppData } from "../types/models.ts";
 import { dayItemView, getDay } from "./getDay.ts";
 import { isISODate, isValidTimeZone, localTodayISO, todayIn } from "../lib/today.ts";
 import { DriveAccessError, DriveConflictError, DriveFileNotFoundError } from "./drive.ts";
@@ -32,6 +32,7 @@ import {
 } from "./writeTools.ts";
 import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
 import { resolveCategoryId, rolloverPersistentTasks, withTimeZone } from "../lib/dataStore.ts";
+import { describeReset, describeResetQuestion, resetRefusal, resetStats, resetTargets, type ResetScope } from "../lib/statsReset.ts";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import { NOTE_MAX_LENGTH, setDayNote } from "../lib/dayNotes.ts";
 import {
@@ -125,7 +126,8 @@ const DELETE_DESCRIPTION = `Permanently deletes items and, for habits and recurr
 It asks first (status "needs_confirm", with details of each item): ask the user the question word for word, and only after a yes call again with the same items and \`confirm: true\`. One one-off task named by the user goes without asking.`;
 
 // The tool list freezes at launch (claude.ai caches it), so these two describe the finished
-// features; what isn't built yet answers status "not_available" in the result (§63, §64).
+// features. Everything they describe is built now (§63, §64, §66–§68); the "not_available"
+// lines stay because the descriptions are frozen, and no tool answers it any more.
 const GET_STATS_DESCRIPTION = `Stats, as in the app's stats tab: for a habit, streak, best streak, completion % and counts this week, month, year and all time; recurring and one-off tasks have their own.
 - scope "item": one habit or task, by \`id\` or \`name\`. \`streakUnit\` says whether streaks count days, weeks or months.
 - scope "category": the items in \`category\` (its name), together.
@@ -135,9 +137,6 @@ const GET_STATS_DESCRIPTION = `Stats, as in the app's stats tab: for a habit, st
 const RESET_STATS_DESCRIPTION = `Starts stats over, from today, for one item, a category or everything (\`type\` limits it to one kind of item). Nothing is erased: the history stays (the app's heatmap still shows it), only the counting restarts. Not for deleting an item (delete_items) or a single day's tick (set_done).
 It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. If the status is "not_available", tell the user resetting stats isn't available yet.`;
 
-const NOT_AVAILABLE = {
-  resetStats: "Resetting stats isn't available yet.",
-};
 
 const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
 
@@ -642,7 +641,43 @@ export function buildServer(deps: McpDeps): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    () => timed(deps, "reset_stats", async () => ({ status: "not_available", message: NOT_AVAILABLE.resetStats })),
+    ({ scope, id, name, category, type, confirm = false, timeZone }) =>
+      timed(deps, "reset_stats", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        let resetScope: ResetScope;
+        if (scope === "item") {
+          const resolved = resolveTargets(loaded.data, { ids: id ? [id] : undefined, name });
+          if (resolved.status === "not_found") return resolved;
+          if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+          resetScope = { kind: "item", item: resolved.items[0] };
+        } else if (scope === "category") {
+          const categoryId = category ? resolveCategoryId(loaded.data, category) : undefined;
+          if (!categoryId) {
+            return { status: "rejected", message: `There's no category called "${category ?? ""}". The categories are: ${loaded.data.categories.map((c) => c.name).join(", ")}.` };
+          }
+          resetScope = { kind: "category", categoryId };
+        } else {
+          resetScope = { kind: "all" };
+        }
+        const targets = resetTargets(loaded.data, resetScope, type as ItemKind | undefined);
+        const refusal = resetRefusal(resetScope, targets);
+        if (refusal) return { status: "rejected", message: refusal };
+        // §64: from Claude the best streak always stays; the tool froze with no input for it.
+        if (!confirm) {
+          const question = describeResetQuestion(loaded.data, resetScope, targets, today, weekStartOf(loaded.data), {
+            includeBestStreak: false,
+            bestStreakNote: "Resetting the best streak too can only be done in the Habit Assistant app.",
+          });
+          return { status: "needs_confirm", question };
+        }
+        const ids = new Set(targets.map((item) => item.id));
+        await persist(deps.store, loaded, today, (data) => resetStats(data, ids, today, false));
+        return { status: "ok", today, message: describeReset(targets, resetScope, loaded.data.categories, today, false) };
+      }),
   );
 
   server.registerTool(

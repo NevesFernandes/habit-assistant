@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { Category, CompletionLogEntry, Habit, RecurringTask, SingleTask } from "../types/models";
 import { aggregateRecurringTaskStats, asTrackable, computeSingleTaskStats } from "../lib/taskStats";
 import { rolloverPersistentTasks } from "../lib/dataStore";
+import { countingSince } from "../lib/statsReset";
+import { formatDate } from "../lib/confirmations";
 import { compareForDay } from "../lib/dayParts";
 import { aggregateCategoryStats } from "../lib/habitStats";
 import { todayISO } from "../lib/recurrence";
@@ -44,6 +46,11 @@ export default function Dashboard({ habits, recurringTasks, singleTasks, categor
   );
 
   const overall = aggregateCategoryStats(habits, completionLog, today, weekStartsOn);
+  // §64: each section counts from its earliest start or reset.
+  const since = (items: Parameters<typeof countingSince>[0]) => {
+    const date = countingSince(items);
+    return date ? <div className="text-xs text-slate-500">Counting since {formatDate(date, today)}</div> : null;
+  };
   const categoryBreakdown = categories
     .map((category) => ({
       category,
@@ -59,6 +66,7 @@ export default function Dashboard({ habits, recurringTasks, singleTasks, categor
 
   return (
     <div className="flex flex-col gap-4">
+      {habits.length > 0 && since(habits)}
       {habits.length > 0 && (
         <div className="flex flex-col items-center gap-4 rounded-md bg-slate-800 px-4 py-4 sm:flex-row sm:justify-between">
           <Meter percentage={overall.completionPercentage} label={`${overall.habitCount} habit${overall.habitCount === 1 ? "" : "s"}`} />
@@ -95,6 +103,7 @@ export default function Dashboard({ habits, recurringTasks, singleTasks, categor
       {recurringTasks.length > 0 && (
         <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Recurring tasks</div>
+          {since(recurringTasks)}
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
             <Meter percentage={taskStats.completionPercentage} label={`${taskStats.habitCount} task${taskStats.habitCount === 1 ? "" : "s"}`} />
             <div className="flex gap-4">
@@ -110,6 +119,7 @@ export default function Dashboard({ habits, recurringTasks, singleTasks, categor
       {singleTasks.length > 0 && (
         <div className="flex flex-col gap-2 rounded-md bg-slate-800 px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">One-off tasks done</div>
+          {since(singleTasks)}
           <div className="flex gap-4">
             <StatTile value={oneOff.doneThisWeek} label="This week" />
             <StatTile value={oneOff.doneThisMonth} label="This month" />

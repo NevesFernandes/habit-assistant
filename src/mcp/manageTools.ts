@@ -36,6 +36,7 @@ import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } fr
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
+import { describeUndoReset, resetTargets, undoable, undoReset, type ResetScope } from "../lib/statsReset.ts";
 
 /** A change that's allowed: `apply` replays on a conflict (§21), `describe` reads the saved result. */
 export interface Change {
@@ -384,6 +385,50 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
         // "square" is DEFAULT_ICON_NAME in src/lib/icons.ts, which can't be imported here (it pulls in the icon library).
         apply: (d) => addCategory(d, { name, icon: "square" }),
         describe: () => ({ message: `Added the category "${name}".` }),
+      };
+    },
+  },
+  // §64: reset_stats froze at launch; undoing a reset came later. Undoing only restores
+  // counting dates (history is never touched), so it isn't destructive.
+  undo_reset_stats: {
+    description:
+      'Undoes the last stats reset, so the stats count from where they did before: "undo the reset of my gym stats", "undo the stats reset". Scope as reset_stats: one item (id or name), a category (category), or everything (neither).',
+    args: {
+      id: "string, one item's id (or name)",
+      name: "string, one item's name in the user's words",
+      category: "string, a category's name",
+      type: '"habit", "recurringTask" or "singleTask", only this kind',
+    },
+    run: (data, args, todayISO) => {
+      const id = typeof args.id === "string" ? args.id : undefined;
+      const name = typeof args.name === "string" ? args.name : undefined;
+      const type = args.type === "habit" || args.type === "recurringTask" || args.type === "singleTask" ? args.type : undefined;
+      let scope: ResetScope;
+      if (id || name) {
+        const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
+        if (resolved.status === "not_found") return { status: "rejected", message: resolved.message };
+        if (resolved.status === "ambiguous") {
+          const list = resolved.candidates.map((c) => `${c.name} (${c.type}, id ${c.id})`).join("; ");
+          return { status: "need_info", message: `Several items match: ${list}. Ask which one, then call again with its id.` };
+        }
+        if (resolved.status !== "ok") return { status: "rejected", message: "That item has no stats." };
+        scope = { kind: "item", item: resolved.items[0] };
+      } else if (typeof args.category === "string") {
+        const categoryId = resolveCategoryId(data, args.category);
+        if (!categoryId) return { status: "rejected", message: `There's no category called "${args.category}".` };
+        scope = { kind: "category", categoryId };
+      } else {
+        scope = { kind: "all" };
+      }
+      const undoing = undoable(resetTargets(data, scope, type));
+      if (undoing.length === 0) return { status: "rejected", message: "There's no stats reset to undo there." };
+      const ids = new Set(undoing.map((item) => item.id));
+      return {
+        status: "ok",
+        apply: (d) => undoReset(d, ids),
+        describe: (saved) => ({
+          message: describeUndoReset(itemsOf(saved).filter((item) => ids.has(item.id)), scope, saved.categories, todayISO),
+        }),
       };
     },
   },

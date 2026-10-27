@@ -68,6 +68,17 @@ import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "./history";
 import { describeHistory } from "./historyReply";
 import { describeGroupStats, describeItemStats } from "./statsReply";
+import {
+  describeReset,
+  describeResetQuestion,
+  describeUndoReset,
+  resetRefusal,
+  resetStats,
+  resetTargets,
+  undoable,
+  undoReset,
+  type ResetScope,
+} from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
 import { isISODate } from "./today";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
@@ -120,7 +131,9 @@ export type PendingConfirmation =
   // §29: completing a future-dated one-off task, which also moves it to today.
   | { type: "completeFutureTask"; taskId: string; name: string; startDate: string; patch: UpdatePatch }
   // §56: removing a task's checklist while it still has items on it.
-  | { type: "removeChecklist"; itemKind: "recurringTask" | "singleTask"; taskId: string; name: string };
+  | { type: "removeChecklist"; itemKind: "recurringTask" | "singleTask"; taskId: string; name: string }
+  // §64: starting stats over, asked first.
+  | { type: "resetStats"; ids: string[]; scope: ResetScope; includeBestStreak: boolean };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -405,6 +418,8 @@ export class ChatSession {
       await this.handleSkipDay(toolCall.input, toolCall);
     } else if (toolCall.name === "getStats") {
       this.handleGetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "resetStats") {
+      await this.handleResetStats(toolCall.input, toolCall);
     }
   }
 
@@ -465,6 +480,22 @@ export class ChatSession {
         updateSingleTask(current, pending.taskId, { ...pending.patch, newStartDate: today }),
       );
       if (saved) this.pushAssistantMessage(`Marked "${pending.name}" done and moved it to today.`, toolCall);
+      return;
+    }
+
+    if (pending.type === "resetStats") {
+      if (!confirmed) {
+        this.pushAssistantMessage("Okay, the stats stay as they are.", toolCall);
+        return;
+      }
+      const today = this.todayISO;
+      const ids = new Set(pending.ids);
+      const saved = await this.deps.persist((current) => resetStats(current, ids, today, pending.includeBestStreak));
+      const data = this.deps.getData();
+      if (saved && data) {
+        const targets = [...data.habits, ...data.recurringTasks, ...data.singleTasks].filter((item) => ids.has(item.id));
+        this.pushAssistantMessage(describeReset(targets, pending.scope, data.categories, today, pending.includeBestStreak), toolCall);
+      }
       return;
     }
 
@@ -1120,6 +1151,62 @@ export class ChatSession {
 
   // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
   // when the list still has items, since they go with it.
+  // §64: start the stats over (history kept), asked first; or undo the last reset.
+  private async handleResetStats(
+    input: { name?: string; categoryId?: string; kind?: ItemKind; includeBestStreak?: boolean; undo?: boolean },
+    toolCall: ToolCallRef,
+  ) {
+    const data = this.deps.getData();
+    if (!data) return;
+    const today = this.todayISO;
+    let scope: ResetScope;
+    if (input.name?.trim() || this.forcedPick) {
+      const selector = { name: input.name ?? "", categoryId: input.categoryId };
+      const kind = this.resolveKind(input.kind ?? "habit", ["habit", "recurringTask", "singleTask"], selector);
+      const item = this.pickItem(kind, selector, toolCall);
+      if (!item) return;
+      scope = { kind: "item", item };
+    } else if (input.categoryId) {
+      if (!data.categories.some((c) => c.id === input.categoryId)) {
+        this.pushAssistantMessage(`I couldn't find that category. The categories are: ${data.categories.map((c) => c.name).join(", ")}.`, toolCall);
+        return;
+      }
+      scope = { kind: "category", categoryId: input.categoryId };
+    } else {
+      scope = { kind: "all" };
+    }
+    const targets = resetTargets(data, scope, input.kind);
+    if (input.undo) {
+      const undoing = undoable(targets);
+      if (undoing.length === 0) {
+        this.pushAssistantMessage("There's no reset to undo there.", toolCall);
+        return;
+      }
+      const ids = new Set(undoing.map((item) => item.id));
+      const saved = await this.deps.persist((current) => undoReset(current, ids));
+      const after = this.deps.getData();
+      if (saved && after) {
+        const restored = [...after.habits, ...after.recurringTasks, ...after.singleTasks].filter((item) => ids.has(item.id));
+        this.pushAssistantMessage(describeUndoReset(restored, scope, after.categories, today), toolCall);
+      }
+      return;
+    }
+    const refusal = resetRefusal(scope, targets);
+    if (refusal) {
+      this.pushAssistantMessage(refusal, toolCall);
+      return;
+    }
+    const includeBestStreak = input.includeBestStreak === true;
+    this.pendingConfirmation = { type: "resetStats", ids: targets.map((item) => item.id), scope, includeBestStreak };
+    this.pushAssistantMessage(
+      describeResetQuestion(data, scope, targets, today, weekStartOf(data), {
+        includeBestStreak,
+        bestStreakNote: 'To reset it too, ask again with "including the best streak".',
+      }),
+      toolCall,
+    );
+  }
+
   // §63: stats for one item, a category or everything; reads only, worded here.
   private handleGetStats(input: { name?: string; categoryId?: string }, toolCall: ToolCallRef) {
     const stored = this.deps.getData();

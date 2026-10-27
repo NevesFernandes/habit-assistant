@@ -118,6 +118,10 @@ const cases: Case[] = [
   ["how am I doing this month?", ["history"]],
   ["how many tasks did I finish this month?", ["history"]],
   ["show my stats", ["history"]],
+  // §64
+  ["reset my gym stats", ["history"]],
+  ["start my streaks over", ["history"]],
+  ["undo the reset", ["history"]],
   // §68
   ["skip gym today", ["schedule"]],
   ["unskip my run", ["schedule"]],

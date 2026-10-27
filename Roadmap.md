@@ -25,13 +25,6 @@ Summaries of how the user is doing, like the app's stats tab and its calendar wi
 - Connector: only `get_stats`' **result** grows (e.g. a day-by-day series for the calendar/heatmap, per-period totals), so no reconnect is needed. Its inputs and description stay as they are; the result itself says what its fields mean.
 - Not chosen for now: a link to the app's stats tab (leaves Claude), and an interactive widget inside Claude ("MCP Apps"), which is unconfirmed on claude.ai mobile and would change the tool list (a reconnect for everyone if added after launch).
 
-### §64 — Reset stats
-Start the stats over for one item, a category, or everything, for habits, recurring tasks and one-off tasks.
-
-- Decided 2026-10-27: a reset **never erases history**. It only restarts the counting: a "count from" date that streaks, completion % and counts start at, while the completion log and the heatmap keep the past.
-- Always asks first with what will be reset, as delete does.
-- Connector (ready, 2026-10-27): a `reset_stats` tool (scope item, category or all, optional `type`, `confirm`), marked destructive so it never shares an "always allow", is already in the tool list and answers `not_available` until this is built. Its description already describes the finished feature.
-
 ## Later
 
 ### §69 — Settings by chat

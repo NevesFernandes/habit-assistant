@@ -124,6 +124,9 @@ const HISTORY_PATTERNS: RegExp[] = [
   // §63: stats questions, read by the same family.
   /\bstreaks?\b/, /\bstats\b/, /\bstatistics\b/, /\bcompletion (?:rate|percentage)\b/, /\bhow am i doing\b/,
   /\bhow many\b[\s\S]*\b(?:done|finished|completed)\b/,
+  // §64: resetting stats (or undoing it) — the same family, though it changes data.
+  /\breset\b[\s\S]*\b(?:stats|statistics|streaks?|counts?|counting|numbers)\b/, /\b(?:start|starting)\b[\s\S]*\b(?:stats|statistics|streaks?)\b[\s\S]*\bover\b/,
+  /\bundo\b[\s\S]*\breset\b/,
 ];
 
 export function classifyIntent(rawText: string): ClassifyIntentResult {
