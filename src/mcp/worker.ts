@@ -3,7 +3,7 @@
 // googleAuth.ts owns /authorize and /callback; server.ts owns the tools.
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { readDataFile, writeDataFile } from "./drive.ts";
-import { handleDefault, refreshGoogleToken, googleTokenNeedsRefresh, tokenExchangeCallback, type Env, type Props } from "./googleAuth.ts";
+import { GRANT_IDLE_TTL, handleDefault, refreshGoogleToken, googleTokenNeedsRefresh, tokenExchangeCallback, type Env, type Props } from "./googleAuth.ts";
 import { handleMcpRequest } from "./server.ts";
 
 const SCOPES = ["habits"];
@@ -51,7 +51,7 @@ function providerFor(env: Env): OAuthProvider<Env> {
       resource_name: "Habit Assistant",
     },
     // A grant lives while it's used: each refresh pushes its expiry 90 days out.
-    refreshTokenIdleTTL: 90 * 24 * 60 * 60,
+    refreshTokenIdleTTL: GRANT_IDLE_TTL,
     tokenExchangeCallback,
   });
   return provider;

@@ -94,12 +94,16 @@ function accessTokenTTLFor(props: Props): number {
   return Math.min(3600, Math.max(60, seconds));
 }
 
+/** A grant unused this long expires and its tokens leave KV; each refresh pushes it out again. */
+export const GRANT_IDLE_TTL = 90 * 24 * 60 * 60;
+
 export async function tokenExchangeCallback(
   options: TokenExchangeCallbackOptions<Env>,
 ): Promise<TokenExchangeCallbackResult | void> {
   const props = options.props as Props;
   if (options.grantType === "authorization_code") {
-    return { accessTokenTTL: accessTokenTTLFor(props) };
+    // The library's idle expiry starts only at the first refresh; this covers a grant never refreshed.
+    return { accessTokenTTL: accessTokenTTLFor(props), refreshTokenTTL: GRANT_IDLE_TTL };
   }
   if (options.grantType !== "refresh_token") return;
   try {

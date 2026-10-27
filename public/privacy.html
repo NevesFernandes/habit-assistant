@@ -127,7 +127,7 @@
     </header>
     <main>
       <h1>Privacy policy</h1>
-      <p class="lead">Last updated: 30 September 2026</p>
+      <p class="lead">Last updated: 27 October 2026</p>
 
       <p>
         Habit Assistant is a habit tracker you talk to. It's run by the Habit Assistant project (Vasco Fernandes, "we") at
@@ -139,6 +139,10 @@
           <li>Your habits and tasks are stored in <strong>your own Google Drive</strong>, not on our servers.</li>
           <li>The app can only see the files it created, not the rest of your Drive.</li>
           <li>Chat messages go to an AI provider to be understood. Voice clips go to Groq to be turned into text.</li>
+          <li>
+            If you connect Habit Assistant to Claude, your items pass through our connector server on their way
+            between Drive and Claude, which keeps your Google sign-in for it. See <a href="#claude">section 5</a>.
+          </li>
           <li>No ads, no analytics, no tracking. We don't sell or share your data.</li>
         </ul>
       </div>
@@ -148,7 +152,8 @@
         You sign in with your Google account. The app asks Google for one permission,
         <code>drive.file</code>: to create and read files that this app itself created in your Google Drive. It
         can't see, change or delete any of your other files. The app doesn't ask for your name, email address or
-        contacts.
+        contacts. (Connecting Habit Assistant to Claude is a separate sign-in that does ask for your email address:
+        see <a href="#claude">section 5</a>.)
       </p>
       <p>
         Google gives the app a temporary access token (valid for an hour) that it uses only to read and save your
@@ -160,8 +165,9 @@
         Everything you track (habits, tasks, checklists, categories, completion history and settings, including your
         device's time zone) is saved as
         one file, <code>habit-assistant-data.json</code>, in a visible <strong>Habit Assistant</strong> folder in
-        your Google Drive. It goes straight from your browser to Google Drive; it never passes through or is stored
-        on our servers. You can open, download, back up or delete it whenever you like.
+        your Google Drive. In the app it goes straight from your browser to Google Drive; it never passes through or
+        is stored on our servers. The one exception is the Claude connector, if you choose to use it (section 5). You
+        can open, download, back up or delete the file whenever you like.
       </p>
 
       <h2>3. Chat messages and the AI provider</h2>
@@ -264,30 +270,66 @@
         device, that voice may run online through your browser's maker (for example, Google for Chrome).
       </p>
 
-      <h2>5. Our server</h2>
+      <h2 id="claude">5. Using Habit Assistant from Claude</h2>
       <p>
-        Our server only passes chat messages and voice clips on to the providers above. It has no database and keeps
-        no account for you. Cloudflare, which hosts it, keeps short-lived technical logs (such as request times,
+        You can also add Habit Assistant to Claude (claude.ai) as a connector, so Claude can read and change your
+        habits and tasks. This is optional and separate from the app. It runs on a second server of ours,
+        <code>mcp.habitassistant.app</code>, also a Cloudflare Worker.
+      </p>
+      <ul>
+        <li>
+          <strong>Signing in.</strong> When you connect, you sign in with Google again. The connector asks for
+          <code>drive.file</code> (the same limited Drive access as the app) and your basic Google identity: a Google
+          account ID and your email address, so it can tell your connection apart from other people's.
+        </li>
+        <li>
+          <strong>What we keep.</strong> So it keeps working after the first hour, the connector keeps the Google
+          tokens for your connection (including a long-lived refresh token) in Cloudflare's storage,
+          <strong>encrypted</strong>. Your Google account ID and email address are stored alongside them,
+          not encrypted. If the connection isn't used for 90 days, all of it expires and is removed.
+        </li>
+        <li>
+          <strong>Your data file.</strong> Each time Claude uses the connector, our server reads your data file from
+          Drive, does what was asked (for example, marks a habit done) and saves it back. Your items pass through the
+          server only while that happens; they aren't stored there.
+        </li>
+        <li>
+          <strong>Claude.</strong> What the connector sends back (the items Claude asked about, and confirmations of
+          changes) becomes part of your Claude conversation, and is handled by Anthropic under
+          <a href="https://www.anthropic.com/legal/privacy">its privacy policy</a> and your Claude settings, like
+          anything else in that chat.
+        </li>
+        <li>
+          <strong>Logs.</strong> The connector logs which tool ran, whether it worked and how long it took. It never
+          logs your items, names, notes or messages.
+        </li>
+      </ul>
+
+      <h2>6. Our servers</h2>
+      <p>
+        Our app server only passes chat messages and voice clips on to the providers above. Neither it nor the
+        connector server has a database of your habits, and neither keeps an account for you beyond the connector
+        sign-in described in section 5. Cloudflare, which hosts it, keeps short-lived technical logs (such as request times,
         errors and IP addresses) for security and troubleshooting. We use these only to fix problems.
       </p>
 
-      <h2>6. Stored on your device</h2>
+      <h2>7. Stored on your device</h2>
       <p>
         The app keeps a few things in your browser's local storage: your AI key settings, a running timer, your
         read-aloud preference, and a random device ID (so each device can keep its own read-aloud setting). This is
         not used to track you. Clearing the site's data in your browser, or uninstalling the app, removes it.
       </p>
 
-      <h2>7. Google user data</h2>
+      <h2>8. Google user data</h2>
       <p>
         Habit Assistant's use and transfer of information received from Google APIs adheres to the
         <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
         including the Limited Use requirements. Data from your Google Drive is used only to show and save your habits
-        and tasks in the app. It isn't used for advertising, isn't sold, and isn't read by people, except when you ask
+        and tasks in the app and, if you connect it, to answer and carry out your requests in Claude. It isn't used for advertising, isn't sold, and isn't read by people, except when you ask
         us for help and share it yourself.
       </p>
 
-      <h2>8. Deleting your data</h2>
+      <h2>9. Deleting your data</h2>
       <ul>
         <li><strong>Your data:</strong> delete the <strong>Habit Assistant</strong> folder in your Google Drive.</li>
         <li>
@@ -295,13 +337,19 @@
           <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>.
         </li>
         <li><strong>This device:</strong> clear the site's data in your browser, or uninstall the app.</li>
+        <li>
+          <strong>The Claude connector:</strong> remove it from your connectors in Claude, and remove its access at
+          <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a> (it may show up as a
+          separate entry from the app). Once Google access is removed, the stored sign-in stops working within the hour, and it is removed after 90 days unused;
+          email us if you want it removed sooner.
+        </li>
       </ul>
       <p>Since we don't hold your habit data, there's nothing else for us to delete.</p>
 
-      <h2>9. Children</h2>
+      <h2>10. Children</h2>
       <p>Habit Assistant isn't meant for children under 13, and we don't knowingly collect their information.</p>
 
-      <h2>10. Changes and contact</h2>
+      <h2>11. Changes and contact</h2>
       <p>
         If this policy changes, we'll update this page and its date. Questions or requests:
         <a href="mailto:hello@habitassistant.app">hello@habitassistant.app</a>.
