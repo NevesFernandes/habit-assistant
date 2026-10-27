@@ -31,7 +31,8 @@ import {
   type ItemKind,
 } from "./writeTools.ts";
 import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
-import { resolveCategoryId, withTimeZone } from "../lib/dataStore.ts";
+import { resolveCategoryId, rolloverPersistentTasks, withTimeZone } from "../lib/dataStore.ts";
+import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import {
   canTakeChecklistOp,
   categoryStats,
@@ -135,7 +136,6 @@ const NOT_AVAILABLE = {
   resetStats: "Resetting stats isn't available yet.",
   notes: "Notes aren't available yet: the rest was saved, without the note.",
   skip: "Skipping a single day isn't available yet; pausing (from today) is.",
-  history: "History over a period isn't available yet.",
 };
 
 const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
@@ -533,8 +533,34 @@ export function buildServer(deps: McpDeps): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ from, to, timeZone }) =>
-      timed(deps, "get_history", async () => invalidInput(from, timeZone) ?? invalidInput(to, undefined) ?? { status: "not_available", message: NOT_AVAILABLE.history }),
+    ({ from, to, id, name, type, timeZone }) =>
+      timed(deps, "get_history", async () => {
+        const invalid = invalidInput(from, timeZone) ?? invalidInput(to, undefined);
+        if (invalid) return invalid;
+        if (to < from) return { status: "invalid_date", message: "`to` is before `from`." };
+        if (historyRangeDays(from, to) > HISTORY_MAX_DAYS) {
+          return { status: "rejected", message: `That's more than ${HISTORY_MAX_DAYS} days. Ask for a shorter period, or one item.` };
+        }
+        const { data: stored } = await deps.store.load();
+        const today = userToday(stored, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        // As the app shows it: unfinished one-off tasks already carried over to today.
+        const data = rolloverPersistentTasks(stored, today);
+        let items: AnyItem[] = itemsOf(data, type);
+        if (id || name) {
+          const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name, type });
+          if (resolved.status === "not_found") return resolved;
+          if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+          if (resolved.status === "ineligible") return { status: "not_found", message: `Nothing is called "${name}".` };
+          items = resolved.items;
+        }
+        const history = getHistory(data, from, to, today, items, { keepEmpty: !!(id || name) });
+        return {
+          status: "ok",
+          ...history,
+          ...(history.daysOmitted ? { note: "Too many entries to list day by day; only the totals are here. Ask for a shorter period or one item for the days." } : {}),
+        };
+      }),
   );
 
   server.registerTool(

@@ -46,8 +46,9 @@ import { scenarios as s51 } from "./scenarios/s51-follow-ups.ts";
 import { scenarios as s56 } from "./scenarios/s56-remove-checklist.ts";
 import { scenarios as s57 } from "./scenarios/s57-task-weekday.ts";
 import { scenarios as s58 } from "./scenarios/s58-routing.ts";
+import { scenarios as s66 } from "./scenarios/s66-history.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58, ...s66];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
