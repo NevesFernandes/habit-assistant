@@ -105,6 +105,25 @@
       nav.toc li {
         margin-bottom: 0.15rem;
       }
+      .copybox {
+        background: #1e293b;
+        border-radius: 8px;
+        padding: 0.9rem 1.1rem;
+        margin: 1rem 0;
+      }
+      .copybox p {
+        margin: 0 0 0.6rem;
+      }
+      .copybox button {
+        background: #7c3aed;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 0.35rem 0.9rem;
+        font: inherit;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
       .note {
         background: #1e293b;
         border-radius: 8px;
@@ -213,6 +232,7 @@
           <li><a href="#app">Around the app</a></li>
           <li><a href="#stats">Stats and the heatmap</a></li>
           <li><a href="#data">Your data and the AI provider</a></li>
+          <li><a href="#claude">Using it from Claude</a></li>
         </ol>
       </nav>
 
@@ -524,8 +544,100 @@
         </li>
       </ul>
       <p>The full details are in the <a href="/privacy.html">privacy policy</a> and the <a href="/terms.html">terms of service</a>.</p>
+
+      <h2 id="claude">9. Using it from Claude</h2>
+      <p>
+        You can also add Habit Assistant to <a href="https://claude.ai">Claude</a> as a connector. Claude then works
+        on the same habits and tasks as the app, in the same Google Drive file: ask it what's left today, mark things
+        done, add or change items, pause a habit, or look at your stats. Anything you change in Claude shows up in the
+        app the next time you open it, and the other way round.
+      </p>
+
+      <h3>Adding the connector</h3>
+      <ol>
+        <li>In Claude, tap your profile button to open the settings menu, then <strong>Connectors</strong>.</li>
+        <li>Tap <strong>+</strong> and choose <strong>Add custom connector</strong>.</li>
+        <li>
+          Give it a name (for example <strong>Habit Assistant</strong>) and paste this URL:
+          <code>https://mcp.habitassistant.app/mcp</code>
+        </li>
+        <li>
+          Connect, and sign in with the same Google account you use in the app. On Google's screen,
+          <strong>keep the Google Drive box ticked</strong>: without it the connector has nothing to read.
+        </li>
+      </ol>
+
+      <h3>Asking before it acts</h3>
+      <p>
+        For each of the connector's tools, Claude lets you choose <strong>Always allow</strong>,
+        <strong>Needs approval</strong> or <strong>Blocked</strong>. With <strong>Needs approval</strong>, Claude stops
+        in the chat and asks you to approve that one use, approve it always, or not approve it.
+      </p>
+      <ul>
+        <li>Reading your day, finding items, stats and everyday changes (marking done, adding, editing) are safe to <strong>Always allow</strong>; that's what keeps it quick.</li>
+        <li>
+          Deleting items and resetting stats are up to you. Both already ask you in the chat before they change
+          anything, so <strong>Needs approval</strong> on top is a second check.
+        </li>
+      </ul>
+
+      <h3 id="claude-project">Asking about "today"</h3>
+      <p>
+        Claude tends to read a plain <span class="say">what's on today?</span> as a question for your calendar. Two
+        ways round it:
+      </p>
+      <ol>
+        <li>
+          <strong>Recommended: a "Habits" project.</strong> Create a project in Claude (call it
+          <strong>Habits</strong>), and paste the text below into its <strong>Custom instructions</strong> field, on
+          the project's main page. Chat about your habits inside that project and plain questions just work.
+        </li>
+        <li>
+          <strong>Without a project:</strong> name it in the question: <span class="say">what's on my habits today?</span>,
+          <span class="say">what's left in Habit Assistant?</span>
+        </li>
+      </ol>
+      <div class="copybox">
+        <p id="project-instructions">This project is for my habits and to-dos in Habit Assistant. Questions about my day, what's on today, what's left, what I have to do or my routines are about Habit Assistant: use its tools. Don't ask for calendar access unless I mention the calendar or meetings.</p>
+        <button type="button" id="copy-instructions">Copy</button>
+      </div>
+      <p>
+        If your calendar is connected to Claude too, you can ask for both at once:
+        <span class="say">what's on today, habits and calendar?</span>
+      </p>
+
+      <h3>Good to know</h3>
+      <ul>
+        <li>
+          It follows the same rules as the app: the same <a href="#dayparts">parts of the day</a>, no ticking future
+          days, a pause can't start in the past, and deleting asks first.
+        </li>
+        <li>
+          Claude uses your device's time zone, which the app saves each time you open it; when travelling you can also just tell Claude where you are. If the app hasn't saved one yet,
+          Claude asks you for your time zone once.
+        </li>
+        <li>
+          A few things Claude may offer are still being built: notes on a completion, skipping a single day, your
+          history over a period, stats for tasks, and resetting stats. Until then Claude says they aren't available
+          yet (a completion with a note is still saved, without the note).
+        </li>
+        <li>
+          If Claude ever says it can't find one of Habit Assistant's tools, remove the connector and add it again
+          (same steps as above), then start a new chat. Normally you never need to.
+        </li>
+        <li>
+          To stop using it, remove the connector in Claude's <strong>Connectors</strong>.
+          <a href="/privacy.html#claude">What the connector stores, and how to remove it fully</a>.
+        </li>
+      </ul>
     </main>
     <script>
+      document.getElementById("copy-instructions").addEventListener("click", function (event) {
+        var text = document.getElementById("project-instructions").textContent;
+        navigator.clipboard.writeText(text).then(function () {
+          event.target.textContent = "Copied";
+        });
+      });
       // §52: Back returns to where the reader came from. The app opens these pages in a new tab,
       // which has no history, so: go back to the previous page of this site if there is one
       // (skipping jumps within this page), otherwise close the tab, otherwise open the app.
