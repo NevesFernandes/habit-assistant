@@ -112,10 +112,21 @@ Reply in one line with \`message\`.`;
 const DELETE_DESCRIPTION = `Permanently deletes items and, for habits and recurring tasks, all their history. Prefer schedule's archive when the user only wants to stop an item.
 It asks first (status "needs_confirm", with details of each item): ask the user the question word for word, and only after a yes call again with the same items and \`confirm: true\`. One one-off task named by the user goes without asking.`;
 
-const GET_STATS_DESCRIPTION = `Habit stats, as in the app's stats tab: streak, best streak, completion %, and counts this week, month, year and all time. Recurring and one-off tasks have no stats.
-- scope "habit": one habit, by \`id\` or \`name\`. \`streakUnit\` says whether streaks count days, weeks or months.
-- scope "category": the habits in \`category\` (its name), together.
-- scope "overall": all habits, plus each category.`;
+// The tool list freezes at launch (claude.ai caches it), so these two describe the finished
+// features; what isn't built yet answers status "not_available" in the result (§63, §64).
+const GET_STATS_DESCRIPTION = `Stats, as in the app's stats tab: for a habit, streak, best streak, completion % and counts this week, month, year and all time; recurring and one-off tasks have their own.
+- scope "item": one habit or task, by \`id\` or \`name\`. \`streakUnit\` says whether streaks count days, weeks or months.
+- scope "category": the items in \`category\` (its name), together.
+- scope "overall": everything, plus each category.
+\`type\` limits category or overall to one kind of item. If the status is "not_available", tell the user those stats aren't available yet.`;
+
+const RESET_STATS_DESCRIPTION = `Starts stats over, from today, for one item, a category or everything (\`type\` limits it to one kind of item). Nothing is erased: the history stays (the app's heatmap still shows it), only the counting restarts. Not for deleting an item (delete_items) or a single day's tick (set_done).
+It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. If the status is "not_available", tell the user resetting stats isn't available yet.`;
+
+const NOT_AVAILABLE = {
+  taskStats: "Stats for recurring and one-off tasks aren't available yet; only habits have them so far.",
+  resetStats: "Resetting stats isn't available yet.",
+};
 
 const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
 
@@ -489,22 +500,27 @@ export function buildServer(deps: McpDeps): McpServer {
       title: "Get stats",
       description: GET_STATS_DESCRIPTION,
       inputSchema: {
-        scope: z.enum(["habit", "category", "overall"]),
-        id: z.string().optional().describe("scope habit: the habit's id."),
-        name: z.string().optional().describe("scope habit: the habit's name in the user's words."),
+        scope: z.enum(["item", "category", "overall"]),
+        id: z.string().optional().describe("scope item: the item's id."),
+        name: z.string().optional().describe("scope item: the item's name in the user's words."),
         category: z.string().optional().describe("scope category: the category's name."),
+        type: ITEM_TYPE.optional().describe("scope category or overall: only this kind of item."),
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ scope, id, name, category, timeZone }) =>
+    ({ scope, id, name, category, type, timeZone }) =>
       timed(deps, "get_stats", async () => {
         const invalid = invalidInput(undefined, timeZone);
         if (invalid) return invalid;
         const { data } = await deps.store.load();
         const today = userToday(data, timeZone);
         if (!today) return NEED_TIMEZONE;
-        if (scope === "overall") return { status: "ok", today, ...overallStats(data, today) };
+        // §63: until task stats exist, a scope limited to tasks has nothing to show, and a
+        // mixed one shows the habits and says so.
+        if (scope !== "item" && type && type !== "habit") return { status: "not_available", message: NOT_AVAILABLE.taskStats };
+        const habitsOnly = type ? {} : { note: NOT_AVAILABLE.taskStats };
+        if (scope === "overall") return { status: "ok", today, ...overallStats(data, today), ...habitsOnly };
         if (scope === "category") {
           const categoryId = category ? resolveCategoryId(data, category) : undefined;
           if (!categoryId) {
@@ -517,15 +533,36 @@ export function buildServer(deps: McpDeps): McpServer {
             category: data.categories.find((c) => c.id === categoryId)?.name,
             ...categoryStats(data, categoryId, today),
             habits: habits.map((habit) => habitStats(data, habit, today)),
+            ...habitsOnly,
           };
         }
-        const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name, type: "habit" }, (item) => item.kind === "habit");
+        const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
         if (resolved.status === "not_found") return resolved;
         if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
-        const habit = resolved.items[0];
-        if (habit.kind !== "habit") return { status: "rejected", message: `"${habit.name}" is a task; only habits have stats.` };
-        return { status: "ok", today, ...habitStats(data, habit, today) };
+        const item = resolved.items[0];
+        if (item.kind !== "habit") return { status: "not_available", ...candidate(item, data), message: NOT_AVAILABLE.taskStats };
+        return { status: "ok", today, ...habitStats(data, item, today) };
       }),
+  );
+
+  // §64: in the tool list from launch, so the finished feature needs no reconnect.
+  server.registerTool(
+    "reset_stats",
+    {
+      title: "Reset stats",
+      description: RESET_STATS_DESCRIPTION,
+      inputSchema: {
+        scope: z.enum(["item", "category", "all"]),
+        id: z.string().optional().describe("scope item: the item's id."),
+        name: z.string().optional().describe("scope item: the item's name in the user's words."),
+        category: z.string().optional().describe("scope category: the category's name."),
+        type: ITEM_TYPE.optional().describe("scope category or all: only this kind of item."),
+        confirm: z.boolean().optional().describe("Only after the user said yes to the needs_confirm question."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    () => timed(deps, "reset_stats", async () => ({ status: "not_available", message: NOT_AVAILABLE.resetStats })),
   );
 
   server.registerTool(

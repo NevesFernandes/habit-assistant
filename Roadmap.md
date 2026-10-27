@@ -43,13 +43,14 @@ A remote MCP server, added in Claude as a custom connector, so users can manage 
 Today only habits have stats (streak, best streak, completion %, counts per week/month/year/all time). Extend the idea to recurring tasks and one-off tasks, in the app (stats tab, item pages) and the Claude connector. What "stats" means for each type is still to be decided (e.g. on-time rate for recurring tasks, done count and how long tasks carried over for one-off tasks).
 
 - Build it in `src/lib` next to `habitStats.ts`, so the app and the connector share it.
-- Connector: `get_stats` must already accept any item, category or "everything" for each type before §61 launches (its inputs freeze then); once this is built, it starts returning task stats with no reconnect.
+- Connector (ready, 2026-10-27): `get_stats` already takes any item, and a `type` for a category or everything; for tasks it answers `not_available` (`NOT_AVAILABLE` in `src/mcp/server.ts`). Once this is built, it returns task stats with no reconnect. Its description already describes the finished feature, since descriptions freeze with the tool list.
 
 ### §64 — Reset stats
 Start the stats over for one item, a category, or everything, for habits, recurring tasks and one-off tasks.
 
-- To decide: whether a reset erases the completion history (as delete does, but keeping the item) or sets a "count from" date that stats start at and keeps the history (reversible, and the heatmap could still show the past). The second fits "data you own" better.
-- Destructive either way from the user's view: always asks first with what will be reset, as delete does. In the connector it must be its own tool marked destructive (never a `more_actions` action, which shares one "always allow").
+- Decided 2026-10-27: a reset **never erases history**. It only restarts the counting: a "count from" date that streaks, completion % and counts start at, while the completion log and the heatmap keep the past.
+- Always asks first with what will be reset, as delete does.
+- Connector (ready, 2026-10-27): a `reset_stats` tool (scope item, category or all, optional `type`, `confirm`), marked destructive so it never shares an "always allow", is already in the tool list and answers `not_available` until this is built. Its description already describes the finished feature.
 
 ## Later
 

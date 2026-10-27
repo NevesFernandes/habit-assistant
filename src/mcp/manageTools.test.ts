@@ -137,18 +137,32 @@ const fresh = () => {
 
 {
   const { call } = fresh();
-  const read = await call("get_stats", { scope: "habit", name: "read" });
+  const read = await call("get_stats", { scope: "item", name: "read" });
   const expected = computeHabitStats(fixture().habits[0], fixture().completionLog, TODAY, 0);
   assert.deepEqual([read.currentStreak, read.completionsAllTime, read.streakUnit], [expected.currentStreak, 3, "day"]);
   assert.equal(read.currentStreak, 3);
-  assert.equal((await call("get_stats", { scope: "habit", name: "gym" })).streakUnit, "week");
-  assert.equal((await call("get_stats", { scope: "habit", name: "bins" })).status, "rejected"); // tasks have no stats
+  assert.equal((await call("get_stats", { scope: "item", name: "gym" })).streakUnit, "week");
+  // §63 isn't built: tasks answer "not available" (the inputs already take them, as the tool list freezes at launch).
+  const bins = await call("get_stats", { scope: "item", name: "bins" });
+  assert.deepEqual([bins.status, bins.id], ["not_available", "bins"]);
+  assert.equal((await call("get_stats", { scope: "overall", type: "singleTask" })).status, "not_available");
+  assert.equal((await call("get_stats", { scope: "overall", type: "habit" })).note, undefined);
   const health = await call("get_stats", { scope: "category", category: "health" });
   assert.deepEqual([health.category, health.habitCount, health.habits.length], ["Health", 2, 2]);
   assert.equal((await call("get_stats", { scope: "category", category: "Juggling" })).status, "rejected");
   const overall = await call("get_stats", { scope: "overall" });
   assert.equal(overall.overall.habitCount, 4);
   assert.deepEqual(overall.categories.map((c: { category: string }) => c.category), ["Health", "Study", "Sports"]);
+  assert.match(overall.note, /only habits/); // says what's missing rather than implying tasks have none
+}
+
+// --- reset_stats (§64, not built yet) ------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const reset = await call("reset_stats", { scope: "item", name: "read", confirm: true });
+  assert.equal(reset.status, "not_available");
+  assert.equal(store.version(), 1); // nothing written
 }
 
 // --- more_actions ------------------------------------------------------------------------

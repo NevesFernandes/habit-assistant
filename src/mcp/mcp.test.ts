@@ -200,6 +200,7 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
     "get_stats",
     "log_progress",
     "more_actions",
+    "reset_stats",
     "schedule",
     "set_done",
     "set_time_zone",
@@ -208,6 +209,7 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
   // Only deletes are destructive; reads are marked read-only, so a client can treat them apart.
   const hints = Object.fromEntries(result.tools.map((t: { name: string; annotations: Record<string, boolean> }) => [t.name, t.annotations]));
   assert.equal(hints.delete_items.destructiveHint, true);
+  assert.equal(hints.reset_stats.destructiveHint, true);
   for (const name of ["get_day", "find_items", "get_stats"]) assert.equal(hints[name].readOnlyHint, true, name);
   for (const name of ["checklist", "schedule", "more_actions", "set_done", "create_item", "update_item"]) {
     assert.equal(hints[name].destructiveHint, false, name);
