@@ -151,6 +151,10 @@ export interface AppData {
   // §43: the day weeks begin on, synced across devices (Settings). Absent means Sunday.
   // Only where a week *starts* — weekday numbers in recurrence rules stay 0 = Sunday.
   weekStartsOn?: WeekStart;
+  // §62: the IANA time zone of the device that last opened the app (e.g. "Europe/Lisbon"),
+  // written by the app on sign-in when it differs. The MCP Worker runs in UTC and reads
+  // "today" from it. Absent until the app first runs a version that writes it.
+  timeZone?: string;
 }
 
 /** 0 = Sunday, 1 = Monday — the same numbering as dayOfWeek. */

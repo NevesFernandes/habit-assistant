@@ -27,6 +27,7 @@ import {
 } from "./recurringChecklist";
 import { habitChecklistOn, withHabitStepRemoved, withHabitStepsReplaced } from "./habitChecklist";
 import { isDayPart, isImportant } from "./dayParts";
+import { localTodayISO } from "./today";
 
 export interface CreateSingleTaskInput {
   name: string;
@@ -85,6 +86,11 @@ export function toggleSingleTaskDone(data: AppData, taskId: string): AppData {
   };
 }
 
+/** §62: records the device's time zone; returns `data` unchanged (same reference) when it already matches, so callers can skip the write. */
+export function withTimeZone(data: AppData, timeZone: string): AppData {
+  return data.timeZone === timeZone ? data : { ...data, timeZone };
+}
+
 /** Bumps each persistent, incomplete, past-dated single task's startDate straight to today. Call once per app session after loading data, before render. Non-persistent tasks and already-done tasks are left untouched (the latter stays pinned to its original day, preserving history). Returns `data` unchanged (same reference) if nothing moved, so callers can skip a Drive write when there's nothing to roll. Tasks saved before `persistency` existed have it `undefined`; default that to `true`, matching the field's own creation-time default. */
 export function rolloverPersistentTasks(data: AppData, todayISO: string): AppData {
   let changed = false;
@@ -119,8 +125,9 @@ export interface CreateHabitInput {
   unit?: string; // meaningful when completionType is "value"
 }
 
+// §62: the device's local date. The MCP Worker runs in UTC, so its tools pass dates explicitly.
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayISO();
 }
 
 /**

@@ -29,7 +29,7 @@ async function run(text: string, steps: Step[], fallback?: Step[]) {
     TRIAL_API_KEY: "k",
     ...(fallback ? { TRIAL_FALLBACK_PROVIDER: "gemini", TRIAL_FALLBACK_API_KEY: "k" } : {}),
   };
-  const result = await handleAgentRequest([{ role: "user", content: text }], env, undefined, [], false, 0, {
+  const result = await handleAgentRequest([{ role: "user", content: text }], env, undefined, [], false, 0, undefined, {
     resolveProvider: (id) => adapters[id],
   });
   return { result, seen, left: steps.length + (fallback?.length ?? 0) };
@@ -129,11 +129,34 @@ async function run(text: string, steps: Step[], fallback?: Step[]) {
       throw new ProviderRequestError(413, "Request too large");
     },
   };
-  const result = await handleAgentRequest([{ role: "user", content: "yes" }], { TRIAL_PROVIDER: "groq", TRIAL_API_KEY: "k" }, undefined, [], true, 0, {
+  const result = await handleAgentRequest([{ role: "user", content: "yes" }], { TRIAL_PROVIDER: "groq", TRIAL_API_KEY: "k" }, undefined, [], true, 0, undefined, {
     resolveProvider: () => adapter,
   });
   assert.equal(result.status, 413);
   assert.deepEqual(seen, [["confirmPendingAction"]]);
+}
+
+// §62: the model's "today" is the date the app sends (the device's local date); a missing
+// or malformed one, from an older cached app, falls back to the server's UTC date.
+{
+  const promptFor = async (clientToday: string | undefined) => {
+    let prompt = "";
+    const adapter: ProviderAdapter = {
+      defaultModel: "scripted",
+      async send(args) {
+        prompt = args.systemPrompt;
+        return { reply: "ok" };
+      },
+    };
+    await handleAgentRequest([{ role: "user", content: "pause my gym habit" }], { TRIAL_PROVIDER: "groq", TRIAL_API_KEY: "k" }, undefined, [], false, 0, clientToday, {
+      resolveProvider: () => adapter,
+    });
+    return prompt;
+  };
+  assert.match(await promptFor("2026-01-15"), /Today's date is 2026-01-15 \(Thursday\)/);
+  const utcToday = new Date().toISOString().slice(0, 10);
+  assert.match(await promptFor("15/01/2026"), new RegExp(`Today's date is ${utcToday}`));
+  assert.match(await promptFor(undefined), new RegExp(`Today's date is ${utcToday}`));
 }
 
 console.log("routing.test.ts: all passed");

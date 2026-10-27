@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { addDays } from "../lib/recurrence";
+import { addDays, todayISO } from "../lib/recurrence";
 
 interface DayStripProps {
   selectedDate: string;
@@ -9,10 +9,6 @@ interface DayStripProps {
 const DAYS_BEFORE = 7;
 const DAYS_AFTER = 14;
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function DayStrip({ selectedDate, onSelect }: DayStripProps) {
   const today = todayISO();

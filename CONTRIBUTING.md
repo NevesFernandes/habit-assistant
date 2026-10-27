@@ -66,7 +66,7 @@ npm run typecheck
 npm run build
 ```
 
-**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`. Run them with, for example, `npm run test:pause`.
+**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`, `test:mcp`. Run them with, for example, `npm run test:pause`.
 
 **Chat scenario tests** play scripted conversations against a *real* model with no browser and no Google login. They drive the same chat engine the app uses (`src/lib/chatEngine.ts`), with fixture data from `tests/chat/fixtures/*.json`.
 
@@ -92,6 +92,15 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 
 **Gotcha:** `TRIAL_PROVIDER` (and `TRIAL_FALLBACK_PROVIDER`, if used) belongs in `wrangler.jsonc`'s `vars`, not the dashboard. A dashboard variable of the same name is silently overwritten by the committed value on every Git-triggered deploy. To change providers, edit `wrangler.jsonc` and push.
 
+### The Claude connector (MCP Worker, §61)
+
+A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`), lets Claude read and change the same Drive file as the app through a custom connector at `https://mcp.habitassistant.app/mcp`. It deploys separately from the app, so a broken connector can't take the app down.
+
+1. In Google Cloud, in the app's project, create a second OAuth client (Web application) with the redirect URI `https://mcp.habitassistant.app/callback`. Put its client ID in `wrangler.mcp.jsonc`'s `GOOGLE_CLIENT_ID`.
+2. `npx wrangler kv namespace create OAUTH_KV`, and put the id in `wrangler.mcp.jsonc`.
+3. In Cloudflare, **Create app → Connect to Git** on the same repo, name it `habit-assistant-mcp`, no build command, deploy command `npx wrangler deploy --config wrangler.mcp.jsonc`. Add `GOOGLE_CLIENT_SECRET` as a runtime secret (Settings → Variables and Secrets) on this Worker only. To deploy a branch other than `main`, set it under Settings → Build → Branch control; a build only picks it up on the next push to that branch, since retrying a failed build rebuilds the same commit.
+4. Locally: `npm run mcp:dev` (port 8788; put `GOOGLE_CLIENT_SECRET` in `.dev.vars` and add `http://localhost:8788/callback` to the OAuth client). `--local-upstream` in that script stops wrangler from rewriting the host to the custom domain, which would break OAuth discovery.
+
 ## 5. Finding your way around
 
 | Path | What's there |
@@ -107,6 +116,7 @@ npm run test:chat -- s32-identical --delay 3000       # ms between calls, for ti
 | `src/server/classifyIntent.ts` | Narrows which tool families are sent to the model, per message (sizes: `npm run measure:payload`) |
 | `src/server/providers/` | One adapter per LLM provider |
 | `src/types/models.ts` | The data model: items, recurrence rules, completion log |
+| `src/mcp/` | The Claude connector: `worker.ts` (OAuth wiring), `googleAuth.ts` (consent page, Google sign-in), `server.ts` (MCP tools), `getDay.ts`, `drive.ts` |
 | `branding/` | The logo (`logo.svg`, the one source file) and the rejected concepts. `npm run icons` regenerates every icon in `public/` from it; commit the output |
 | `branding/Screenshots/` | Full-size phone screenshots. `npm run screenshots` regenerates the web-sized copies in `public/screenshots/` (homepage and install dialog) from them; commit the output. Retake them when the UI they show changes |
 

@@ -24,6 +24,7 @@ import { AgentRequestError, type AgentResponse } from "../../src/lib/agentClient
 import { handleAgentRequest, type AgentDebugEntry, type AgentEnv } from "../../src/server/handleAgentRequest.ts";
 import { toDisplayMessages } from "../../src/server/agentHistory.ts";
 import { DEFAULT_CATEGORIES, type AppData } from "../../src/types/models.ts";
+import { localTodayISO } from "../../src/lib/today.ts";
 import { readDevVarsFile, loadDevVars } from "../../scripts/devVars.ts";
 import type { Scenario, TextMatch, Turn } from "./types.ts";
 import { scenarios as s28 } from "./scenarios/s28-pause.ts";
@@ -173,12 +174,12 @@ async function runScenario(
     callAgent: async (messages, categories, hasPendingConfirmation, weekStartsOn): Promise<AgentResponse> => {
       if (calledModelBefore) await sleep(delayMs);
       calledModelBefore = true;
-      const call = () => handleAgentRequest(messages, env, undefined, categories, hasPendingConfirmation, weekStartsOn);
+      const call = () => handleAgentRequest(messages, env, undefined, categories, hasPendingConfirmation, weekStartsOn, localTodayISO());
       const result = verbose ? await call() : await quietly(call);
       if (result.status !== 200) throw new AgentRequestError(result.body.error ?? `status ${result.status}`, result.body.debug, result.status);
       return result.body as AgentResponse;
     },
-    todayISO: () => new Date().toISOString().slice(0, 10),
+    todayISO: () => localTodayISO(),
     onDebug: (entry) => turnDebug.push(entry),
   });
 

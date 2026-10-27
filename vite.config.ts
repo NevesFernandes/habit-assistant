@@ -9,7 +9,7 @@ import { handleAgentRequest, type AgentEnv, type Byok } from "./src/server/handl
 import type { AgentHistoryMessage } from "./src/server/agentHistory.ts";
 import { handleTranscribeRequest, type TranscribeEnv } from "./src/server/handleTranscribeRequest.ts";
 import { loadDevVars as loadDevVarsFrom } from "./scripts/devVars.ts";
-import type { Category } from "./src/types/models.ts";
+import type { Category, WeekStart } from "./src/types/models.ts";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,8 +40,10 @@ function localAgentApiPlugin(): Plugin {
         let byok: Byok | undefined;
         let categories: Category[] | undefined;
         let hasPendingConfirmation: boolean | undefined;
+        let weekStartsOn: WeekStart | undefined;
+        let todayISO: string | undefined;
         try {
-          ({ messages, byok, categories, hasPendingConfirmation } = JSON.parse(
+          ({ messages, byok, categories, hasPendingConfirmation, weekStartsOn, todayISO } = JSON.parse(
             Buffer.concat(chunks).toString("utf-8"),
           ));
         } catch {
@@ -57,6 +59,8 @@ function localAgentApiPlugin(): Plugin {
           byok,
           categories,
           hasPendingConfirmation ?? false,
+          weekStartsOn === 1 ? 1 : 0,
+          todayISO,
         );
         res.statusCode = result.status;
         res.setHeader("Content-Type", "application/json");

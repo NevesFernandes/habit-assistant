@@ -210,6 +210,12 @@ export async function readDataFile(session: DriveSession, fileId: string): Promi
   return res.json();
 }
 
+/** §61: the file's current modifiedTime, so the app can tell whether another device or the Claude connector changed it. */
+export async function getModifiedTime(session: DriveSession, fileId: string): Promise<string> {
+  const res = await driveFetch(session, `/files/${fileId}?fields=modifiedTime`);
+  return ((await res.json()) as { modifiedTime: string }).modifiedTime;
+}
+
 /**
  * Overwrites the data file, first checking the remote modifiedTime against
  * what we last saw. Throws DriveConflictError (carrying the actual current
