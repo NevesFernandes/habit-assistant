@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "add_pack", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,29 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- Packs (§76) ---------------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const items = [
+    { kind: "habit", name: "Drink water", category: "Nutrition", dayPart: "wakeUp", recurrence: "daily" },
+    { kind: "habit", name: "Floss", dayPart: "bedtime", recurrence: "daily" }, // already there
+    { kind: "recurringTask", name: "Water the plants", dayPart: "evening", recurrence: "days:sun,wed" },
+  ];
+  // The first call only shows the list.
+  const before = store.version();
+  const asked = await call("more_actions", { action: "add_pack", args: { name: "a fresh start", items } });
+  assert.equal(asked.status, "needs_confirm");
+  assert.match(asked.question, /^Here's a fresh start \(2 items\):\n1\. Drink water: habit, every day, Wake-up\n2\. Water the plants: recurring task, .*\nAlready have: Floss \(left out\)\./);
+  assert.equal(store.version(), before);
+  // With the yes, added; Claude drops what the user didn't want before calling.
+  const added = await call("more_actions", { action: "add_pack", args: { name: "a fresh start", items: items.slice(0, 1), confirm: true } });
+  assert.equal(added.status, "ok");
+  assert.match(added.message, /^Added a fresh start: Drink water\./);
+  assert.equal(store.file().habits.find((h) => h.name === "Drink water")?.categoryId, "nutrition");
+  assert.equal((await call("more_actions", { action: "add_pack", args: { name: "x", items: [{ kind: "habit", name: "A", dayPart: "morning", recurrence: "sometimes" }] } })).status, "rejected");
 }
 
 // --- Export (§72) ---------------------------------------------------------------------------

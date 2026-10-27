@@ -14,7 +14,10 @@ export interface ToolProperty {
   type: string;
   description?: string;
   enum?: string[];
-  items?: { type: string };
+  items?: ToolProperty;
+  // §76: an array of objects (createPack's items).
+  properties?: Record<string, ToolProperty>;
+  required?: string[];
 }
 
 export interface ToolDefinition {

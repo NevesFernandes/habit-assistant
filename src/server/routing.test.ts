@@ -159,4 +159,19 @@ async function run(text: string, steps: Step[], fallback?: Step[]) {
   assert.match(await promptFor(undefined), new RegExp(`Today's date is ${utcToday}`));
 }
 
+// §76: a pack goes to its own family, and each item's compact recurrence is expanded;
+// one the parser can't read becomes a clarifying reply instead of a broken pack.
+{
+  const items = [
+    { kind: "habit", name: "Stretch", dayPart: "morning", recurrence: "daily" },
+    { kind: "singleTask", name: "Buy shoes", dayPart: "workDay" },
+  ];
+  const { result, seen } = await run("set me up a morning routine", [call("createPack", { packName: "a morning routine", items })]);
+  assert.ok(seen[0].tools.includes("createPack"));
+  const input = result.body.toolCall!.input as { items: { recurrence?: unknown }[] };
+  assert.deepEqual(input.items.map((item) => item.recurrence), [{ type: "daily" }, undefined]);
+  const bad = await run("set me up a morning routine", [call("createPack", { packName: "x", items: [{ kind: "habit", name: "A", dayPart: "morning", recurrence: "sometimes" }] })]);
+  assert.match((bad.result.body as { reply: string }).reply, /didn't catch how often/);
+}
+
 console.log("routing.test.ts: all passed");
