@@ -187,4 +187,24 @@ const fresh = () => {
   assert.equal((await callTool({ store: noZone }, "more_actions", { action: "add_category", args: { name: "X" } })).body.status, "need_timezone");
 }
 
+// --- Inputs frozen ahead of §66, §67, §68 (not built yet) -----------------------------------
+
+{
+  const { store, call } = fresh();
+  // §67: the completion is saved; the note is reported as not kept, never silently dropped.
+  const done = await call("set_done", { name: "floss", note: "used the new floss" });
+  assert.equal(done.status, "ok");
+  assert.match(done.noteNotSaved, /Notes aren't available yet/);
+  assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss" && e.date === TODAY));
+  assert.equal((await call("set_done", { name: "floss" })).noteNotSaved, undefined);
+  // §68: skip answers "not available" and writes nothing.
+  const version = store.version();
+  assert.equal((await call("schedule", { op: "skip", name: "gym" })).status, "not_available");
+  assert.equal((await call("schedule", { op: "skip", name: "gym", date: "soon" })).status, "invalid_date");
+  assert.equal(store.version(), version);
+  // §66
+  assert.equal((await call("get_history", { from: addDays(TODAY, -7), to: TODAY })).status, "not_available");
+  assert.equal((await call("get_history", { from: "last week", to: TODAY })).status, "invalid_date");
+}
+
 console.log("mcp manage tools: all assertions passed");

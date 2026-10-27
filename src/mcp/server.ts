@@ -74,9 +74,11 @@ const SET_DONE_DESCRIPTION = `Marks items done or not done for a day. It sets, n
 Name the item with \`name\` (the user's words) or \`ids\` (from get_day or find_items; several ids apply the same change to each, e.g. "both", "all of them"). \`date\` defaults to the user's today.
 A number or timer habit marked done gets its full goal logged (a bigger amount already logged is kept); a checklist habit gets every item ticked. For a stated amount use log_progress instead.
 Statuses: "ambiguous": list the candidates and ask which one, then call again with \`ids\`. "rejected": tell the user the reason. "needs_confirm": a one-off task set for a later day; ask the question, and only after a yes call again with \`moveToToday: true\`.
+Pass \`note\` when the user adds a detail about it ("5 km, legs tired"); it's kept with that day's completion. If the result has \`noteNotSaved\`, say why.
 Reply in one line with what was recorded (e.g. "with 8 glasses", "all checklist items ticked"); if \`changed\` is false, say it already was.`;
 
 const LOG_PROGRESS_DESCRIPTION = `Logs an amount on a number or timer habit for a day: \`value\` sets the day's total ("I drank 6 glasses"), \`add\` adds to it ("another 2 glasses", "20 more minutes"). Timer habits are in minutes. \`date\` defaults to the user's today; future days are rejected.
+Pass \`note\` when the user adds a detail ("felt easy today"); it's kept with that day. If the result has \`noteNotSaved\`, say why.
 Reply in one line with the day's total against the goal, from the returned item.`;
 
 const CREATE_ITEM_DESCRIPTION = `Creates a habit, a recurring task or a one-off task.
@@ -103,11 +105,16 @@ const CHECKLIST_DESCRIPTION = `A checklist on an item: a habit's steps, or the l
 - op "remove_all": take the whole list off a task, which stays as a plain task. Asks first when it has items: ask the question, and only after a yes call again with \`confirm: true\`.
 Name the item with \`id\` or \`name\`. After ticking a task's last item, offer (never force) to mark the task done with set_done. Reply in one line with \`message\`.`;
 
-const SCHEDULE_DESCRIPTION = `Pauses, resumes or archives a habit or recurring task (not one-off tasks: delete those instead).
+const SCHEDULE_DESCRIPTION = `Pauses, skips, resumes or archives a habit or recurring task (not one-off tasks: delete those instead).
 - op "pause": from \`from\` (default today; never a past day) until \`resumeOn\`, the first day back (omit for open-ended). Paused days count as neither done nor missed, so streaks survive. A new pause replaces one that's running or upcoming.
+- op "skip": one excused day (\`date\`, default today) that counts as neither done nor missed, lighter than a pause ("I'm sick today, skip gym").
 - op "resume": due again from today; cancels an upcoming pause.
 - op "archive": no more occurrences after today; the history and stats stay. For "stop tracking it" or "I'm done with this habit". Erasing it with its history is delete_items.
-Reply in one line with \`message\`.`;
+Reply in one line with \`message\`. If the status is "not_available", tell the user that isn't available yet.`;
+
+const GET_HISTORY_DESCRIPTION = `What happened over a period, day by day: what was due, done, missed, skipped or paused, logged amounts and notes. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what did I miss this week?", and to plan ahead.
+\`from\` and \`to\` are YYYY-MM-DD, both included. Limit it to one item with \`id\` or \`name\`, or to one kind with \`type\`. For a single day, get_day is enough.
+If the status is "not_available", tell the user history isn't available yet; get_day still answers for one day at a time.`;
 
 const DELETE_DESCRIPTION = `Permanently deletes items and, for habits and recurring tasks, all their history. Prefer schedule's archive when the user only wants to stop an item.
 It asks first (status "needs_confirm", with details of each item): ask the user the question word for word, and only after a yes call again with the same items and \`confirm: true\`. One one-off task named by the user goes without asking.`;
@@ -126,6 +133,9 @@ It asks first (status "needs_confirm"): ask the user the question word for word,
 const NOT_AVAILABLE = {
   taskStats: "Stats for recurring and one-off tasks aren't available yet; only habits have them so far.",
   resetStats: "Resetting stats isn't available yet.",
+  notes: "Notes aren't available yet: the rest was saved, without the note.",
+  skip: "Skipping a single day isn't available yet; pausing (from today) is.",
+  history: "History over a period isn't available yet.",
 };
 
 const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
@@ -264,6 +274,7 @@ async function runPlan(
   };
 }
 
+const NOTE = z.string().optional().describe('A short note for that day, in the user\'s words, e.g. "5 km, legs tired". Only when they gave one.');
 const CHECKLIST_OP = z.enum(["add", "tick", "untick", "remove", "remove_all"]);
 
 export function buildServer(deps: McpDeps): McpServer {
@@ -332,11 +343,12 @@ export function buildServer(deps: McpDeps): McpServer {
         date: DATE,
         done: z.boolean().optional().describe("false marks it not done. Defaults to true."),
         moveToToday: z.boolean().optional().describe("Only after the user said yes to a needs_confirm question."),
+        note: NOTE,
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ ids, name, type, date, done = true, moveToToday = false, timeZone }) =>
+    ({ ids, name, type, date, done = true, moveToToday = false, note, timeZone }) =>
       timed(deps, "set_done", async () => {
         const invalid = invalidInput(date, timeZone);
         if (invalid) return invalid;
@@ -357,7 +369,14 @@ export function buildServer(deps: McpDeps): McpServer {
         const saved = await applyDecisions(deps.store, loaded, today, decisions);
         const results = decisions.map((decision) => describeResult(saved, decision, dateISO));
         const statuses = new Set(results.map((result) => result.status));
-        return { status: statuses.size === 1 ? results[0].status : "partial", date: dateISO, today, results };
+        // §67: the input is in place for the frozen tool list; notes aren't stored yet.
+        return {
+          status: statuses.size === 1 ? results[0].status : "partial",
+          date: dateISO,
+          today,
+          results,
+          ...(note ? { noteNotSaved: NOT_AVAILABLE.notes } : {}),
+        };
       }),
   );
 
@@ -372,11 +391,12 @@ export function buildServer(deps: McpDeps): McpServer {
         value: z.number().min(0).optional().describe("The day's new total."),
         add: z.number().optional().describe("An amount to add to the day's total (negative to take some off)."),
         date: DATE,
+        note: NOTE,
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    ({ id, name, value, add, date, timeZone }) =>
+    ({ id, name, value, add, date, note, timeZone }) =>
       timed(deps, "log_progress", async () => {
         const invalid = invalidInput(date, timeZone);
         if (invalid) return invalid;
@@ -394,7 +414,7 @@ export function buildServer(deps: McpDeps): McpServer {
         }
         const decision = decideLogProgress(item, dateISO, today, { value, add });
         const saved = await applyDecisions(deps.store, loaded, today, [decision]);
-        return { date: dateISO, today, ...describeResult(saved, decision, dateISO) };
+        return { date: dateISO, today, ...describeResult(saved, decision, dateISO), ...(note ? { noteNotSaved: NOT_AVAILABLE.notes } : {}) };
       }),
   );
 
@@ -434,22 +454,25 @@ export function buildServer(deps: McpDeps): McpServer {
   server.registerTool(
     "schedule",
     {
-      title: "Pause, resume or archive",
+      title: "Pause, skip, resume or archive",
       description: SCHEDULE_DESCRIPTION,
       inputSchema: {
-        op: z.enum(["pause", "resume", "archive"]),
+        op: z.enum(["pause", "skip", "resume", "archive"]),
         id: z.string().optional().describe("The item's id, from get_day or find_items."),
         name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
         from: z.string().optional().describe("pause: first paused day, YYYY-MM-DD. Defaults to today."),
         resumeOn: z.string().optional().describe("pause: first day back, YYYY-MM-DD. Omit for open-ended."),
+        date: z.string().optional().describe("skip: the day to skip, YYYY-MM-DD. Defaults to today."),
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ op, id, name, from, resumeOn, timeZone }) =>
+    ({ op, id, name, from, resumeOn, date, timeZone }) =>
       timed(deps, "schedule", async () => {
-        const invalid = invalidInput(from, timeZone) ?? invalidInput(resumeOn, undefined);
+        const invalid = invalidInput(from, timeZone) ?? invalidInput(resumeOn, undefined) ?? invalidInput(date, undefined);
         if (invalid) return invalid;
+        // §68: in the frozen tool list from launch; not built yet.
+        if (op === "skip") return { status: "not_available", message: NOT_AVAILABLE.skip };
         const loaded = await deps.store.load();
         const today = userToday(loaded.data, timeZone);
         if (!today) return NEED_TIMEZONE;
@@ -492,6 +515,26 @@ export function buildServer(deps: McpDeps): McpServer {
         const byName = !(ids && ids.length > 0);
         return runPlan(deps.store, loaded, today, planDelete(loaded.data, resolved.items, byName, confirm, today));
       }),
+  );
+
+  // §66: in the frozen tool list from launch; not built yet.
+  server.registerTool(
+    "get_history",
+    {
+      title: "Get history",
+      description: GET_HISTORY_DESCRIPTION,
+      inputSchema: {
+        from: z.string().describe("First day, YYYY-MM-DD."),
+        to: z.string().describe("Last day, YYYY-MM-DD."),
+        id: z.string().optional().describe("Only this item, by id."),
+        name: z.string().optional().describe("Only this item, in the user's words."),
+        type: ITEM_TYPE.optional().describe("Only this kind of item."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ from, to, timeZone }) =>
+      timed(deps, "get_history", async () => invalidInput(from, timeZone) ?? invalidInput(to, undefined) ?? { status: "not_available", message: NOT_AVAILABLE.history }),
   );
 
   server.registerTool(

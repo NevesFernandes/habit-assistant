@@ -33,7 +33,7 @@ A remote MCP server, added in Claude as a custom connector, so users can manage 
     - App side: the chat engine's checklist-item matcher, its "has a checklist" rule and its delete question moved to `itemSelection.ts` and `confirmations.ts`, shared with the connector.
     - Gate, automated (done): 24 more chat scenarios replayed as tool calls (§28, §32 delete and shopping list, §34, §39, §42, §56, multiple add), 74 in all. Not ported: §43, which deletes by a date range the connector leaves to Claude (`find_items` gives each item's start date). Found: "weekly cleaning checklist" matched nothing, in the app too, because "checklist" wasn't one of `itemSelection.ts`'s generic words; it is now (with "checklists").
     - Gate, manual (done 2026-10-27): after one last reconnect, all twelve tools showed on claude.ai mobile and the checklist, pause/resume, stats, `more_actions` (add a category) and delete (asked first) checks worked, with every change showing in the app. A reconnect done right after a push picked up nothing: the deploy has to have finished first.
-- **Phase 5:** `privacy.html` (data now passes through this Worker, which keeps Google refresh tokens) and `help.html`, user onboarding. Don't share the connector URL before this. **Launch waits for §66, §67 and §68** (decided 2026-10-27), since each one touches the connector's tool list, which freezes at launch.
+- **Phase 5:** `privacy.html` (data now passes through this Worker, which keeps Google refresh tokens) and `help.html`, user onboarding. Don't share the connector URL before this. §66, §67 and §68 touch the connector's tool list, which freezes at launch, so their inputs went in first (decided 2026-10-27: inputs only, built later with no reconnect).
     - `help.html` explains two ways to point Claude at Habit Assistant, decided 2026-10-27 (no profile-wide preference, which would collide with people who use their calendar for work): (1) recommended, a "Habits" Project in claude.ai with copy-paste project instructions, so a plain "what's on today?" works inside it and nowhere else; (2) for users who don't want a Project, name it in the message ("what's on my habits today?", "what's left in Habit Assistant?").
     - Onboarding must also say: after an update that adds tools, disconnect and reconnect the connector to see them (claude.ai caches the tool list).
 
@@ -41,20 +41,20 @@ A remote MCP server, added in Claude as a custom connector, so users can manage 
 Read what happened over a period, not just one day: "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what did I miss this week?", "plan my week". Today the connector's `get_day` reads one day per call, so a week costs seven calls and a month is impractical.
 
 - Built in `src/lib` (one function the app and the connector share), on `occursOn` and the completion log, so "due", "done" and "missed" mean the same as everywhere else.
-- Connector: a new read tool (e.g. `get_history` with `from`, `to` and an optional item), added **before §61 launches**. It also feeds §65's summaries and exports ("my October as a spreadsheet").
+- Connector (inputs ready, 2026-10-27): `get_history` (`from`, `to`, optional item or `type`) is in the tool list and answers `not_available` until this is built. It also feeds §65's summaries and exports ("my October as a spreadsheet").
 - App: whether the app's chat gets the same ("how did my week go?") is to decide.
 
 ### §67 — A note on a completion
 "Mark run done, 5 km, legs tired": a short note kept with that day's completion, like a journal line, shown with the day in the app.
 
 - Data: a new optional field on a completion log entry. It must survive an un-completion only if that's decided (today un-completing deletes the entry; see the Completion log rule in CLAUDE.md).
-- Connector: a `note` input on `set_done` and `log_progress`, added **before §61 launches**; `get_day` and §66's history return the notes.
+- Connector (inputs ready, 2026-10-27): `set_done` and `log_progress` take a `note`; until this is built the completion is saved and the result says the note wasn't (`noteNotSaved`). Once built, `get_day` and §66's history return the notes.
 
 ### §68 — Skip a day
 "I'm sick today, skip gym": one excused day that counts as neither done nor missed, so the streak survives, lighter than a pause.
 
 - Probably a one-day pause under the hood (§28's rules: paused days aren't scheduled days), unless a separate "skipped" mark reads better in the app; to decide. Whether a past day can be skipped (a pause can't start in the past) is also to decide.
-- Connector: a `skip` op on `schedule` (or its own input), added **before §61 launches**.
+- Connector (inputs ready, 2026-10-27): `schedule` has a `skip` op with a `date` (default today), answering `not_available` until this is built.
 
 ## Next
 
