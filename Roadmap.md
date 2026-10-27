@@ -18,12 +18,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Next
 
-### §63 — Stats for recurring tasks and one-off tasks
-Today only habits have stats (streak, best streak, completion %, counts per week/month/year/all time). Extend the idea to recurring tasks and one-off tasks, in the app (stats tab, item pages) and the Claude connector. What "stats" means for each type is still to be decided (e.g. on-time rate for recurring tasks, done count and how long tasks carried over for one-off tasks).
-
-- Build it in `src/lib` next to `habitStats.ts`, so the app and the connector share it.
-- Connector (ready, 2026-10-27): `get_stats` already takes any item, and a `type` for a category or everything; for tasks it answers `not_available` (`NOT_AVAILABLE` in `src/mcp/server.ts`). Once this is built, it returns task stats with no reconnect. Its description already describes the finished feature, since descriptions freeze with the tool list.
-
 ### §65 — Stats summaries in Claude (dashboard-style)
 Summaries of how the user is doing, like the app's stats tab and its calendar widget, asked for in Claude ("how did my week go?", "show my month").
 

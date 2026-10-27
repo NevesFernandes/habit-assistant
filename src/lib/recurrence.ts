@@ -37,7 +37,7 @@ export function addDays(dateISO: string, days: number): string {
   return toISODate(date);
 }
 
-function daysBetween(fromISO: string, toISO: string): number {
+export function daysBetween(fromISO: string, toISO: string): number {
   const msPerDay = 24 * 60 * 60 * 1000;
   return Math.round((parseISODate(toISO).getTime() - parseISODate(fromISO).getTime()) / msPerDay);
 }

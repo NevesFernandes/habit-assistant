@@ -179,6 +179,12 @@ export interface SkipDayToolCall {
   input: { name: string; categoryId?: string; date?: string; undo?: boolean };
 }
 
+// §63: reads only; the app writes the reply.
+export interface GetStatsToolCall {
+  name: "getStats";
+  input: { name?: string; categoryId?: string };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -208,7 +214,8 @@ export type AgentToolCall =
   | SetRecurringTaskDoneToolCall
   | GetHistoryToolCall
   | SetNoteToolCall
-  | SkipDayToolCall;
+  | SkipDayToolCall
+  | GetStatsToolCall;
 
 export interface AgentResponse {
   reply?: string;

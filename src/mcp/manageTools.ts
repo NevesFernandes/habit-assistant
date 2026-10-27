@@ -24,11 +24,13 @@ import {
   updateHabit,
   updateRecurringTask,
 } from "../lib/dataStore.ts";
-import { currentPause, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
+import { currentPause, daysBetween, isFutureDate, isPaused, upcomingPause } from "../lib/recurrence.ts";
 import { habitChecklistOn, currentHabitChecklist } from "../lib/habitChecklist.ts";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "../lib/recurringChecklist.ts";
 import { describeArchive, describeDeleteQuestion, describePause, describeResume, formatDate } from "../lib/confirmations.ts";
 import { aggregateCategoryStats, computeHabitStats } from "../lib/habitStats.ts";
+import { computeRecurringTaskStats, statsByKind } from "../lib/taskStats.ts";
+import { rolloverPersistentTasks } from "../lib/dataStore.ts";
 import { hasChecklist, resolveChecklistItemMatches } from "../lib/itemSelection.ts";
 import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } from "./writeTools.ts";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
@@ -289,7 +291,33 @@ export function habitStats(data: AppData, habit: Habit, todayISO: string) {
   return { id: habit.id, name: habit.name, streakUnit, ...stats };
 }
 
-/** The stats tab: overall, per category (habits only; tasks have no stats), and the same per category when asked for one. */
+/** §63: a recurring task's stats are a yes/no habit's; a one-off task has its own few facts. */
+export function itemStats(data: AppData, item: AnyItem, todayISO: string) {
+  if (item.kind === "habit") return { kind: item.kind, ...habitStats(data, item, todayISO) };
+  if (item.kind === "recurringTask") {
+    const streakUnit = item.recurrence.type === "timesPerPeriod" ? item.recurrence.period : "day";
+    return { kind: item.kind, id: item.id, name: item.name, streakUnit, ...computeRecurringTaskStats(item, data.completionLog, todayISO, weekStartOf(data)) };
+  }
+  const first = item.originalStartDate ?? item.startDate;
+  return {
+    kind: item.kind,
+    id: item.id,
+    name: item.name,
+    done: item.done,
+    ...(item.doneOn ? { doneOn: item.doneOn } : {}),
+    due: item.startDate,
+    ...(!item.done && first < todayISO ? { daysCarriedOver: daysBetween(first, todayISO) } : {}),
+  };
+}
+
+/** §63: the task sections of the stats tab, for everything or one category. */
+export function taskStats(data: AppData, todayISO: string, categoryId?: string) {
+  const { recurringTasks, singleTasks } = statsByKind(rolloverPersistentTasks(data, todayISO), todayISO, weekStartOf(data), categoryId);
+  const { habitCount: taskCount, ...recurring } = recurringTasks;
+  return { recurringTasks: { taskCount, ...recurring }, singleTasks };
+}
+
+/** The stats tab: overall, per category (habits; tasks come apart, see taskStats), and the same per category when asked for one. */
 export function categoryStats(data: AppData, categoryId: string | undefined, todayISO: string) {
   const habits = categoryId === undefined ? data.habits : data.habits.filter((habit) => habit.categoryId === categoryId);
   return aggregateCategoryStats(habits, data.completionLog, todayISO, weekStartOf(data));

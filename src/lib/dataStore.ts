@@ -78,13 +78,18 @@ export function isSingleTaskActiveOn(task: SingleTask, dateISO: string): boolean
   return task.startDate === dateISO;
 }
 
-export function toggleSingleTaskDone(data: AppData, taskId: string): AppData {
+export function toggleSingleTaskDone(data: AppData, taskId: string, todayISO: string = today()): AppData {
   return {
     ...data,
-    singleTasks: data.singleTasks.map((task) =>
-      task.id === taskId ? { ...task, done: !task.done } : task,
-    ),
+    singleTasks: data.singleTasks.map((task) => (task.id === taskId ? withDone(task, !task.done, todayISO) : task)),
   };
+}
+
+/** §63: done carries the day it was marked; not done drops it. */
+function withDone(task: SingleTask, done: boolean, todayISO: string): SingleTask {
+  if (done === task.done) return task;
+  const { doneOn: _dropped, ...rest } = task;
+  return done ? { ...rest, done, doneOn: todayISO } : { ...rest, done };
 }
 
 /** §62: records the device's time zone; returns `data` unchanged (same reference) when it already matches, so callers can skip the write. */
@@ -524,12 +529,12 @@ export function updateSingleTask(data: AppData, id: string, patch: UpdatePatch, 
     singleTasks: data.singleTasks.map((task) => {
       if (task.id !== id) return task;
       const base = applyBaseItemPatch(task, patch, todayISO);
-      return {
+      const updated = {
         ...base,
         categoryId: patchedTaskCategoryId(data, task.categoryId, patch),
-        done: patch.newDone !== undefined ? patch.newDone : task.done,
         persistency: patch.newPersistency !== undefined ? patch.newPersistency : task.persistency,
       };
+      return patch.newDone !== undefined ? withDone(updated, patch.newDone, todayISO) : updated;
     }),
   };
 }
