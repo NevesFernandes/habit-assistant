@@ -3,7 +3,7 @@
 // per-request and never stored server-side). See CLAUDE.md's "Cost model /
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
-import type { Category, WeekStart } from "../types/models";
+import type { Category, DayPart, WeekStart } from "../types/models";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
 import type { AgentHistoryMessage } from "../server/agentHistory";
@@ -191,6 +191,21 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §75: one action on the items named, or on every item the filters catch.
+export interface ApplyToManyToolCall {
+  name: "applyToMany";
+  input: {
+    action: "done" | "undone" | "skip" | "pause" | "resume";
+    names?: string[];
+    dayPart?: DayPart;
+    categoryId?: string;
+    kind?: "habit" | "recurringTask" | "singleTask";
+    date?: string;
+    from?: string;
+    resumeOn?: string;
+  };
+}
+
 // §73: no dates = this week so far (or last week on its first day).
 export interface GetMissedToolCall {
   name: "getMissed";
@@ -236,7 +251,8 @@ export type AgentToolCall =
   | GetStatsToolCall
   | ResetStatsToolCall
   | SettingsToolCall
-  | GetMissedToolCall;
+  | GetMissedToolCall
+  | ApplyToManyToolCall;
 
 export interface AgentResponse {
   reply?: string;

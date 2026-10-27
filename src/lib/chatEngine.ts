@@ -83,6 +83,7 @@ import {
   type ResetScope,
 } from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
+import { planBulk, type BulkRequest } from "./bulk";
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
@@ -138,7 +139,9 @@ export type PendingConfirmation =
   // §56: removing a task's checklist while it still has items on it.
   | { type: "removeChecklist"; itemKind: "recurringTask" | "singleTask"; taskId: string; name: string }
   // §64: starting stats over, asked first.
-  | { type: "resetStats"; ids: string[]; scope: ResetScope; includeBestStreak: boolean };
+  | { type: "resetStats"; ids: string[]; scope: ResetScope; includeBestStreak: boolean }
+  // §75: one action on every item, asked first since nothing narrowed it.
+  | { type: "bulk"; request: BulkRequest };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -431,6 +434,9 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "applyToMany") {
+      const { action, names, dayPart, categoryId, kind, date, from, resumeOn } = toolCall.input;
+      await this.runBulk({ action, filter: { names, dayPart, categoryId, kind }, date, from, resumeOn }, toolCall, false);
     } else if (toolCall.name === "getMissed") {
       this.handleGetMissed(toolCall.input, toolCall);
     } else if (toolCall.name === "settings") {
@@ -495,6 +501,15 @@ export class ChatSession {
         updateSingleTask(current, pending.taskId, { ...pending.patch, newStartDate: today }),
       );
       if (saved) this.pushAssistantMessage(`Marked "${pending.name}" done and moved it to today.`, toolCall);
+      return;
+    }
+
+    if (pending.type === "bulk") {
+      if (!confirmed) {
+        this.pushAssistantMessage("Okay, I left them as they are.", toolCall);
+        return;
+      }
+      await this.runBulk(pending.request, toolCall, true);
       return;
     }
 
@@ -1375,6 +1390,34 @@ export class ChatSession {
 
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
+  // §75: one action on several items; the ones it doesn't fit are named, never asked about.
+  private async runBulk(request: BulkRequest, toolCall: ToolCallRef | undefined, confirmed: boolean) {
+    const stored = this.deps.getData();
+    if (!stored) return;
+    const today = this.todayISO;
+    const plan = planBulk(rolloverPersistentTasks(stored, today), request, today, confirmed);
+    if (plan.status === "rejected") {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    if (plan.status === "ambiguous") {
+      const list = plan.candidates.map((item) => `"${item.name}"`).join(", ");
+      this.pushAssistantMessage(`"${plan.name}" matches ${list}. Which one did you mean? Say the whole thing again with its full name.`, toolCall);
+      return;
+    }
+    if (plan.status === "needs_confirm") {
+      this.pendingConfirmation = { type: "bulk", request };
+      this.pushAssistantMessage(plan.question, toolCall);
+      return;
+    }
+    if (plan.targets.length === 0) {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    const saved = await this.deps.persist((current) => plan.apply(rolloverPersistentTasks(current, today)));
+    if (saved) this.pushAssistantMessage(plan.message, toolCall);
+  }
+
   // §73: only the misses of a period, read-only, with a nudge forward when something slips a lot.
   private handleGetMissed(input: { from?: string; to?: string }, toolCall: ToolCallRef) {
     const stored = this.deps.getData();

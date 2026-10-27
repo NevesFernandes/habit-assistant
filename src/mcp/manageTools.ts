@@ -37,6 +37,8 @@ import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } fr
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
+import { planBulk, type BulkAction } from "../lib/bulk.ts";
+import { isDayPart } from "../lib/dayParts.ts";
 import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
 import { HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import { NOT_BY_CHAT, describeReadAloudEverywhere, describeWeekStart, readAloudEverywhere, withReadAloudEverywhere, withWeekStart } from "../lib/settingsByChat.ts";
@@ -473,6 +475,59 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §75: set_done takes several ids, but skip, pause and resume take one, and nothing filters.
+  // Never a delete: this action shares more_actions' "always allow".
+  apply_to_many: {
+    description:
+      'One action on several items at once: "mark all my morning habits done", "skip everything in Sports today", "pause my Work tasks for a week", "mark floss and water done". action: done, undone, skip, pause or resume. Give names (each as the user said it) or filters (dayPart, category, kind). Items the action doesn\'t fit are left out and named in the message. With no names and no filter it means every item, and asks first: status "needs_confirm"; put the question to the user word for word, and only after a yes call again with confirm: true.',
+    args: {
+      action: '"done", "undone", "skip", "pause" or "resume", required',
+      names: "string[], items named by the user",
+      dayPart: '"wakeUp", "morning", "workDay", "afternoon", "evening" or "bedtime"',
+      category: "string, a category's name",
+      kind: '"habit", "recurringTask" or "singleTask"',
+      date: "YYYY-MM-DD, done/undone/skip: the day, defaults to today",
+      from: "YYYY-MM-DD, pause: first paused day, defaults to today",
+      resumeOn: "YYYY-MM-DD, pause: first day back; omit for open-ended",
+      confirm: "boolean, true only after the user said yes to doing every item",
+    },
+    run: (data, args, todayISO) => {
+      const actions: BulkAction[] = ["done", "undone", "skip", "pause", "resume"];
+      const action = actions.find((a) => a === args.action);
+      if (!action) return { status: "need_info", message: 'Pass action: "done", "undone", "skip", "pause" or "resume".' };
+      const date = (key: string) => (typeof args[key] === "string" && args[key] ? (args[key] as string) : undefined);
+      for (const key of ["date", "from", "resumeOn"]) {
+        const value = date(key);
+        if (value && !isISODate(value)) return { status: "rejected", message: `"${value}" is not a YYYY-MM-DD date.` };
+      }
+      let categoryId: string | undefined;
+      if (typeof args.category === "string" && args.category) {
+        categoryId = resolveCategoryId(data, args.category);
+        if (!categoryId) return { status: "rejected", message: `There's no category called "${args.category}".` };
+      }
+      if (args.dayPart !== undefined && !isDayPart(args.dayPart)) return { status: "rejected", message: "dayPart must be one of the six parts of the day." };
+      const kind = args.kind === "habit" || args.kind === "recurringTask" || args.kind === "singleTask" ? args.kind : undefined;
+      const names = Array.isArray(args.names) ? args.names.filter((name): name is string => typeof name === "string" && name.trim() !== "") : undefined;
+      const plan = planBulk(
+        rolloverPersistentTasks(data, todayISO),
+        { action, filter: { names, dayPart: isDayPart(args.dayPart) ? args.dayPart : undefined, categoryId, kind }, date: date("date"), from: date("from"), resumeOn: date("resumeOn") },
+        todayISO,
+        args.confirm === true,
+      );
+      if (plan.status === "rejected") return plan;
+      if (plan.status === "ambiguous") {
+        const list = plan.candidates.map((c) => `${c.name} (${c.kind}, id ${c.id})`).join("; ");
+        return { status: "need_info", message: `"${plan.name}" matches several items: ${list}. Ask which one, then call again with that item's full name.` };
+      }
+      if (plan.status === "needs_confirm") return { result: { status: "needs_confirm", question: plan.question } };
+      if (plan.targets.length === 0) return { result: { status: "ok", changed: [], message: plan.message } };
+      return {
+        status: "ok",
+        apply: (d) => plan.apply(rolloverPersistentTasks(d, todayISO)),
+        describe: () => ({ message: plan.message }),
+      };
     },
   },
   // §73: get_history froze at launch; the misses-only reading, with the same nudges as the app.
