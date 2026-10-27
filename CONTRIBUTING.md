@@ -98,7 +98,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 
 1. In Google Cloud, in the app's project, create a second OAuth client (Web application) with the redirect URI `https://mcp.habitassistant.app/callback`. Put its client ID in `wrangler.mcp.jsonc`'s `GOOGLE_CLIENT_ID`.
 2. `npx wrangler kv namespace create OAUTH_KV`, and put the id in `wrangler.mcp.jsonc`.
-3. In Cloudflare, **Create app → Connect to Git** on the same repo, name it `habit-assistant-mcp`, no build command, deploy command `npx wrangler deploy --config wrangler.mcp.jsonc`. Add `GOOGLE_CLIENT_SECRET` as a secret on this Worker only.
+3. In Cloudflare, **Create app → Connect to Git** on the same repo, name it `habit-assistant-mcp`, no build command, deploy command `npx wrangler deploy --config wrangler.mcp.jsonc`. Add `GOOGLE_CLIENT_SECRET` as a runtime secret (Settings → Variables and Secrets) on this Worker only. To deploy a branch other than `main`, set it under Settings → Build → Branch control; a build only picks it up on the next push to that branch, since retrying a failed build rebuilds the same commit.
 4. Locally: `npm run mcp:dev` (port 8788; put `GOOGLE_CLIENT_SECRET` in `.dev.vars` and add `http://localhost:8788/callback` to the OAuth client). `--local-upstream` in that script stops wrangler from rewriting the host to the custom domain, which would break OAuth discovery.
 
 ## 5. Finding your way around
