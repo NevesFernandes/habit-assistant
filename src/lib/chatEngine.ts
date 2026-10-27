@@ -7,6 +7,7 @@
 // in-memory persist and a direct handleAgentRequest call, so a passing
 // scenario means the real app behaves the same way.
 import { AgentRequestError, type AgentHistoryMessage, type AgentResponse, type AgentToolCall } from "./agentClient";
+import type { ChatDownload } from "../server/agentHistory";
 import type { AgentDebugEntry } from "../server/handleAgentRequest";
 import { findSameName, hasChecklist, parsePicks, resolveChecklistItemMatches, selectOne, type ItemSelector } from "./itemSelection";
 import { formatDurationMinutes } from "./duration";
@@ -84,6 +85,7 @@ import {
 } from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
 import { planBulk, type BulkRequest } from "./bulk";
+import { buildExportCsv, exportRefusal } from "./exportCsv";
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
@@ -256,9 +258,9 @@ export class ChatSession {
     this.deps.onChange?.();
   }
 
-  pushAssistantMessage(content: string, toolCall?: ToolCallRef) {
+  pushAssistantMessage(content: string, toolCall?: ToolCallRef, download?: ChatDownload) {
     if (!toolCall) {
-      this.append({ role: "assistant", content });
+      this.append({ role: "assistant", content, ...(download ? { download } : {}) });
       return;
     }
     // Record the paired tool result too, so the next turn's history to the
@@ -266,7 +268,7 @@ export class ChatSession {
     // instead of only this paraphrased sentence — see issue #4.
     const input = toolCall.input as Record<string, unknown>;
     this.append(
-      { role: "assistant", content, toolCall: { id: toolCall.id, name: toolCall.name, input } },
+      { role: "assistant", content, toolCall: { id: toolCall.id, name: toolCall.name, input }, ...(download ? { download } : {}) },
       { role: "tool", toolCallId: toolCall.id, toolName: toolCall.name, result: content },
     );
   }
@@ -434,6 +436,8 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "exportCsv") {
+      this.handleExportCsv(toolCall.input, toolCall);
     } else if (toolCall.name === "applyToMany") {
       const { action, names, dayPart, categoryId, kind, date, from, resumeOn } = toolCall.input;
       await this.runBulk({ action, filter: { names, dayPart, categoryId, kind }, date, from, resumeOn }, toolCall, false);
@@ -1390,6 +1394,40 @@ export class ChatSession {
 
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
+  // §72: a period's history as a CSV, offered with a Download button. No period named: ask.
+  private handleExportCsv(input: { from?: string; to?: string }, toolCall: ToolCallRef) {
+    const stored = this.deps.getData();
+    if (!stored) return;
+    if (!input.from && !input.to) {
+      this.pushAssistantMessage("Which period should I export? For example \"October\", \"last month\" or \"this year so far\".", toolCall);
+      return;
+    }
+    const from = input.from ?? input.to!;
+    const to = input.to ?? input.from!;
+    if (!isISODate(from) || !isISODate(to)) {
+      this.pushAssistantMessage("I couldn't work out which days you meant. Could you say the period again?", toolCall);
+      return;
+    }
+    const today = this.todayISO;
+    const refusal = exportRefusal(from, to, today);
+    if (refusal) {
+      this.pushAssistantMessage(refusal, toolCall);
+      return;
+    }
+    const file = buildExportCsv(rolloverPersistentTasks(stored, today), from, to, today);
+    const range = file.from === file.to ? formatDate(file.from, today) : `${formatDate(file.from, today)} to ${formatDate(file.to, today)}`;
+    if (file.rows === 0) {
+      this.pushAssistantMessage(`There's nothing to export for ${range}: nothing was due, done or noted.`, toolCall);
+      return;
+    }
+    const cut = file.to < to ? " (up to today; later days haven't happened yet)" : "";
+    this.pushAssistantMessage(
+      `Your spreadsheet for ${range}${cut}: ${file.rows} ${file.rows === 1 ? "row" : "rows"}, one per item per day. Tap Download to save it.`,
+      toolCall,
+      { filename: file.filename, text: file.csv },
+    );
+  }
+
   // §75: one action on several items; the ones it doesn't fit are named, never asked about.
   private async runBulk(request: BulkRequest, toolCall: ToolCallRef | undefined, confirmed: boolean) {
     const stored = this.deps.getData();

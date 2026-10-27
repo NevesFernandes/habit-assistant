@@ -168,7 +168,8 @@ function periodsOf(data: AppData, habit: Habit, from: string, to: string): Histo
 /**
  * The history of `items` (default: every item) from `from` to `to`, both included. Items
  * with nothing in the range are left out, unless `keepEmpty` (one item asked about by name:
- * "when did I last…" still needs its last done day). The caller checks the range (from ≤
+ * "when did I last…" still needs its last done day). `allDays` keeps the day-by-day list
+ * past HISTORY_MAX_ENTRIES. The caller checks the range (from ≤
  * to, at most HISTORY_MAX_DAYS days).
  */
 export function getHistory(
@@ -177,7 +178,7 @@ export function getHistory(
   to: string,
   today: string,
   items?: HistoryItem[],
-  options: { keepEmpty?: boolean } = {},
+  options: { keepEmpty?: boolean; allDays?: boolean } = {},
 ): History {
   const all: HistoryItem[] = items ?? [...data.habits, ...data.recurringTasks, ...data.singleTasks];
   const sorted = [...all].sort(compareForDay);
@@ -219,7 +220,8 @@ export function getHistory(
     return [{ ...summary, ...(lastDone ? { lastDone } : {}), ...(periods ? { periods } : {}) }];
   });
   const size = days.reduce((total, day) => total + day.items.length, 0);
-  return size > HISTORY_MAX_ENTRIES
+  // §72: an export needs every day, however many.
+  return size > HISTORY_MAX_ENTRIES && !options.allDays
     ? { from, to, today, items: summaries, daily, daysOmitted: true }
     : { from, to, today, items: summaries, daily, days };
 }
