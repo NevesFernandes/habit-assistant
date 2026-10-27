@@ -298,7 +298,7 @@
         </tr>
         <tr>
           <td>Look back or ahead</td>
-          <td><span class="say">how did my week go?</span>, <span class="say">what did I miss yesterday?</span>, <span class="say">when did I last go to the dentist?</span>, <span class="say">what's on next week?</span></td>
+          <td><span class="say">how did my week go?</span>, <span class="say">what did I miss?</span>, <span class="say">when did I last go to the dentist?</span>, <span class="say">what's on next week?</span></td>
         </tr>
       </table>
       <p id="history">
@@ -309,6 +309,15 @@
         When you ask about everything, a short summary comes first: how much of what was due got done, compared with
         the same number of days before, the longest current streak, anything done on every due day, the most improved
         item and the most missed one.
+      </p>
+      <p id="missed">
+        <strong>What did I miss.</strong> <span class="say">what did I miss?</span> lists only the misses: each item with
+        the days it was missed, most missed first, then the one-off tasks still carried over and for how long. Without a
+        period it uses this week so far, up to yesterday (today isn't over yet), or last week on the week's first day, and
+        says so. It doesn't offer to mark those days done: it looks forward instead. When an item was missed on at least
+        half its days (3 or more), or a task has been carried over for a week or more, it asks whether you'd like to change
+        its days, pause it, give it a new date or drop it. Paused and skipped days are never misses, and a habit set to a
+        number of times a week or month counts only a week or month that's over.
       </p>
       <p id="notes">
         <strong>Notes on a day.</strong> Each habit or task can have one short note per day, like a journal line. It

@@ -191,6 +191,12 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §73: no dates = this week so far (or last week on its first day).
+export interface GetMissedToolCall {
+  name: "getMissed";
+  input: { from?: string; to?: string };
+}
+
 // §69: no field set = show the settings.
 export interface SettingsToolCall {
   name: "settings";
@@ -229,7 +235,8 @@ export type AgentToolCall =
   | SkipDayToolCall
   | GetStatsToolCall
   | ResetStatsToolCall
-  | SettingsToolCall;
+  | SettingsToolCall
+  | GetMissedToolCall;
 
 export interface AgentResponse {
   reply?: string;

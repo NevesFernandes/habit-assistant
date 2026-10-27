@@ -51,10 +51,11 @@ import { scenarios as s67 } from "./scenarios/s67-notes.ts";
 import { scenarios as s68 } from "./scenarios/s68-skip.ts";
 import { scenarios as s77 } from "./scenarios/s77-unarchive.ts";
 import { scenarios as s69 } from "./scenarios/s69-settings.ts";
+import { scenarios as s73 } from "./scenarios/s73-missed.ts";
 import { scenarios as s63 } from "./scenarios/s63-stats.ts";
 import { scenarios as s64 } from "./scenarios/s64-reset-stats.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58, ...s66, ...s67, ...s68, ...s63, ...s64, ...s77, ...s69];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58, ...s66, ...s67, ...s68, ...s63, ...s64, ...s77, ...s69, ...s73];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

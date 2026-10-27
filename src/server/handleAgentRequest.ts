@@ -119,6 +119,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getStats", buckets: ["history"], listBlurb: "show stats: streaks, completion %, counts, for one item, a category or everything; changes nothing." },
   { name: "resetStats", buckets: ["history"], listBlurb: "start the stats over (history kept) for one item, a category or everything, or undo that; the app asks first." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
+  { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
 
@@ -243,7 +244,7 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 }
 
 // §66
-const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "what did I miss yesterday?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
+const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For "what did I miss?" (only the misses) use getMissed. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
 
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
 // prose to only what the classifier is confident the message needs — see
@@ -1105,9 +1106,21 @@ export function buildTools(
       },
     },
     {
+      name: "getMissed",
+      description:
+        "Show only what the user missed over a period, plus one-off tasks still carried over: 'what did I miss?', 'what did I miss last week?', 'what slipped this month?'. Reads only. Leave from and to out unless the user named a period; the app then uses this week so far and says so.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "Optional. First day, ISO date (YYYY-MM-DD)." },
+          to: { type: "string", description: "Optional. Last day, ISO date (YYYY-MM-DD)." },
+        },
+      },
+    },
+    {
       name: "getHistory",
       description:
-        "Show the user what was done, missed or paused over a period, or what's coming up. Reads only. Use for 'how did my week go?', 'when did I last…', 'what did I miss?', 'what's on next week?'.",
+        "Show the user what was done, missed or paused over a period, or what's coming up. Reads only. Use for 'how did my week go?', 'when did I last…', 'what's on next week?'.",
       parameters: {
         type: "object",
         properties: {
