@@ -1,5 +1,5 @@
-// §61 Phase 3 gate: the app's chat scenarios (tests/chat/scenarios) for what the connector
-// can do so far, replayed as tool calls. Same fixtures, same data checks, and the same
+// §61 Phase 3/4 gates: the app's chat scenarios (tests/chat/scenarios) for what the
+// connector can do, replayed as tool calls. Same fixtures, same data checks, and the same
 // reply patterns wherever the reply is the app's own text (create/update confirmations,
 // §29/§32 questions). Where the app's reply is the chat engine's own wording ("Marked
 // "Gym" complete…"), Claude writes the reply instead, so only the status and the data are
@@ -9,7 +9,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatDate } from "../lib/confirmations.ts";
-import { addDays, dayOfWeek } from "../lib/recurrence.ts";
+import { addDays, dayOfWeek, occursOn } from "../lib/recurrence.ts";
+import { currentHabitChecklist, habitChecklistOn } from "../lib/habitChecklist.ts";
+import { recurringTaskChecklistOn } from "../lib/recurringChecklist.ts";
 import { isDayPart, isImportant } from "../lib/dayParts.ts";
 import { DEFAULT_CATEGORIES, type AppData } from "../types/models.ts";
 import type { TextMatch } from "../../tests/chat/types.ts";
@@ -764,6 +766,367 @@ const s57: ToolScenario[] = [
   },
 ];
 
+// --- Phase 4: §28 pause (baseline.json) -----------------------------------------------------
+
+const journal = (d: AppData) => d.habits.find((habit) => habit.id === "journal");
+const journalPauses = (d: AppData) => journal(d)?.pauses ?? [];
+const TWO_WEEKS = addDays(TODAY, 14);
+
+const s28: ToolScenario[] = [
+  {
+    name: "s28-pause-for-a-window",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "schedule",
+        args: { op: "pause", name: "journal", resumeOn: TWO_WEEKS },
+        expect: {
+          status: "ok",
+          text: /Paused "Journal"/,
+          data: (d) => {
+            const [pause, ...rest] = journalPauses(d);
+            return all(
+              check(!!pause && rest.length === 0, "exactly one pause should be stored"),
+              check(pause?.from === TODAY && pause?.resumeOn === TWO_WEEKS, `got ${JSON.stringify(pause)}`),
+              check(!occursOn(journal(d)!, addDays(TODAY, 3)), "should not be due mid-pause"),
+            );
+          },
+        },
+      },
+    ],
+  },
+  {
+    name: "s28-pause-open-ended",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "schedule",
+        args: { op: "pause", name: "journal" },
+        expect: {
+          status: "ok",
+          text: /no occurrences until you ask me to resume it/,
+          data: (d) =>
+            all(
+              check(journalPauses(d)[0]?.resumeOn === undefined, "an open-ended pause has no resume date"),
+              check(!occursOn(journal(d)!, addDays(TODAY, 200)), "should stay paused"),
+            ),
+        },
+      },
+    ],
+  },
+  {
+    name: "s28-resume-brings-it-back",
+    fixture: "baseline",
+    steps: [
+      { tool: "schedule", args: { op: "pause", name: "journal" }, expect: { status: "ok" } },
+      { tool: "schedule", args: { op: "resume", name: "journal" }, expect: { status: "ok", data: (d) => check(occursOn(journal(d)!, TODAY), "due again today") } },
+    ],
+  },
+  {
+    // The app's own guard, whatever the model sends.
+    name: "s28-no-backdated-pause-explicit",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "schedule",
+        args: { op: "pause", name: "journal", from: addDays(TODAY, -30), resumeOn: addDays(TODAY, 30) },
+        expect: { status: "rejected", text: /only pause from today onwards/, data: (d) => check(journalPauses(d).length === 0, "nothing stored") },
+      },
+    ],
+  },
+];
+
+// --- Phase 4: checklists (§39, §42, §56, multiple add, §32/§34 shopping list) ---------------
+
+const listTexts = (checklist: { text: string }[] | undefined) =>
+  (checklist ?? []).map((item) => item.text.toLowerCase()).sort().join(",");
+const shopping = (d: AppData) => d.recurringTasks.find((task) => task.id === "shopping");
+
+const checklists: ToolScenario[] = [
+  {
+    name: "checklist-add-two-to-new-task",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: { type: "singleTask", name: "Go shopping", userMessage: "Add a go shopping task with a checklist inside.", dayPart: "afternoon", withChecklist: true },
+        expect: { status: "ok", text: /Checklist: empty for now/ },
+      },
+      {
+        tool: "checklist",
+        args: { op: "add", name: "shopping list", items: ["milk", "bread"] },
+        expect: { status: "ok", text: /Added "milk" and "bread"/, data: (d) => check(listTexts(d.singleTasks[0]?.checklist) === "bread,milk", `got ${listTexts(d.singleTasks[0]?.checklist)}`) },
+      },
+    ],
+  },
+  {
+    name: "checklist-add-three-to-existing",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "checklist",
+        args: { op: "add", name: "my weekly shopping list", items: ["eggs", "coffee", "apples"] },
+        expect: { status: "ok", data: (d) => check(["apples", "coffee", "eggs"].every((item) => listTexts(shopping(d)?.checklist).includes(item)), `got ${listTexts(shopping(d)?.checklist)}`) },
+      },
+    ],
+  },
+  ...["my shopping list", "the shopping list", "weekly shopping list"].map(
+    (name, index): ToolScenario => ({
+      name: index === 0 ? "s32-checklist-add-to-task" : `s34-generic-${name.replace(/ /g, "-")}`,
+      fixture: "baseline",
+      steps: [
+        {
+          tool: "checklist",
+          args: { op: "add", name, items: ["milk"] },
+          expect: { status: "ok", text: /Added "milk" to "Weekly shopping"/, data: (d) => check(listTexts(shopping(d)?.checklist).includes("milk"), "milk missing") },
+        },
+      ],
+    }),
+  ),
+  {
+    name: "s39-single-task-empty-checklist",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: { type: "singleTask", name: "Go Shopping", userMessage: "Add a task for Friday called Go Shopping, with a checklist inside", dayPart: "afternoon", startWeekday: 5, withChecklist: true },
+        expect: { status: "ok", text: /Checklist: empty for now/, data: (d) => check(d.singleTasks[0]?.checklist?.length === 0, "expected an empty checklist") },
+      },
+    ],
+  },
+  {
+    name: "s39-recurring-task-seeded-checklist",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: {
+          type: "recurringTask",
+          name: "Go shopping",
+          userMessage: "add a recurring task to go shopping every Saturday, with a checklist: milk, eggs and bread",
+          dayPart: "morning",
+          recurrence: "days:sat",
+          checklistItems: ["milk", "eggs", "bread"],
+        },
+        expect: { status: "ok", text: /Checklist: /, data: (d) => check(listTexts(d.recurringTasks[0]?.checklist) === "bread,eggs,milk", `got ${listTexts(d.recurringTasks[0]?.checklist)}`) },
+      },
+    ],
+  },
+  {
+    name: "s39-plain-task-has-no-checklist",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: { type: "singleTask", name: "Call the dentist", userMessage: "add a task to call the dentist tomorrow", dayPart: "workDay", startDate: TOMORROW },
+        expect: { status: "ok", notText: /Checklist/, data: (d) => check(d.singleTasks[0]?.checklist === undefined, "a plain task got a checklist") },
+      },
+    ],
+  },
+  {
+    name: "s42-default-carry-over",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: { type: "recurringTask", name: "Go shopping", userMessage: "add a recurring task to go shopping every Saturday, with a checklist: milk and eggs", dayPart: "morning", recurrence: "days:sat", checklistItems: ["milk", "eggs"] },
+        expect: {
+          status: "ok",
+          text: [/Checklist mode: unticked items carry over/, /Assumed: .*unticked checklist items carry over/],
+          data: (d) => check((d.recurringTasks[0]?.checklistMode ?? "carryOver") === "carryOver", `got ${d.recurringTasks[0]?.checklistMode}`),
+        },
+      },
+    ],
+  },
+  {
+    name: "s42-create-same-list",
+    fixture: "empty",
+    steps: [
+      {
+        tool: "create_item",
+        args: {
+          type: "recurringTask",
+          name: "Cleaning routine",
+          userMessage: "add a cleaning routine every Sunday with the same checklist every week: floors, windows and bathroom",
+          dayPart: "morning",
+          recurrence: "days:sun",
+          checklistItems: ["floors", "windows", "bathroom"],
+          checklistMode: "sameList",
+        },
+        expect: { status: "ok", text: /Checklist mode: same list every time/, notText: /Assumed: .*checklist/, data: (d) => check(d.recurringTasks[0]?.checklistMode === "sameList", `got ${d.recurringTasks[0]?.checklistMode}`) },
+      },
+    ],
+  },
+  {
+    name: "s42-switch-to-same-list",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "update_item",
+        args: { name: "weekly shopping", newChecklistMode: "sameList" },
+        expect: { status: "ok", text: /Checklist mode: unticked items carry over to the next time → same list every time/, data: (d) => check(shopping(d)?.checklistMode === "sameList", "not sameList") },
+      },
+    ],
+  },
+  {
+    name: "s42-tick-yesterday",
+    fixture: "baseline",
+    steps: [
+      {
+        tool: "checklist",
+        args: { op: "tick", name: "weekly shopping list", items: ["eggs"], date: YESTERDAY },
+        expect: { status: "ok", text: /Checked off "eggs"/, data: (d) => check(shopping(d)?.checklist?.find((i) => i.id === "eggs")?.doneOn === YESTERDAY, `got ${shopping(d)?.checklist?.find((i) => i.id === "eggs")?.doneOn}`) },
+      },
+    ],
+  },
+];
+
+// §56 (empty.json with its own setup)
+const LAST_WEEK = addDays(TODAY, -7);
+const removalSetup = (data: AppData): AppData => ({
+  ...data,
+  singleTasks: [
+    {
+      kind: "singleTask", id: "t-shop", name: "Go shopping", priority: 1, startDate: TODAY, done: false, persistency: true,
+      checklist: [
+        { id: "c1", text: "milk", checked: false },
+        { id: "c2", text: "eggs", checked: false },
+        { id: "c3", text: "bread", checked: false },
+      ],
+    },
+    { kind: "singleTask", id: "t-dentist", name: "Call the dentist", priority: 1, startDate: TODAY, done: false, persistency: true },
+  ],
+  recurringTasks: [
+    {
+      kind: "recurringTask", id: "r-clean", name: "Weekly cleaning", categoryId: "home", priority: 1, startDate: TODAY,
+      recurrence: { type: "daysOfWeek", days: [6] }, checklistMode: "sameList",
+      checklist: [
+        { id: "k1", text: "floors", checked: false },
+        { id: "k2", text: "windows", checked: false },
+      ],
+    },
+  ],
+  habits: [
+    {
+      kind: "habit", id: "h-routine", name: "Morning routine", categoryId: "health", priority: 1, startDate: LAST_WEEK,
+      recurrence: { type: "daily" }, completionType: "checklist",
+      checklist: [
+        { id: "s1", text: "stretch", checked: false },
+        { id: "s2", text: "floss", checked: false },
+        { id: "s3", text: "meditate", checked: false },
+      ],
+    },
+  ],
+});
+const shopTask = (d: AppData) => d.singleTasks.find((task) => task.id === "t-shop");
+const cleaning = (d: AppData) => d.recurringTasks.find((task) => task.id === "r-clean");
+const routine = (d: AppData) => d.habits.find((habit) => habit.id === "h-routine");
+const joined = (items: { text: string }[] | undefined) => (items ?? []).map((item) => item.text).join(",");
+const removalIntact = (d: AppData) => check(d.singleTasks.length === 2 && d.recurringTasks.length === 1 && d.habits.length === 1, "an item went missing");
+const removal = (name: string, steps: Step[]): ToolScenario => ({ name, fixture: "empty", setup: removalSetup, steps });
+
+const s56: ToolScenario[] = [
+  removal("s56-remove-item-single-task", [
+    {
+      tool: "checklist",
+      args: { op: "remove", name: "my shopping list", items: ["milk"] },
+      expect: { status: "ok", text: [/Removed "milk" from "Go shopping"/, /Still on the list: eggs, bread/], data: (d) => all(removalIntact(d), check(joined(shopTask(d)?.checklist) === "eggs,bread", `list is ${joined(shopTask(d)?.checklist)}`)) },
+    },
+  ]),
+  removal("s56-remove-several-items", [
+    {
+      tool: "checklist",
+      args: { op: "remove", name: "shopping list", items: ["eggs", "bread"] },
+      expect: { status: "ok", data: (d) => all(removalIntact(d), check(joined(shopTask(d)?.checklist) === "milk", `list is ${joined(shopTask(d)?.checklist)}`)) },
+    },
+  ]),
+  removal("s56-remove-item-recurring-task", [
+    {
+      tool: "checklist",
+      // "weekly cleaning checklist" finds nothing: "checklist" isn't one of itemSelection's generic words (app and connector alike).
+      args: { op: "remove", name: "weekly cleaning", items: ["windows"] },
+      expect: { status: "ok", data: (d) => all(removalIntact(d), check(joined(recurringTaskChecklistOn(cleaning(d)!, TODAY)) === "floors", "windows still on today's list")) },
+    },
+  ]),
+  removal("s56-remove-step-from-habit", [
+    {
+      tool: "checklist",
+      args: { op: "remove", name: "morning routine", items: ["floss"] },
+      expect: {
+        status: "ok",
+        data: (d) =>
+          all(
+            removalIntact(d),
+            check(joined(currentHabitChecklist(routine(d)!)) === "stretch,meditate", `steps are ${joined(currentHabitChecklist(routine(d)!))}`),
+            check(joined(habitChecklistOn(routine(d)!, YESTERDAY)) === "stretch,floss,meditate", "yesterday lost a step"),
+          ),
+      },
+    },
+  ]),
+  removal("s56-replace-habit-steps", [
+    {
+      tool: "update_item",
+      args: { name: "morning routine", newChecklistItems: ["stretch", "meditate", "journal"] },
+      expect: {
+        status: "ok",
+        text: /apply from today on/,
+        data: (d) =>
+          all(
+            removalIntact(d),
+            check(joined(currentHabitChecklist(routine(d)!)) === "stretch,meditate,journal", `steps are ${joined(currentHabitChecklist(routine(d)!))}`),
+            check(joined(habitChecklistOn(routine(d)!, YESTERDAY)) === "stretch,floss,meditate", "yesterday's steps changed"),
+          ),
+      },
+    },
+  ]),
+  removal("s56-remove-checklist-confirmed", [
+    {
+      tool: "checklist",
+      args: { op: "remove_all", name: "go shopping" },
+      expect: { status: "needs_confirm", text: /Remove the checklist from "Go shopping"\? It has 3 items/, data: (d) => all(removalIntact(d), check(shopTask(d)?.checklist?.length === 3, "changed before the yes")) },
+    },
+    {
+      tool: "checklist",
+      args: { op: "remove_all", id: "t-shop", confirm: true },
+      expect: { status: "ok", text: /Removed the checklist from "Go shopping"/, data: (d) => all(removalIntact(d), check(shopTask(d)?.checklist === undefined, "still there")) },
+    },
+  ]),
+  removal("s56-check-off-is-not-remove", [
+    {
+      tool: "checklist",
+      args: { op: "tick", name: "shopping list", items: ["milk"] },
+      expect: { status: "ok", data: (d) => all(removalIntact(d), check(shopTask(d)?.checklist?.length === 3 && shopTask(d)?.checklist?.[0].checked === true, "milk should be ticked and still listed")) },
+    },
+  ]),
+];
+
+// --- Phase 4: §32 delete (baseline.json) ------------------------------------------------------
+
+const s32Delete: ToolScenario[] = [
+  {
+    name: "s32-delete-lists-details-and-unrelated-reply-cancels",
+    fixture: "baseline",
+    steps: [
+      {
+        // "my test habits": Claude finds them (find_items "test") and passes both ids.
+        tool: "delete_items",
+        args: { ids: ["water-test", "meditate-test"] },
+        expect: {
+          status: "needs_confirm",
+          text: [/Are you sure you want to delete these 2 habits\?/, /1\. "Test: /, /2\. "Test: /, /completion history/],
+          data: (d) => check(!!habitById(d, "water-test") && !!habitById(d, "meditate-test"), "nothing deleted before the yes"),
+        },
+      },
+      // An unrelated reply is Claude not calling again; a yes is this call.
+      {
+        tool: "delete_items",
+        args: { ids: ["water-test", "meditate-test"], confirm: true },
+        expect: { status: "ok", data: (d) => check(!habitById(d, "water-test") && !habitById(d, "meditate-test") && !d.completionLog.some((e) => e.itemId === "water-test"), "both gone, with history") },
+      },
+    ],
+  },
+];
+
 // --- Runner ---------------------------------------------------------------------------------
 
 const asList = <T>(value: T | T[] | undefined): T[] => (value === undefined ? [] : Array.isArray(value) ? value : [value]);
@@ -776,7 +1139,7 @@ function replyText(body: Record<string, unknown>): string {
   return [...texts.filter((text): text is string => typeof text === "string"), JSON.stringify(body)].join("\n");
 }
 
-const scenarios = [...s41, ...s29, ...s31, ...s32, ...s50, ...s53, ...s54, ...s55, ...s57];
+const scenarios = [...s41, ...s29, ...s31, ...s32, ...s50, ...s53, ...s54, ...s55, ...s57, ...s28, ...checklists, ...s56, ...s32Delete];
 const failures: string[] = [];
 
 for (const scenario of scenarios) {

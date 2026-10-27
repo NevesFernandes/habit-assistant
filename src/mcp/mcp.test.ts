@@ -191,7 +191,27 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
 
 {
   const { result } = await rpc(deps, "tools/list");
-  assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), ["create_item", "find_items", "get_day", "log_progress", "set_done", "set_time_zone", "update_item"]);
+  assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), [
+    "checklist",
+    "create_item",
+    "delete_items",
+    "find_items",
+    "get_day",
+    "get_stats",
+    "log_progress",
+    "more_actions",
+    "schedule",
+    "set_done",
+    "set_time_zone",
+    "update_item",
+  ]);
+  // Only deletes are destructive; reads are marked read-only, so a client can treat them apart.
+  const hints = Object.fromEntries(result.tools.map((t: { name: string; annotations: Record<string, boolean> }) => [t.name, t.annotations]));
+  assert.equal(hints.delete_items.destructiveHint, true);
+  for (const name of ["get_day", "find_items", "get_stats"]) assert.equal(hints[name].readOnlyHint, true, name);
+  for (const name of ["checklist", "schedule", "more_actions", "set_done", "create_item", "update_item"]) {
+    assert.equal(hints[name].destructiveHint, false, name);
+  }
   const tool = result.tools.find((t: { name: string }) => t.name === "get_day");
   assert.ok(tool);
   assert.equal(tool.annotations.readOnlyHint, true);

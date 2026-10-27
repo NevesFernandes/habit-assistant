@@ -8,7 +8,7 @@
 // scenario means the real app behaves the same way.
 import { AgentRequestError, type AgentHistoryMessage, type AgentResponse, type AgentToolCall } from "./agentClient";
 import type { AgentDebugEntry } from "../server/handleAgentRequest";
-import { findSameName, parsePicks, selectOne, type ItemSelector } from "./itemSelection";
+import { findSameName, hasChecklist, parsePicks, resolveChecklistItemMatches, selectOne, type ItemSelector } from "./itemSelection";
 import { formatDurationMinutes } from "./duration";
 import {
   addHabit,
@@ -48,11 +48,11 @@ import {
   describeCreatedHabit,
   describeCreatedRecurringTask,
   describeCreatedSingleTask,
+  describeDeleteQuestion,
   describeDuplicateQuestion,
   describeFutureTaskQuestion,
   describeHabitMarkedDone,
   describeHabitMarkedNotDone,
-  describeItemList,
   describeNotDue,
   describePause,
   describeRecurringTaskMarked,
@@ -131,22 +131,6 @@ function formatQuotedList(names: string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
 
-// Case-insensitive substring match against item text — same style as
-// matchesBaseCriteria's name filter in dataStore.ts — used to resolve which
-// checklist item a chat request ("check off milk") refers to. As with item names, an exact
-// match wins: "milk" means "milk" even with "oat milk" on the same list.
-function resolveChecklistItemMatches(checklist: ChecklistItem[] | undefined, fragment: string): ChecklistItem[] {
-  const needle = fragment.trim().toLowerCase();
-  const matches = (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
-  const exact = matches.filter((item) => item.text.trim().toLowerCase() === needle);
-  return exact.length > 0 ? exact : matches;
-}
-
-// §56: a habit "has a checklist" when that's how it's tracked; a task, once it was given one (§39).
-function hasChecklist(item: Habit | RecurringTask | SingleTask): boolean {
-  return item.kind === "habit" ? item.completionType === "checklist" : item.checklist !== undefined;
-}
-
 const CHECKLIST_OWNER_KINDS: ItemKind[] = ["recurringTask", "singleTask", "habit"];
 
 /** "milk" / "milk" and "bread" / "milk", "eggs" and "bread" */
@@ -161,25 +145,6 @@ const ITEM_NOUNS: Record<ItemKind, string> = {
   recurringTask: "recurring task",
 };
 
-function buildDeleteConfirmationQuestion(
-  kind: ItemKind,
-  items: (Habit | RecurringTask | SingleTask)[],
-  categories: Category[],
-  todayISO: string,
-): string {
-  const noun = ITEM_NOUNS[kind];
-  const subject =
-    items.length === 1
-      ? `the ${noun} ${formatQuotedList(items.map((item) => item.name))}?`
-      : `these ${items.length} ${noun}s?\n${describeItemList(items, categories, todayISO)}\n`;
-  const historyWarning =
-    kind !== "singleTask"
-      ? items.length === 1
-        ? " This will also permanently delete its tracked completion history."
-        : "This will also permanently delete their tracked completion history."
-      : "";
-  return `Are you sure you want to delete ${subject}${historyWarning}`.trimEnd();
-}
 
 /** Fast-path eligibility: only an unambiguous single-name filter, nothing else composed with it. */
 function isNameOnlyCriteria(criteria: DeleteCriteria): boolean {
@@ -448,7 +413,7 @@ export class ChatSession {
     }
 
     this.pendingConfirmation = { type: "delete", itemKind: kind, ids, names };
-    this.pushAssistantMessage(buildDeleteConfirmationQuestion(kind, matches, data.categories, this.todayISO), toolCall);
+    this.pushAssistantMessage(describeDeleteQuestion(ITEM_NOUNS[kind], kind !== "singleTask", matches, data.categories, this.todayISO), toolCall);
   }
 
   private async resolvePendingConfirmation(confirmed: boolean, toolCall?: ToolCallRef) {

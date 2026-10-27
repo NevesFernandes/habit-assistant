@@ -3,7 +3,7 @@
 // doing its own name-fragment match. Deliberately separate from dataStore.ts's
 // resolveX (DeleteCriteria), which intentionally matches *many* items for
 // bulk delete. Type-only imports, so it's runnable under node for tests.
-import type { BaseItem, Habit, RecurringTask, SingleTask } from "../types/models.ts";
+import type { BaseItem, ChecklistItem, Habit, RecurringTask, SingleTask } from "../types/models.ts";
 
 export interface ItemSelector {
   name: string;
@@ -225,4 +225,20 @@ export function findSameName<T extends AnyItem>(items: T[], name: string, todayI
     if (item.kind === "singleTask") return !item.done;
     return !item.endDate || item.endDate >= todayISO;
   });
+}
+
+// Case-insensitive substring match against item text — same style as
+// matchesBaseCriteria's name filter in dataStore.ts — used to resolve which
+// checklist item a chat request ("check off milk") refers to. As with item names, an exact
+// match wins: "milk" means "milk" even with "oat milk" on the same list.
+export function resolveChecklistItemMatches(checklist: ChecklistItem[] | undefined, fragment: string): ChecklistItem[] {
+  const needle = fragment.trim().toLowerCase();
+  const matches = (checklist ?? []).filter((item) => item.text.toLowerCase().includes(needle));
+  const exact = matches.filter((item) => item.text.trim().toLowerCase() === needle);
+  return exact.length > 0 ? exact : matches;
+}
+
+// §56: a habit "has a checklist" when that's how it's tracked; a task, once it was given one (§39).
+export function hasChecklist(item: AnyItem): boolean {
+  return item.kind === "habit" ? item.completionType === "checklist" : item.checklist !== undefined;
 }

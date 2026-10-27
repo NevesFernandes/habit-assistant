@@ -29,7 +29,7 @@
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
     "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:taskCategory": "tsx src/lib/taskCategory.test.ts",
-    "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/scenarios.test.ts",
+    "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/manageTools.test.ts && tsx src/mcp/scenarios.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",
     "icons": "tsx scripts/generateIcons.ts",

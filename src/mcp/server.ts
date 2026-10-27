@@ -31,7 +31,23 @@ import {
   type ItemKind,
 } from "./writeTools.ts";
 import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
-import { withTimeZone } from "../lib/dataStore.ts";
+import { resolveCategoryId, withTimeZone } from "../lib/dataStore.ts";
+import {
+  canTakeChecklistOp,
+  categoryStats,
+  checklistIneligible,
+  describeActions,
+  habitStats,
+  MORE_ACTIONS,
+  overallStats,
+  planChecklist,
+  planDelete,
+  planSchedule,
+  type Change,
+  type ChecklistOp,
+  type Plan,
+  type ScheduleOp,
+} from "./manageTools.ts";
 import { DAY_PARTS } from "../lib/dayParts.ts";
 
 export interface McpDeps {
@@ -79,6 +95,29 @@ Name the item with \`id\` (from get_day or find_items) or \`name\` (the user's w
 \`newChecklistItems\` replaces a habit's whole list of steps, from today on; earlier days keep theirs. Only when the user names an earlier day, pass it as \`newChecklistItemsFrom\`.
 \`newRecurrence\` uses the same format as create_item's \`recurrence\` and replaces the whole rule.
 Statuses: "ok": reply with \`confirmation\`. "ambiguous": list the candidates and ask which one, then call again with \`id\`. "rejected" or "need_info": tell or ask the user what \`message\` says.`;
+
+const CHECKLIST_DESCRIPTION = `A checklist on an item: a habit's steps, or the list on a task (e.g. a weekly shopping list).
+- op "add": add \`items\` to a task's list (gives a task without one its first list). Habits' steps change with update_item instead.
+- op "tick" / "untick": check items off or back on, for \`date\` (default today; a recurring task and a habit have a list per day). Each item is matched by the user's words.
+- op "remove": take \`items\` off for good, from today on (or an earlier \`date\` the user named); earlier days keep them. A checklist habit keeps at least one step.
+- op "remove_all": take the whole list off a task, which stays as a plain task. Asks first when it has items: ask the question, and only after a yes call again with \`confirm: true\`.
+Name the item with \`id\` or \`name\`. After ticking a task's last item, offer (never force) to mark the task done with set_done. Reply in one line with \`message\`.`;
+
+const SCHEDULE_DESCRIPTION = `Pauses, resumes or archives a habit or recurring task (not one-off tasks: delete those instead).
+- op "pause": from \`from\` (default today; never a past day) until \`resumeOn\`, the first day back (omit for open-ended). Paused days count as neither done nor missed, so streaks survive. A new pause replaces one that's running or upcoming.
+- op "resume": due again from today; cancels an upcoming pause.
+- op "archive": no more occurrences after today; the history and stats stay. For "stop tracking it" or "I'm done with this habit". Erasing it with its history is delete_items.
+Reply in one line with \`message\`.`;
+
+const DELETE_DESCRIPTION = `Permanently deletes items and, for habits and recurring tasks, all their history. Prefer schedule's archive when the user only wants to stop an item.
+It asks first (status "needs_confirm", with details of each item): ask the user the question word for word, and only after a yes call again with the same items and \`confirm: true\`. One one-off task named by the user goes without asking.`;
+
+const GET_STATS_DESCRIPTION = `Habit stats, as in the app's stats tab: streak, best streak, completion %, and counts this week, month, year and all time. Recurring and one-off tasks have no stats.
+- scope "habit": one habit, by \`id\` or \`name\`. \`streakUnit\` says whether streaks count days, weeks or months.
+- scope "category": the habits in \`category\` (its name), together.
+- scope "overall": all habits, plus each category.`;
+
+const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
 
 const NEED_TIMEZONE = {
   status: "need_timezone",
@@ -194,6 +233,27 @@ const DAY_PART = z.enum(DAY_PARTS.map((part) => part.id) as [string, ...string[]
 const START_WEEKDAY_MODE = z.enum(["closest", "next"]);
 const COMPLETION_TYPE = z.enum(["yesno", "value", "timer", "checklist"]);
 const CHECKLIST_MODE = z.enum(["carryOver", "sameList"]);
+
+/** Saves an allowed change and reports it; a refusal or a question goes back as is. */
+async function runPlan(
+  store: FileStore,
+  loaded: Awaited<ReturnType<FileStore["load"]>>,
+  today: string,
+  plan: Plan,
+): Promise<Body> {
+  if (plan.status !== "ok") return plan;
+  const saved = (await persist(store, loaded, today, (plan as Change).apply)).data;
+  const { message, ownerId, date } = (plan as Change).describe(saved);
+  const owner = ownerId ? itemsOf(saved).find((item) => item.id === ownerId) : undefined;
+  return {
+    status: "ok",
+    today,
+    message,
+    ...(owner ? { item: dayItemView(saved, owner, owner.kind === "singleTask" ? owner.startDate : (date ?? today)) } : {}),
+  };
+}
+
+const CHECKLIST_OP = z.enum(["add", "tick", "untick", "remove", "remove_all"]);
 
 export function buildServer(deps: McpDeps): McpServer {
   const server = new McpServer(
@@ -324,6 +384,176 @@ export function buildServer(deps: McpDeps): McpServer {
         const decision = decideLogProgress(item, dateISO, today, { value, add });
         const saved = await applyDecisions(deps.store, loaded, today, [decision]);
         return { date: dateISO, today, ...describeResult(saved, decision, dateISO) };
+      }),
+  );
+
+  server.registerTool(
+    "checklist",
+    {
+      title: "Change a checklist",
+      description: CHECKLIST_DESCRIPTION,
+      inputSchema: {
+        op: CHECKLIST_OP,
+        id: z.string().optional().describe("The item's id, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
+        items: z.array(z.string()).optional().describe("The checklist items, one entry each, in the user's words."),
+        date: DATE,
+        confirm: z.boolean().optional().describe("remove_all only, after the user said yes."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    ({ op, id, name, items, date, confirm, timeZone }) =>
+      timed(deps, "checklist", async () => {
+        const invalid = invalidInput(date, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const checklistOp = op as ChecklistOp;
+        const resolved = resolveTargets(loaded.data, { ids: id ? [id] : undefined, name }, canTakeChecklistOp(checklistOp));
+        if (resolved.status === "not_found") return resolved;
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+        const owner = resolved.items[0];
+        if (resolved.status === "ineligible" || !canTakeChecklistOp(checklistOp)(owner)) return checklistIneligible(checklistOp, resolved.items);
+        return runPlan(deps.store, loaded, today, planChecklist(owner, checklistOp, { items, date, confirm }, today));
+      }),
+  );
+
+  server.registerTool(
+    "schedule",
+    {
+      title: "Pause, resume or archive",
+      description: SCHEDULE_DESCRIPTION,
+      inputSchema: {
+        op: z.enum(["pause", "resume", "archive"]),
+        id: z.string().optional().describe("The item's id, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
+        from: z.string().optional().describe("pause: first paused day, YYYY-MM-DD. Defaults to today."),
+        resumeOn: z.string().optional().describe("pause: first day back, YYYY-MM-DD. Omit for open-ended."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ op, id, name, from, resumeOn, timeZone }) =>
+      timed(deps, "schedule", async () => {
+        const invalid = invalidInput(from, timeZone) ?? invalidInput(resumeOn, undefined);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const recurring = (item: AnyItem) => item.kind !== "singleTask";
+        const resolved = resolveTargets(loaded.data, { ids: id ? [id] : undefined, name }, recurring);
+        if (resolved.status === "not_found") return resolved;
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+        const item = resolved.items[0];
+        if (item.kind === "singleTask") {
+          return { status: "rejected", message: `"${item.name}" is a one-off task, which can't be paused or archived. It can be moved to another day (update_item) or deleted.` };
+        }
+        return runPlan(deps.store, loaded, today, planSchedule(item, op as ScheduleOp, { from, resumeOn }, today));
+      }),
+  );
+
+  server.registerTool(
+    "delete_items",
+    {
+      title: "Delete items",
+      description: DELETE_DESCRIPTION,
+      inputSchema: {
+        ids: z.array(z.string()).optional().describe("Item ids, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words, when there are no ids."),
+        type: ITEM_TYPE.optional().describe("Only when the user said which kind of item."),
+        confirm: z.boolean().optional().describe("Only after the user said yes to the needs_confirm question."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    ({ ids, name, type, confirm = false, timeZone }) =>
+      timed(deps, "delete_items", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const resolved = resolveTargets(loaded.data, { ids, name, type: type as ItemKind | undefined });
+        if (resolved.status === "not_found") return resolved;
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates);
+        const byName = !(ids && ids.length > 0);
+        return runPlan(deps.store, loaded, today, planDelete(loaded.data, resolved.items, byName, confirm, today));
+      }),
+  );
+
+  server.registerTool(
+    "get_stats",
+    {
+      title: "Get stats",
+      description: GET_STATS_DESCRIPTION,
+      inputSchema: {
+        scope: z.enum(["habit", "category", "overall"]),
+        id: z.string().optional().describe("scope habit: the habit's id."),
+        name: z.string().optional().describe("scope habit: the habit's name in the user's words."),
+        category: z.string().optional().describe("scope category: the category's name."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ scope, id, name, category, timeZone }) =>
+      timed(deps, "get_stats", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const { data } = await deps.store.load();
+        const today = userToday(data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        if (scope === "overall") return { status: "ok", today, ...overallStats(data, today) };
+        if (scope === "category") {
+          const categoryId = category ? resolveCategoryId(data, category) : undefined;
+          if (!categoryId) {
+            return { status: "rejected", message: `There's no category called "${category ?? ""}". The categories are: ${data.categories.map((c) => c.name).join(", ")}.` };
+          }
+          const habits = data.habits.filter((habit) => habit.categoryId === categoryId);
+          return {
+            status: "ok",
+            today,
+            category: data.categories.find((c) => c.id === categoryId)?.name,
+            ...categoryStats(data, categoryId, today),
+            habits: habits.map((habit) => habitStats(data, habit, today)),
+          };
+        }
+        const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name, type: "habit" }, (item) => item.kind === "habit");
+        if (resolved.status === "not_found") return resolved;
+        if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
+        const habit = resolved.items[0];
+        if (habit.kind !== "habit") return { status: "rejected", message: `"${habit.name}" is a task; only habits have stats.` };
+        return { status: "ok", today, ...habitStats(data, habit, today) };
+      }),
+  );
+
+  server.registerTool(
+    "more_actions",
+    {
+      title: "More actions",
+      description: MORE_ACTIONS_DESCRIPTION,
+      inputSchema: {
+        action: z.string().optional().describe("The action to run. Omit to list them."),
+        args: z.record(z.string(), z.unknown()).optional().describe("The action's arguments, as its listing describes."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    ({ action, args = {}, timeZone }) =>
+      timed(deps, "more_actions", async () => {
+        if (!action) return { status: "ok", actions: describeActions() };
+        const known = MORE_ACTIONS[action];
+        if (!known) return { status: "invalid_action", message: `There's no action "${action}".`, actions: describeActions() };
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        // A read-only action doesn't depend on the day; a change waits for the user's zone.
+        const outcome = known.run(loaded.data, args, today ?? localTodayISO());
+        if ("result" in outcome) return { status: "ok", ...outcome.result };
+        if (!today) return NEED_TIMEZONE;
+        return runPlan(deps.store, loaded, today, outcome);
       }),
   );
 

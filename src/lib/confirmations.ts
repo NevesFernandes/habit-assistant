@@ -354,6 +354,26 @@ export function describeItemList(items: AnyItem[], categories: Category[], today
     .join("\n");
 }
 
+/** The delete question, with details when several items go; tracked items warn that their history goes too. */
+export function describeDeleteQuestion(
+  noun: string,
+  hasHistory: boolean,
+  items: AnyItem[],
+  categories: Category[],
+  todayISO: string,
+): string {
+  const subject =
+    items.length === 1
+      ? `the ${noun} "${items[0].name}"?`
+      : `these ${items.length} ${noun}s?\n${describeItemList(items, categories, todayISO)}\n`;
+  const historyWarning = hasHistory
+    ? items.length === 1
+      ? " This will also permanently delete its tracked completion history."
+      : "This will also permanently delete their tracked completion history."
+    : "";
+  return `Are you sure you want to delete ${subject}${historyWarning}`.trimEnd();
+}
+
 /** The "which one did you mean?" question, numbered and with details so identical names can be told apart. §51: the reply may pick several. */
 export function describeCandidates(
   noun: string,
