@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §69 — Settings by chat
-Change settings by asking: where the week starts (Sunday or Monday), replies read aloud on or off. In the connector, `more_actions` actions (no reconnect). Device-local settings (read-aloud is per device) need a decision on what "by chat" means for them.
-
 ### §73 — What did I miss
 "What did I miss this week?": the due items that weren't done over a period, as a list to act on. Mostly a reading of §66's history; in the app it could be a view or a chat answer. Depends on §66.
 

@@ -83,6 +83,7 @@ import {
   type ResetScope,
 } from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
+import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "./skip";
@@ -211,6 +212,12 @@ export interface ChatEngineDeps {
    * key. §40: when the trial's models are unavailable, the reply nudges toward BYOK.
    */
   usingSharedTrial?(): boolean;
+  /**
+   * §69: this device's read-aloud, for "read your replies aloud". Absent (headless runs
+   * without one) = not supported here. `set` changes the device's own cache; the engine
+   * saves its entry in the Drive file.
+   */
+  readAloud?: { deviceId: string; supported(): boolean; get(): boolean; set(on: boolean): void };
 }
 
 // §40: the shared trial's models are unavailable (rate-limited, overloaded, or every
@@ -423,6 +430,8 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "settings") {
+      await this.handleSettings(toolCall.input, toolCall);
     }
   }
 
@@ -1239,6 +1248,37 @@ export class ChatSession {
       return;
     }
     this.pushAssistantMessage(describeGroupStats(data, today, weekStartsOn, category), toolCall);
+  }
+
+  // §69: show the settings, or change the first day of the week and this device's read-aloud.
+  private async handleSettings(input: { weekStartsOn?: string; readAloud?: boolean }, toolCall: ToolCallRef) {
+    const data = this.deps.getData();
+    if (!data) return;
+    const readAloud = this.deps.readAloud;
+    const weekStart = input.weekStartsOn === "monday" ? 1 : input.weekStartsOn === "sunday" ? 0 : undefined;
+    if (weekStart === undefined && input.readAloud === undefined) {
+      this.pushAssistantMessage(describeSettings(data, readAloud?.get() ?? false), toolCall);
+      return;
+    }
+    if (input.readAloud !== undefined && !readAloud?.supported()) {
+      this.pushAssistantMessage("This browser can't read replies aloud, so there's nothing to turn on or off here.", toolCall);
+      return;
+    }
+    const lines: string[] = [];
+    const before = weekStartOf(data);
+    const wasReading = readAloud?.get() ?? false;
+    const saved = await this.deps.persist((current) => {
+      let next = weekStart === undefined ? current : withWeekStart(current, weekStart);
+      if (input.readAloud !== undefined && readAloud) next = withReadAloudHere(next, readAloud.deviceId, input.readAloud);
+      return next;
+    });
+    if (!saved) return;
+    if (weekStart !== undefined) lines.push(describeWeekStart(before, weekStart));
+    if (input.readAloud !== undefined && readAloud) {
+      readAloud.set(input.readAloud);
+      lines.push(describeReadAloudHere(wasReading, input.readAloud));
+    }
+    this.pushAssistantMessage(lines.join("\n"), toolCall);
   }
 
   // §68: one excused day, today or later; undo takes it back. Not for one-off tasks.

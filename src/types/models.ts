@@ -158,6 +158,9 @@ export interface AppData {
   // device remembers its own choice under this account, rather than one
   // toggle changing it everywhere.
   ttsEnabledByDevice?: Record<string, boolean>;
+  // §69: read-aloud for a device with no entry above, set when the Claude connector turns it
+  // on or off "everywhere" (it has no device of its own). Absent = off, as before.
+  ttsEnabledDefault?: boolean;
   // §43: the day weeks begin on, synced across devices (Settings). Absent means Sunday.
   // Only where a week *starts* — weekday numbers in recurrence rules stay 0 = Sunday.
   weekStartsOn?: WeekStart;

@@ -25,8 +25,13 @@ export function setTtsEnabled(enabled: boolean): void {
   localStorage.setItem(LOCAL_CACHE_KEY, String(enabled));
 }
 
-/** Reconciles this device's cached value from the account's Drive data — call only at sign-in, same rule as the rest of BYOK settings. Absent (no entry for this device yet) leaves the existing local value rather than inheriting another device's choice. */
-export function importTtsEnabled(byDevice: Record<string, boolean> | undefined): void {
-  const mine = byDevice?.[getDeviceId()];
+/**
+ * Reconciles this device's cached value from the account's Drive data: at sign-in, and
+ * (§69) when a re-read file comes back from the background, since the Claude connector can
+ * change it. Absent (no entry for this device yet) takes the connector's "everywhere" choice
+ * if there is one, else leaves the local value rather than inheriting another device's.
+ */
+export function importTtsEnabled(byDevice: Record<string, boolean> | undefined, everywhere?: boolean): void {
+  const mine = byDevice?.[getDeviceId()] ?? everywhere;
   if (mine !== undefined) setTtsEnabled(mine);
 }

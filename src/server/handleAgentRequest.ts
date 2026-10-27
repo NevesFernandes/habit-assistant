@@ -119,6 +119,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getStats", buckets: ["history"], listBlurb: "show stats: streaks, completion %, counts, for one item, a category or everything; changes nothing." },
   { name: "resetStats", buckets: ["history"], listBlurb: "start the stats over (history kept) for one item, a category or everything, or undo that; the app asks first." },
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
+  { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
 
 function activeManifestEntries(activeBuckets: IntentBucket[] | "all"): ToolManifestEntry[] {
@@ -143,7 +144,7 @@ function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
   return `You can take these actions:\n${lines.join("\n")}`;
 }
 
-const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something, or asks how a period went or for stats (getHistory, getStats). Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something, or asks how a period went or for stats (getHistory, getStats), or about the settings (settings). Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
 Only ever offer the user actions from the list above, and only for the kind of item each one applies to. Never suggest something you have no tool for.
 
@@ -1092,6 +1093,18 @@ export function buildTools(
       },
     },
     {
+      name: "settings",
+      description:
+        "Show or change the app's settings: 'start my week on Monday', 'read your replies aloud', 'stop talking', 'what are my settings?'. Set only the fields the user asked to change; none shows them all. API keys, the chat provider and voice transcription can't change by chat: never ask for a key, and tell the user to use Settings (⚙).",
+      parameters: {
+        type: "object",
+        properties: {
+          weekStartsOn: { type: "string", enum: ["sunday", "monday"], description: "The first day of the week." },
+          readAloud: { type: "boolean", description: "Read the assistant's replies aloud on this device." },
+        },
+      },
+    },
+    {
       name: "getHistory",
       description:
         "Show the user what was done, missed or paused over a period, or what's coming up. Reads only. Use for 'how did my week go?', 'when did I last…', 'what did I miss?', 'what's on next week?'.",
@@ -1131,7 +1144,7 @@ export function buildTools(
   return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
 }
 
-export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history"];
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings"];
 
 const FAMILY_BLURBS: Record<IntentBucket, string> = {
   create: "add a new habit or task",
@@ -1141,6 +1154,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   delete: "delete whole habits or tasks",
   checklist: "add, tick or remove checklist items, or remove a checklist",
   history: "look at stats, or what was done, missed or is coming up over a period",
+  settings: "show or change settings: the first day of the week, reading replies aloud",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");

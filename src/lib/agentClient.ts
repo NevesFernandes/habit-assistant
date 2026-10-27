@@ -191,6 +191,12 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §69: no field set = show the settings.
+export interface SettingsToolCall {
+  name: "settings";
+  input: { weekStartsOn?: "sunday" | "monday"; readAloud?: boolean };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -222,7 +228,8 @@ export type AgentToolCall =
   | SetNoteToolCall
   | SkipDayToolCall
   | GetStatsToolCall
-  | ResetStatsToolCall;
+  | ResetStatsToolCall
+  | SettingsToolCall;
 
 export interface AgentResponse {
   reply?: string;
