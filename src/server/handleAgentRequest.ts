@@ -15,6 +15,7 @@ import { DAY_PARTS } from "../lib/dayParts.ts";
 import { classifyTurn, type IntentBucket } from "./classifyIntent.ts";
 import { isKeyRejected, providerErrorMessage } from "./providerErrorMessage.ts";
 import { parseCompactRecurrence, RECURRENCE_SPEC_GRAMMAR } from "./recurrenceSpec.ts";
+import { isISODate } from "../lib/today.ts";
 
 export interface AgentEnv {
   TRIAL_PROVIDER?: string;
@@ -1263,6 +1264,9 @@ export async function handleAgentRequest(
   categories: Category[] = [],
   hasPendingConfirmation = false,
   weekStartsOn: WeekStart = 0,
+  // §62: the user's local date, sent by the app. Absent from older cached app versions,
+  // which fall back to the server's UTC date as before.
+  clientTodayISO?: string,
   // Tests only: a stand-in for the provider registry.
   options: { resolveProvider?: (id: string) => ProviderAdapter } = {},
 ): Promise<AgentResult> {
@@ -1281,7 +1285,7 @@ export async function handleAgentRequest(
     };
   }
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = clientTodayISO && isISODate(clientTodayISO) ? clientTodayISO : new Date().toISOString().slice(0, 10);
 
   // §24 in Roadmap.md: classify the latest user message into tool-family
   // buckets so buildTools/buildSystemPrompt only send what's relevant,

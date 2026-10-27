@@ -25,6 +25,7 @@ async function handleAgent(request: Request, env: Env): Promise<Response> {
   let categories: Category[] | undefined;
   let hasPendingConfirmation = false;
   let weekStartsOn: WeekStart = 0;
+  let todayISO: string | undefined;
   try {
     const body = (await request.json()) as {
       messages: AgentHistoryMessage[];
@@ -32,17 +33,19 @@ async function handleAgent(request: Request, env: Env): Promise<Response> {
       categories?: Category[];
       hasPendingConfirmation?: boolean;
       weekStartsOn?: WeekStart;
+      todayISO?: string;
     };
     messages = body.messages;
     byok = body.byok;
     categories = body.categories;
     hasPendingConfirmation = body.hasPendingConfirmation ?? false;
     weekStartsOn = body.weekStartsOn === 1 ? 1 : 0;
+    todayISO = typeof body.todayISO === "string" ? body.todayISO : undefined;
   } catch {
     return jsonResponse({ error: "Invalid JSON body." }, 400);
   }
 
-  const result = await handleAgentRequest(messages, env, byok, categories, hasPendingConfirmation, weekStartsOn);
+  const result = await handleAgentRequest(messages, env, byok, categories, hasPendingConfirmation, weekStartsOn, todayISO);
   return jsonResponse(result.body, result.status);
 }
 

@@ -10,7 +10,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { AppData } from "../types/models.ts";
 import { getDay } from "./getDay.ts";
-import { isISODate, isValidTimeZone, todayIn } from "./today.ts";
+import { isISODate, isValidTimeZone, todayIn } from "../lib/today.ts";
 import { DriveAccessError, DriveFileNotFoundError } from "./drive.ts";
 
 export interface McpDeps {
@@ -23,7 +23,7 @@ Act directly; ask a question only when a tool can't run without the answer.
 Present days grouped by part of the day (Wake-up, Morning, Work day, Afternoon, Evening, Bedtime), in the order the tool returns them; important items carry a star.`;
 
 const GET_DAY_DESCRIPTION = `What the user has on a given day: habits, recurring tasks and one-off tasks that are due, grouped by part of the day, in the same order as the app's Today tab, with what's done, logged amounts, checklist progress and "N times a week" progress.
-Pass \`date\` as the user's local date (YYYY-MM-DD) whenever you know it, and \`timeZone\` (IANA, e.g. "Europe/Lisbon") when you know it too: with it, unfinished one-off tasks from earlier days roll forward to today, as in the app.
+For today, call it with no arguments: the user's time zone is stored with their data. Pass \`date\` (YYYY-MM-DD) for another day, and \`timeZone\` (IANA, e.g. "Europe/Lisbon") only when the user says they're somewhere else.
 If the result's status is "need_timezone", ask the user which city or time zone they're in, then call again with \`timeZone\`.
 Reply briefly: list what's left first, then what's done; mention a part of the day only when it has items. Never invent items that aren't in the result.`;
 
@@ -63,7 +63,7 @@ export function buildServer(deps: McpDeps): McpServer {
       title: "Get a day",
       description: GET_DAY_DESCRIPTION,
       inputSchema: {
-        date: z.string().optional().describe("The day to show, YYYY-MM-DD, in the user's local calendar. Defaults to today in `timeZone`."),
+        date: z.string().optional().describe("The day to show, YYYY-MM-DD, in the user's local calendar. Defaults to today."),
         timeZone: z.string().optional().describe('The user\'s IANA time zone, e.g. "Europe/Lisbon".'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -80,13 +80,16 @@ export function buildServer(deps: McpDeps): McpServer {
           status = "invalid_time_zone";
           return json({ status, message: `"${timeZone}" is not an IANA time zone name.` }, true);
         }
-        const today = timeZone ? todayIn(timeZone) : undefined;
+        const data = await deps.loadData();
+        // §62: the app stores the device's time zone; a stated one wins.
+        const stored = data.timeZone && isValidTimeZone(data.timeZone) ? data.timeZone : undefined;
+        const zone = timeZone ?? stored;
+        const today = zone ? todayIn(zone) : undefined;
         const target = date ?? today;
         if (!target) {
           status = "need_timezone";
           return json({ status, message: "Pass `date`, or ask the user for their time zone and pass `timeZone`." });
         }
-        const data = await deps.loadData();
         return json({ status, ...getDay(data, target, today) });
       } catch (error) {
         const failure = driveFailure(error);

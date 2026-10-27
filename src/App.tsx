@@ -23,6 +23,7 @@ import {
   createDataFile,
   readDataFile,
   writeDataFile,
+  getModifiedTime,
   DriveConflictError,
   DriveOfflineError,
   type DriveSession,
@@ -46,6 +47,7 @@ import {
   deleteCategory,
   isCategoryInUse,
   rolloverPersistentTasks,
+  withTimeZone,
   setHabitValue,
   SHARED_KEY_MESSAGE_CAP,
   removeRecurringTaskChecklistItem,
@@ -63,7 +65,8 @@ import {
   type CreateCategoryInput,
   type UpdateCategoryPatch,
 } from "./lib/dataStore";
-import { isFutureDate } from "./lib/recurrence";
+import { isFutureDate, todayISO } from "./lib/recurrence";
+import { deviceTimeZone } from "./lib/today";
 import {
   getActiveByok,
   getActiveStt,
@@ -94,9 +97,6 @@ const TAB_ICONS: Record<Tab, typeof MessageCircle> = {
   timer: TimerIcon,
 };
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -158,6 +158,34 @@ export default function App() {
 
   const [fileRef, setFileRef] = useState<DriveFileRef | null>(null);
   const [data, setData] = useState<AppData | null>(null);
+
+  // §61: the Claude connector (or another device) may have changed the file while the app
+  // sat in the background. On returning, a cheap modifiedTime check; only a changed file is
+  // read again. Only the items are refreshed (setData, not applyRemoteData): BYOK settings
+  // still sync at sign-in only, for the reason given there. A save racing this is safe: the
+  // next write's conflict check catches any mismatch and replays.
+  const checkingRemoteRef = useRef(false);
+  useEffect(() => {
+    if (!fileRef) return;
+    const refresh = async () => {
+      const current = sessionRef.current;
+      if (document.visibilityState !== "visible" || !current || tokenNeedsRefresh(current) || checkingRemoteRef.current) return;
+      checkingRemoteRef.current = true;
+      try {
+        const modifiedTime = await getModifiedTime(current, fileRef.fileId);
+        if (modifiedTime === fileRef.modifiedTime) return;
+        const fresh = await readDataFile(current, fileRef.fileId);
+        setFileRef({ fileId: fileRef.fileId, modifiedTime });
+        setData(fresh);
+      } catch {
+        // Offline or signed out: keep what's on screen; the next save's own checks report it.
+      } finally {
+        checkingRemoteRef.current = false;
+      }
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, [fileRef]);
 
   const [messages, setMessages] = useState<AgentHistoryMessage[]>([]);
   const [sending, setSending] = useState(false);
@@ -260,7 +288,8 @@ export default function App() {
         // can pick them up on their next sign-in. Computed before rollover so
         // the two don't interact beyond sharing one conditional write below.
         const needsByokMigration = loaded.byokSettings === undefined && hasLocalByokSettings();
-        const rolled = rolloverPersistentTasks(loaded, todayISO());
+        // §62: the Claude connector reads "today" from the stored time zone.
+        const rolled = withTimeZone(rolloverPersistentTasks(loaded, todayISO()), deviceTimeZone());
         const toWrite = needsByokMigration ? { ...rolled, byokSettings: exportByokState() } : rolled;
         if (toWrite !== loaded) {
           try {
@@ -280,7 +309,7 @@ export default function App() {
           applyRemoteData(loaded);
         }
       } else {
-        const initial = emptyAppData();
+        const initial = withTimeZone(emptyAppData(), deviceTimeZone());
         // Covers a device signing in fresh (e.g. reinstalled) with pre-existing local BYOK
         // settings — not just the "existing file, missing field" migration above — so a second
         // device isn't stuck waiting on a transition that never happens on this one.
@@ -428,7 +457,7 @@ export default function App() {
       getData: () => latestRef.current.data,
       persist: (mutate) => latestRef.current.persist(mutate),
       callAgent: (history, categories, hasPendingConfirmation, weekStartsOn) =>
-        sendMessage(history, latestRef.current.byok, categories, hasPendingConfirmation, weekStartsOn),
+        sendMessage(history, latestRef.current.byok, categories, hasPendingConfirmation, weekStartsOn, todayISO()),
       todayISO,
       onDebug: (entry) => recordDebugEntry(entry),
       onChange: () => setMessages(session.messages),

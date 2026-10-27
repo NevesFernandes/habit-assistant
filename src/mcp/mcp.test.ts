@@ -4,10 +4,20 @@
 // reaches dataStore.ts, whose imports carry no file extensions.
 // Run: npm run test:mcp
 import assert from "node:assert/strict";
-import { isISODate, isValidTimeZone, todayIn } from "./today.ts";
+import { isISODate, isValidTimeZone, localTodayISO, todayIn } from "../lib/today.ts";
 import { getDay, type DayItemView } from "./getDay.ts";
 import { handleMcpRequest, type McpDeps } from "./server.ts";
 import { DriveFileNotFoundError } from "./drive.ts";
+import {
+  addHabit,
+  addRecurringTaskChecklistItem,
+  pauseItem,
+  rolloverPersistentTasks,
+  setHabitDone,
+  setHabitValue,
+  updateHabit,
+  withTimeZone,
+} from "../lib/dataStore.ts";
 import { DEFAULT_CATEGORIES, type AppData, type Habit, type RecurringTask, type SingleTask } from "../types/models.ts";
 
 // --- today ---------------------------------------------------------------------------
@@ -18,6 +28,11 @@ assert.equal(todayIn("Europe/Lisbon", new Date("2026-07-01T23:30:00Z")), "2026-0
 assert.equal(todayIn("America/Sao_Paulo", new Date("2026-07-02T01:00:00Z")), "2026-07-01");
 assert.equal(isValidTimeZone("Europe/Lisbon"), true);
 assert.equal(isValidTimeZone("Lisbon"), false);
+// §62: the app's "today" is the device's own calendar date, not the UTC one.
+{
+  const lateEvening = new Date(2026, 6, 1, 23, 30); // 23:30 on 1 July, device-local
+  assert.equal(localTodayISO(lateEvening), "2026-07-01");
+}
 assert.equal(isISODate("2026-10-27"), true);
 assert.equal(isISODate("2026-02-30"), false);
 assert.equal(isISODate("27/10/2026"), false);
@@ -209,13 +224,25 @@ const deps: McpDeps = { loadData: async () => data, log: (event) => logged.push(
   assert.equal(body.groups[0].label, "Wake-up");
 }
 
-// No date and no time zone: ask, don't guess (and don't read Drive for nothing).
+// No date, and no time zone stated or stored: ask, don't guess.
+assert.equal((await callGetDay(deps, {})).body.status, "need_timezone");
+
+// §62: the app stores the device's time zone, so "today" needs no arguments…
 {
-  let reads = 0;
-  const counting: McpDeps = { loadData: async () => (reads++, data) };
-  const { body } = await callGetDay(counting, {});
-  assert.equal(body.status, "need_timezone");
-  assert.equal(reads, 0);
+  const zoned: McpDeps = { loadData: async () => ({ ...data, timeZone: "Pacific/Kiritimati" }) };
+  const { body } = await callGetDay(zoned, {});
+  assert.equal(body.status, "ok");
+  assert.equal(body.today, todayIn("Pacific/Kiritimati"));
+  assert.equal(body.date, body.today);
+  // …a time zone the user states wins over the stored one…
+  const stated = (await callGetDay(zoned, { timeZone: "Pacific/Pago_Pago" })).body;
+  assert.equal(stated.today, todayIn("Pacific/Pago_Pago"));
+  assert.notEqual(stated.today, body.today); // UTC+14 and UTC-11 are always a day apart
+}
+// …and a broken stored value is ignored rather than trusted.
+{
+  const broken: McpDeps = { loadData: async () => ({ ...data, timeZone: "Not/A_Zone" }) };
+  assert.equal((await callGetDay(broken, {})).body.status, "need_timezone");
 }
 
 assert.equal((await callGetDay(deps, { date: "tomorrow" })).body.status, "invalid_date");
@@ -232,6 +259,48 @@ assert.equal((await callGetDay(deps, { date: DAY, timeZone: "Lisbon" })).body.st
   assert.equal(isError, false);
   assert.equal(body.status, "no_data_file");
   assert.match(body.message, /habitassistant\.app/);
+}
+
+// --- Compatibility with the app ---------------------------------------------------------
+// The app and the connector share one file. Every app-side write goes through dataStore's
+// spread-based functions, so fields one side doesn't know (a newer app's, BYOK settings)
+// and the stored time zone must survive any sequence of them, through JSON, unchanged.
+{
+  const shared = {
+    ...data,
+    timeZone: "Europe/Lisbon",
+    byokSettings: { activeProvider: null, keys: {} },
+    ttsEnabledByDevice: { "device-1": true },
+    someFutureField: { kept: true },
+  } as AppData;
+  const steps: [string, (d: AppData) => AppData][] = [
+    ["setHabitDone", (d) => setHabitDone(d, "Read", DAY, true)],
+    ["setHabitValue", (d) => setHabitValue(d, "Water", DAY, 8)],
+    ["addHabit", (d) => addHabit(d, { name: "Stretch hamstrings", categoryId: "sports", dayPart: "morning", recurrence: { type: "daily" }, startDate: DAY })],
+    ["updateHabit", (d) => updateHabit(d, "Read", { newImportant: true })],
+    ["pauseItem", (d) => pauseItem(d, "habit", "Gym", { from: "2026-10-28" }, DAY)],
+    ["addRecurringTaskChecklistItem", (d) => addRecurringTaskChecklistItem(d, "shop", "Bread", DAY)],
+    ["rolloverPersistentTasks", (d) => rolloverPersistentTasks(d, DAY)],
+    ["withTimeZone (same zone)", (d) => withTimeZone(d, "Europe/Lisbon")],
+  ];
+  let file: AppData = JSON.parse(JSON.stringify(shared));
+  for (const [name, step] of steps) {
+    file = JSON.parse(JSON.stringify(step(file))); // what Drive stores between the two sides
+    const extra = file as AppData & { someFutureField?: unknown };
+    assert.equal(file.timeZone, "Europe/Lisbon", `${name} kept timeZone`);
+    assert.deepEqual(extra.someFutureField, { kept: true }, `${name} kept an unknown field`);
+    assert.deepEqual(file.byokSettings, shared.byokSettings, `${name} kept byokSettings`);
+    assert.deepEqual(file.ttsEnabledByDevice, shared.ttsEnabledByDevice, `${name} kept ttsEnabledByDevice`);
+  }
+  // The connector reads the result exactly as the app would show it.
+  const items = getDay(file, DAY, DAY).groups.flatMap((group) => group.items);
+  assert.equal(byName(items, "Read").done, true);
+  assert.equal(byName(items, "Read").important, true);
+  assert.equal(byName(items, "Water").done, true);
+  assert.ok(items.some((item) => item.name === "Stretch hamstrings"));
+  // withTimeZone writes only on a change: same reference when the zone already matches.
+  assert.equal(withTimeZone(file, "Europe/Lisbon"), file);
+  assert.equal(withTimeZone(file, "America/Sao_Paulo").timeZone, "America/Sao_Paulo");
 }
 
 // Logs carry status and timing only, never item data.

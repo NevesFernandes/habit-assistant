@@ -253,6 +253,7 @@ export async function sendMessage(
   categories?: Category[],
   hasPendingConfirmation?: boolean,
   weekStartsOn?: WeekStart,
+  todayISO?: string,
 ): Promise<AgentResponse> {
   const payload = JSON.stringify({
     messages: history,
@@ -260,6 +261,7 @@ export async function sendMessage(
     categories,
     hasPendingConfirmation: hasPendingConfirmation || undefined,
     weekStartsOn: weekStartsOn || undefined,
+    todayISO, // §62: the device's local date; the server's own is UTC
   });
   const { ok, status, body } = await sendWithRetry(payload);
   if (!ok) {

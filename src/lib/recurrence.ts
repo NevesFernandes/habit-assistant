@@ -12,6 +12,7 @@ import type {
   WeekStart,
 } from "../types/models";
 import { compareForDay } from "./dayParts.ts";
+import { localTodayISO } from "./today.ts";
 
 // occursOn only ever reads startDate/endDate/recurrence — fields Habit and
 // RecurringTask both carry — so it's typed structurally rather than to Habit
@@ -216,8 +217,9 @@ export function getRecurringTasksForDate(tasks: RecurringTask[], dateISO: string
     .sort(compareForDay);
 }
 
+/** §62: the device's local date, not the UTC one (which flips at the wrong hour away from UTC). */
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayISO();
 }
 
 /**
