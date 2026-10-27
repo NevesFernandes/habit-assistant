@@ -11,7 +11,8 @@
 // §58: what used to be one "modify" family is three — edit (the update tools), progress
 // (mark done, log an amount) and schedule (pause, resume, archive) — so that no single
 // family comes near Groq's free-tier request limit.
-export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist";
+// §66: "history" reads what was done, missed or is coming up over a period; it changes nothing.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -104,6 +105,18 @@ const AMOUNT_CHANGE_VERBS = ["increase", "decrease", "adjust", "update", "change
 const LOG_VERBS = ["log", "logged", "record", "recorded", "did", "drank", "read for", "walked", "ran", "meditated", "finished", "completed", "done with", "practiced", "studied", "tracked"];
 const DURATION_WORDS = ["minute", "minutes", "hour", "hours", "glass", "glasses", "page", "pages", "rep", "reps", "mile", "miles", "step", "steps", "cup", "cups", "time", "times"];
 
+// §66: questions about a period — how it went, what was missed, when something was last
+// done, what's coming up. Questions only: "I did my stretching" is a report (progress).
+const HISTORY_PATTERNS: RegExp[] = [
+  /\bhow (?:did|have|has|was|were) (?:i|my|it|the)\b[\s\S]*\b(?:go|going|do|doing|done|been|week|month|day|year)\b/,
+  /\bwhen did i last\b/, /\bwhen was the last time\b/, /\bthe last time i\b/,
+  /\bhow (?:many times|often) (?:did|have|do) i\b/,
+  /\bwhat (?:did|have) i (?:miss|missed|skip|skipped|forget|forgotten|do|done|achieve|achieved)\b/,
+  /\bdid i\b[\s\S]*\b(?:yesterday|last week|this week|last month|this month|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/,
+  /\b(?:my|the) history\b/, /\b(?:recap|review|summary of) (?:my|the|this|last)\b/,
+  /\bwhat(?:'s| is| do i have)\b[\s\S]*\b(?:this|next|coming) (?:week|month)\b/, /\bplan (?:my|the) (?:week|month)\b/,
+];
+
 export function classifyIntent(rawText: string): ClassifyIntentResult {
   const text = rawText.toLowerCase();
 
@@ -144,6 +157,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   const marksDone = MARK_DONE_PATTERN.test(text);
   const hasLogVerb = matchesAny(text, LOG_VERBS);
   const hasNumberOrDuration = /\d/.test(text) || matchesAny(text, DURATION_WORDS);
+  const asksHistory = HISTORY_PATTERNS.some((pattern) => pattern.test(text));
 
   const buckets = new Set<IntentBucket>();
 
@@ -177,14 +191,16 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // names the goal, which only an edit can change.
   const amountWithChangeVerb =
     matchesAny(text, AMOUNT_CHANGE_VERBS) && hasNumberOrDuration && !matchesAny(text, ["goal", "target"]);
-  if (marksDone || (hasLogVerb && hasNumberOrDuration) || amountWithChangeVerb) buckets.add("progress");
+  if (marksDone || (hasLogVerb && hasNumberOrDuration && !asksHistory) || amountWithChangeVerb) buckets.add("progress");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous
   // between marking a habit done ("progress") and a checklist-type habit's
   // item ("checklist") — the router can't see the user's actual data to know
   // which, so send both rather than guess.
-  if (hasLogVerb && !hasNumberOrDuration && !hasListNoun && !hasCheckVerb) {
+  if (asksHistory) buckets.add("history");
+
+  if (hasLogVerb && !hasNumberOrDuration && !hasListNoun && !hasCheckVerb && !asksHistory) {
     buckets.add("progress");
     buckets.add("checklist");
   }

@@ -16,13 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §66 — History over a date range
-Read what happened over a period, not just one day: "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what did I miss this week?", "plan my week". Today the connector's `get_day` reads one day per call, so a week costs seven calls and a month is impractical.
-
-- Built in `src/lib` (one function the app and the connector share), on `occursOn` and the completion log, so "due", "done" and "missed" mean the same as everywhere else.
-- Connector (inputs ready, 2026-10-27): `get_history` (`from`, `to`, optional item or `type`) is in the tool list and answers `not_available` until this is built. It also feeds §65's summaries and exports ("my October as a spreadsheet").
-- App: whether the app's chat gets the same ("how did my week go?") is to decide.
-
 ### §67 — A note on a completion
 "Mark run done, 5 km, legs tired": a short note kept with that day's completion, like a journal line, shown with the day in the app.
 

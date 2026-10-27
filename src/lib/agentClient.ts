@@ -160,6 +160,12 @@ export interface SetRecurringTaskDoneToolCall {
   input: SetDoneInput;
 }
 
+// §66: reads only; the app writes the reply.
+export interface GetHistoryToolCall {
+  name: "getHistory";
+  input: { from: string; to: string; name?: string; categoryId?: string };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -186,7 +192,8 @@ export type AgentToolCall =
   | RemoveChecklistItemsToolCall
   | RemoveTaskChecklistToolCall
   | SetHabitDoneToolCall
-  | SetRecurringTaskDoneToolCall;
+  | SetRecurringTaskDoneToolCall
+  | GetHistoryToolCall;
 
 export interface AgentResponse {
   reply?: string;

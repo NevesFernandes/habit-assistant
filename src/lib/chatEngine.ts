@@ -65,6 +65,10 @@ import { currentPause, isFutureDate, isPaused, occursOn, upcomingPause } from ".
 import { computeHabitStats, isHabitEntryComplete } from "./habitStats";
 import { recurringTaskChecklistOn, removableRecurringTaskChecklistItems } from "./recurringChecklist";
 import { currentHabitChecklist, habitChecklistOn } from "./habitChecklist";
+import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "./history";
+import { describeHistory } from "./historyReply";
+import { rolloverPersistentTasks } from "./dataStore";
+import { isISODate } from "./today";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
@@ -385,6 +389,8 @@ export class ChatSession {
       await this.handleRemoveChecklistItems(toolCall.input, toolCall);
     } else if (toolCall.name === "removeTaskChecklist") {
       await this.handleRemoveTaskChecklist(toolCall.input, toolCall);
+    } else if (toolCall.name === "getHistory") {
+      this.handleGetHistory(toolCall.input, toolCall);
     }
   }
 
@@ -1087,6 +1093,39 @@ export class ChatSession {
 
   // §56: takes the checklist itself off a task, which stays as a plain task. Asks first
   // when the list still has items, since they go with it.
+  // §66: what was done, missed or is coming up over a period; reads only. The same
+  // getHistory as the Claude connector's get_history, with the reply worded here.
+  private handleGetHistory(input: { from: string; to: string; name?: string; categoryId?: string }, toolCall: ToolCallRef) {
+    const { from, to } = input;
+    if (!isISODate(from) || !isISODate(to) || to < from) {
+      this.pushAssistantMessage("I couldn't work out which days you meant. Could you say the period again?", toolCall);
+      return;
+    }
+    if (historyRangeDays(from, to) > HISTORY_MAX_DAYS) {
+      this.pushAssistantMessage(`That's more than a year. Ask about a shorter period, or one item.`, toolCall);
+      return;
+    }
+    const stored = this.deps.getData();
+    if (!stored) return;
+    let single: Habit | RecurringTask | SingleTask | undefined;
+    if (input.name?.trim() || this.forcedPick) {
+      const selector = { name: input.name ?? "", categoryId: input.categoryId };
+      const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
+      single = this.pickItem(kind, selector, toolCall) ?? undefined;
+      if (!single) return;
+    }
+    const today = this.todayISO;
+    // As the Today tab shows it: unfinished one-off tasks already carried over to today.
+    const data = rolloverPersistentTasks(stored, today);
+    const items = single ? itemsOf(data, single.kind).filter((item) => item.id === single.id) : undefined;
+    const history = getHistory(data, from, to, today, items, { keepEmpty: !!single });
+    const flexibleOf = (id: string) => {
+      const habit = data.habits.find((h) => h.id === id);
+      return habit?.recurrence.type === "timesPerPeriod" ? habit.recurrence.period : undefined;
+    };
+    this.pushAssistantMessage(describeHistory(history, flexibleOf, single ? { name: single.name } : undefined), toolCall);
+  }
+
   private async handleRemoveTaskChecklist(input: ItemSelector, toolCall: ToolCallRef) {
     const kind = this.resolveChecklistOwnerKind(input);
     if (!kind) {

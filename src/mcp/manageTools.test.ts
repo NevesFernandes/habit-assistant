@@ -187,7 +187,7 @@ const fresh = () => {
   assert.equal((await callTool({ store: noZone }, "more_actions", { action: "add_category", args: { name: "X" } })).body.status, "need_timezone");
 }
 
-// --- Inputs frozen ahead of §66, §67, §68 (not built yet) -----------------------------------
+// --- Inputs frozen ahead of §67, §68 (not built yet) -----------------------------------
 
 {
   const { store, call } = fresh();
@@ -202,9 +202,29 @@ const fresh = () => {
   assert.equal((await call("schedule", { op: "skip", name: "gym" })).status, "not_available");
   assert.equal((await call("schedule", { op: "skip", name: "gym", date: "soon" })).status, "invalid_date");
   assert.equal(store.version(), version);
-  // §66
-  assert.equal((await call("get_history", { from: addDays(TODAY, -7), to: TODAY })).status, "not_available");
+}
+
+// --- get_history (§66) ----------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const version = store.version();
+  const week = await call("get_history", { from: addDays(TODAY, -2), to: TOMORROW });
+  assert.equal(week.status, "ok");
+  const read = week.items.find((i: { id: string }) => i.id === "Read");
+  assert.deepEqual([read.done, read.missed, read.upcoming], [3, 0, 1]);
+  const floss = week.items.find((i: { id: string }) => i.id === "Floss");
+  assert.deepEqual([floss.done, floss.missed, floss.lastDone], [1, 1, addDays(TODAY, -1)]); // today is still open
+  assert.equal(week.days.at(-1).date, TOMORROW);
+  // One item by name; "when did I last…" reaches before the range.
+  const one = await call("get_history", { from: TODAY, to: TODAY, name: "floss" });
+  assert.deepEqual([one.items.length, one.items[0].lastDone], [1, addDays(TODAY, -1)]);
+  assert.equal((await call("get_history", { from: TODAY, to: TODAY, type: "recurringTask" })).items[0].id, "bins");
+  assert.equal((await call("get_history", { from: TODAY, to: TODAY, name: "juggling" })).status, "not_found");
   assert.equal((await call("get_history", { from: "last week", to: TODAY })).status, "invalid_date");
+  assert.equal((await call("get_history", { from: TODAY, to: addDays(TODAY, -1) })).status, "invalid_date");
+  assert.equal((await call("get_history", { from: addDays(TODAY, -400), to: TODAY })).status, "rejected");
+  assert.equal(store.version(), version); // read-only
 }
 
 console.log("mcp manage tools: all assertions passed");

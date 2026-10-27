@@ -114,6 +114,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   // must not be left with only the tools that delete the whole task.
   { name: "removeChecklistItems", buckets: ["checklist", "delete"], listBlurb: "take one or more items off a task's or a checklist habit's checklist." },
   { name: "removeTaskChecklist", buckets: ["checklist", "delete"], listBlurb: "remove the whole checklist from a task, leaving a plain task." },
+  { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
 ];
 
 function activeManifestEntries(activeBuckets: IntentBucket[] | "all"): ToolManifestEntry[] {
@@ -138,7 +139,7 @@ function buildActionsList(manifestEntries: ToolManifestEntry[]): string {
   return `You can take these actions:\n${lines.join("\n")}`;
 }
 
-const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something. Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
+const GENERAL_POLICY = `Only call a tool when the user is clearly and explicitly asking you to add, create, delete, or change something, or asks how a period went (getHistory). Do NOT call a tool in response to general statements, feedback, complaints, or corrections about something you already did (for example: "that was wrong", "I have one task", "you added the wrong thing") — reply in plain text instead and ask what they'd actually like.
 
 Only ever offer the user actions from the list above, and only for the kind of item each one applies to. Never suggest something you have no tool for.
 
@@ -236,6 +237,9 @@ For all three create tools: a category the user names always wins over your own 
 For both task tools: a task can carry a checklist inside it (e.g. a shopping list). Set withChecklist to true when the user asks for one ("with a checklist", "a shopping list for Friday"), and put any items they name in checklistItems. Otherwise leave both out. The checklist never affects whether the task itself is done.`;
 }
 
+// §66
+const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "what did I miss yesterday?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. Never answer such a question from memory: you can't see the user's data.`;
+
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
 // prose to only what the classifier is confident the message needs — see
 // §24 in Roadmap.md. "all" (the classifier's fallback sentinel) sends every
@@ -268,6 +272,7 @@ export function buildSystemPrompt(
   if (has("checklist") || has("delete")) chunks.push(REMOVE_CHECKLIST_PROSE);
   if (has("create")) chunks.push(buildCreateProse(categoryList));
   if (has("create") || has("edit")) chunks.push(DAY_PART_PROSE);
+  if (has("history")) chunks.push(HISTORY_PROSE);
 
   chunks.push(
     "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
@@ -1017,6 +1022,21 @@ export function buildTools(
       },
     },
     {
+      name: "getHistory",
+      description:
+        "Show the user what was done, missed or paused over a period, or what's coming up. Reads only. Use for 'how did my week go?', 'when did I last…', 'what did I miss?', 'what's on next week?'.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "First day, ISO date (YYYY-MM-DD)." },
+          to: { type: "string", description: "Last day, ISO date (YYYY-MM-DD). Same as from for one day." },
+          name: { type: "string", description: "Optional. Fragment of one item's name, when the user asked about one item." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+        },
+        required: ["from", "to"],
+      },
+    },
+    {
       name: "removeTaskChecklist",
       description:
         "Remove the whole checklist from a one-off or recurring task, leaving a plain task. Use for 'remove the checklist from the shopping task' or 'clear my shopping list'. The task itself is never deleted.",
@@ -1041,7 +1061,7 @@ export function buildTools(
   return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
 }
 
-export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist"];
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history"];
 
 const FAMILY_BLURBS: Record<IntentBucket, string> = {
   create: "add a new habit or task",
@@ -1050,6 +1070,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   schedule: "pause, resume or archive",
   delete: "delete whole habits or tasks",
   checklist: "add, tick or remove checklist items, or remove a checklist",
+  history: "look at what was done, missed or is coming up over a period",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");

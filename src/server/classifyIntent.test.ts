@@ -100,6 +100,14 @@ const cases: Case[] = [
   ["let unticked items on my shopping list carry over", ["edit"]],
   // §55 still wins for a field: an edit, with no checklist tools.
   ["remove the notes from my shopping list", ["edit"]],
+  // §66: questions about a period, never a report of progress.
+  ["how did my week go?", ["history"]],
+  ["when did I last go to the dentist?", ["history"]],
+  ["how many times did I run in October?", ["history"]],
+  ["what did I miss yesterday?", ["history"]],
+  ["did I floss last week?", ["history"]],
+  ["what's on next week?", ["history"]],
+  ["I did my stretching yesterday", ["progress", "checklist"]],
 ];
 
 let failures = 0;

@@ -66,7 +66,7 @@ npm run typecheck
 npm run build
 ```
 
-**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`, `test:mcp`. Run them with, for example, `npm run test:pause`. `test:mcp` also replays the chat scenarios the Claude connector covers as tool calls (`src/mcp/scenarios.test.ts`): same fixtures and data checks, no model. When a connector tool gains a behaviour that has a chat scenario, port the scenario there too.
+**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`, `test:history`, `test:mcp`. Run them with, for example, `npm run test:pause`. `test:mcp` also replays the chat scenarios the Claude connector covers as tool calls (`src/mcp/scenarios.test.ts`): same fixtures and data checks, no model. When a connector tool gains a behaviour that has a chat scenario, port the scenario there too.
 
 **Chat scenario tests** play scripted conversations against a *real* model with no browser and no Google login. They drive the same chat engine the app uses (`src/lib/chatEngine.ts`), with fixture data from `tests/chat/fixtures/*.json`.
 
@@ -112,6 +112,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 | `src/lib/driveClient.ts` | Drive API calls, with write-conflict detection |
 | `src/lib/recurrence.ts` | `occursOn()`: the single answer to "is this item due on this date?" |
 | `src/lib/habitStats.ts` | Streaks, completion %, period counts, heatmap data |
+| `src/lib/history.ts`, `historyReply.ts` | §66: what was done, missed or is coming up over a period; the app chat's reply text |
 | `src/server/handleAgentRequest.ts` | Tool schemas, system prompt, provider failover chain |
 | `src/server/classifyIntent.ts` | Narrows which tool families are sent to the model, per message (sizes: `npm run measure:payload`) |
 | `src/server/providers/` | One adapter per LLM provider |
