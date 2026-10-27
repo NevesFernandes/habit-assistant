@@ -16,16 +16,16 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-## Next
+### §75 — Bulk actions in the app's chat
+"Mark all my morning habits done", "pause everything in Sports for a week." In Claude this already works (`get_day`/`find_items` give the ids, and `set_done` takes several). The app's chat only applies one change to several items when the user picks them from a "which one?" list ("all"); a filter by part of the day, category or kind would bring it level.
 
 ### §72 — Export
 "Give me my October as a spreadsheet": history for a period as a file. The data is already the user's own JSON in Drive; this is about a readable table. In Claude, Claude can build the file from §66's history; in the app, a download. Depends on §66.
 
+## Next
+
 ### §74 — Calendar sync
 "Put today's tasks in my calendar." In Claude this already works with no code: Claude combines this connector with a calendar connector. An app-side version would need a Google Calendar scope on top of `drive.file`, which widens what the app asks for at sign-in; weigh that before building. `help.html` already mentions the Claude combination ("what's on today, habits and calendar?").
-
-### §75 — Bulk actions in the app's chat
-"Mark all my morning habits done", "pause everything in Sports for a week." In Claude this already works (`get_day`/`find_items` give the ids, and `set_done` takes several). The app's chat only applies one change to several items when the user picks them from a "which one?" list ("all"); a filter by part of the day, category or kind would bring it level.
 
 ### §76 — Habit packs
 "Set me up a morning routine": a ready-made set of items created in one go. In Claude this already works (several `create_item` calls). For the app, either the same through its chat or a small set of templates; to decide.
