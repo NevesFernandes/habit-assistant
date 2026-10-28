@@ -271,7 +271,7 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 {
   const { store, deps } = fresh();
   const created = (
-    await callTool(deps, "create_item", {
+    await callTool(deps, "create_items", {
       type: "habit",
       name: "Drink water",
       userMessage: "add a habit to drink 8 glasses of water every day",
@@ -294,7 +294,7 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 
   // A category that doesn't exist falls back to Other, and says so.
   const other = (
-    await callTool(deps, "create_item", { type: "habit", name: "Juggle", userMessage: "add juggling", category: "Circus", dayPart: "afternoon", recurrence: "times:3/week" })
+    await callTool(deps, "create_items", { type: "habit", name: "Juggle", userMessage: "add juggling", category: "Circus", dayPart: "afternoon", recurrence: "times:3/week" })
   ).body;
   assert.equal(other.item.category, "Other");
   assert.match(other.confirmation, /Assumed: .*Other/);
@@ -304,7 +304,7 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 {
   const { store, deps } = fresh();
   const create = (args: Record<string, unknown>) =>
-    callTool(deps, "create_item", { userMessage: "add it", dayPart: "morning", category: "Health", ...args });
+    callTool(deps, "create_items", { userMessage: "add it", dayPart: "morning", category: "Health", ...args });
   assert.equal((await create({ type: "habit", name: "Run", recurrence: "daily", completionType: "value" })).body.status, "need_info");
   assert.equal((await create({ type: "habit", name: "Routine", recurrence: "daily", completionType: "checklist", checklistItems: [" "] })).body.status, "need_info");
   assert.equal((await create({ type: "habit", name: "Run", recurrence: "sometimes" })).body.status, "invalid_recurrence");
@@ -318,11 +318,11 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 {
   const { store, deps } = fresh();
   const args = { type: "habit", name: "read", userMessage: "add a habit to read", category: "Study", dayPart: "evening", recurrence: "daily" };
-  const asked = (await callTool(deps, "create_item", args)).body;
+  const asked = (await callTool(deps, "create_items", args)).body;
   assert.equal(asked.status, "needs_confirm");
   assert.match(asked.question, /already/i);
   assert.equal(store.version(), 1);
-  assert.equal((await callTool(deps, "create_item", { ...args, confirmDuplicate: true })).body.status, "ok");
+  assert.equal((await callTool(deps, "create_items", { ...args, confirmDuplicate: true })).body.status, "ok");
   assert.equal(store.file().habits.filter((h) => h.name.toLowerCase() === "read").length, 2);
 }
 
@@ -330,14 +330,14 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 {
   const { store, deps } = fresh({ ...fixture(), timeZone: "Pacific/Pago_Pago" });
   const today = todayIn("Pacific/Pago_Pago"); // UTC-11: before 11:00 UTC, the day before UTC's
-  const task = (await callTool(deps, "create_item", { type: "singleTask", name: "Post parcel", userMessage: "post the parcel", dayPart: "workDay" })).body;
+  const task = (await callTool(deps, "create_items", { type: "singleTask", name: "Post parcel", userMessage: "post the parcel", dayPart: "workDay" })).body;
   assert.equal(task.item.startDate, today);
   const later = (
-    await callTool(deps, "create_item", { type: "singleTask", name: "Pick up suit", userMessage: "pick up suit", dayPart: "afternoon", startDate: addDays(today, 2) })
+    await callTool(deps, "create_items", { type: "singleTask", name: "Pick up suit", userMessage: "pick up suit", dayPart: "afternoon", startDate: addDays(today, 2) })
   ).body;
   assert.equal(later.item.startDate, addDays(today, 2));
   const shop = (
-    await callTool(deps, "create_item", {
+    await callTool(deps, "create_items", {
       type: "recurringTask",
       name: "Weekly shop",
       userMessage: "a weekly shopping task every saturday with milk and eggs",
@@ -355,7 +355,7 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 
 {
   const { store, deps } = fresh();
-  const update = (args: Record<string, unknown>) => callTool(deps, "update_item", args);
+  const update = (args: Record<string, unknown>) => callTool(deps, "update_items", args);
 
   const moved = (await update({ name: "read", newDayPart: "morning", newImportant: true })).body;
   assert.equal(moved.status, "ok");
@@ -398,16 +398,16 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
 {
   const { store, deps } = fresh({ ...fixture(), timeZone: undefined });
   assert.equal((await callTool(deps, "get_day", {})).body.status, "need_timezone");
-  const set = (await callTool(deps, "set_time_zone", { timeZone: "Asia/Tokyo" })).body;
+  const set = (await callTool(deps, "settings", { timeZone: "Asia/Tokyo" })).body;
   assert.deepEqual([set.status, set.today, set.changed], ["ok", todayIn("Asia/Tokyo"), true]);
   assert.equal(store.file().timeZone, "Asia/Tokyo");
   // It sticks: later calls need no zone, and today is Tokyo's.
   assert.equal((await callTool(deps, "get_day", {})).body.today, todayIn("Asia/Tokyo"));
   // The same zone again writes nothing; a made-up one is refused.
   const version = store.version();
-  assert.equal((await callTool(deps, "set_time_zone", { timeZone: "Asia/Tokyo" })).body.changed, false);
+  assert.equal((await callTool(deps, "settings", { timeZone: "Asia/Tokyo" })).body.changed, false);
   assert.equal(store.version(), version);
-  const bad = await callTool(deps, "set_time_zone", { timeZone: "Tokyo" });
+  const bad = await callTool(deps, "settings", { timeZone: "Tokyo" });
   assert.deepEqual([bad.isError, bad.body.status], [true, "invalid_time_zone"]);
   assert.deepEqual((store.file() as AppData & { someFutureField?: unknown }).someFutureField, { kept: true });
 }

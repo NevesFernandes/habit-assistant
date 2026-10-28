@@ -39,7 +39,7 @@ import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
 import { planBulk, planBulkEdit, type BulkAction, type BulkFilter } from "../lib/bulk.ts";
 import { planUndo } from "../lib/undo.ts";
-import { applyPack, describePackAdded, describePackPreview, PACK_MAX_ITEMS, planPack, type PackItem } from "../lib/pack.ts";
+import { applyPack, describePackAdded, describePackPreview, planPack, type PackItem } from "../lib/pack.ts";
 import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
 import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
 import { isDayPart } from "../lib/dayParts.ts";
@@ -70,7 +70,7 @@ function quotedAnd(texts: string[]): string {
 
 export type ChecklistOp = "add" | "tick" | "untick" | "remove" | "remove_all";
 
-/** Which items a checklist operation can act on: adding is for tasks (a habit's steps change through update_item); the rest need a list. */
+/** Which items a checklist operation can act on: adding is for tasks (a habit's steps change through update_items); the rest need a list. */
 export const canTakeChecklistOp = (op: ChecklistOp) => (item: AnyItem) => (op === "add" ? item.kind !== "habit" : hasChecklist(item));
 
 export function checklistIneligible(op: ChecklistOp, items: AnyItem[]): Refusal {
@@ -78,7 +78,7 @@ export function checklistIneligible(op: ChecklistOp, items: AnyItem[]): Refusal 
   if (op === "add" && item.kind === "habit") {
     return {
       status: "rejected",
-      message: `"${item.name}" is a habit: its steps change with update_item's newChecklistItems (the whole new list), from today on.`,
+      message: `"${item.name}" is a habit: its steps change with update_items' newChecklistItems (the whole new list), from today on.`,
     };
   }
   return { status: "rejected", message: `"${item.name}" doesn't have a checklist.` };
@@ -279,7 +279,7 @@ export function planUnarchive(item: Habit | RecurringTask, todayISO: string): Re
     return {
       status: "rejected",
       message: item.endDate
-        ? `"${item.name}" isn't archived: it runs until ${formatDate(item.endDate, todayISO)}. To keep it going, remove the end date (update_item, newEndDate "").`
+        ? `"${item.name}" isn't archived: it runs until ${formatDate(item.endDate, todayISO)}. To keep it going, remove the end date (update_items, newEndDate "").`
         : `"${item.name}" isn't archived.`,
     };
   }
@@ -377,28 +377,21 @@ export function planSkip(data: AppData, item: Habit | RecurringTask, dateISO: st
   };
 }
 
-// --- more_actions ----------------------------------------------------------------------
-// §61: claude.ai keeps the tool list it fetched when the user connected, and there's no way
-// for users to refresh it short of reconnecting. So the tool list is fixed at launch, and
-// anything added later becomes an action here: Claude lists the actions (with their rules)
-// at run time and runs one. Never put a destructive action here; it would share this tool's
-// "always allow" with everything else (deletes stay in delete_items). The one considered
-// exception is `undo` (§70): it only restores the state from just before Claude's own last
-// change, and refuses when anything touched those items since.
+// --- handlers ----------------------------------------------------------------------------
+// The work behind parts of several tools (categories, notes, unskip, unarchive, settings, what
+// did I miss, export, packs, bulk, undo, undoing a stats reset). Until §80 Claude reached them
+// through one `more_actions` tool; now the tool each belongs to calls it (server.ts's
+// runHandler): a result to return as is, a refusal, or a change to save.
 
-export interface MoreAction {
-  description: string;
-  args: Record<string, string>;
+export interface Handler {
   run: (data: AppData, args: Record<string, unknown>, todayISO: string) => { result: Record<string, unknown> } | Refusal | Change;
 }
 
 /** §72: the most rows the connector's export returns at once; the app's has no cap. */
 export const EXPORT_MAX_ROWS = 3000;
 
-export const MORE_ACTIONS: Record<string, MoreAction> = {
+export const HANDLERS: Record<string, Handler> = {
   list_categories: {
-    description: "The user's categories, with how many habits and tasks use each.",
-    args: {},
     run: (data) => ({
       result: {
         categories: data.categories.map((category) => ({
@@ -410,9 +403,6 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
     }),
   },
   add_category: {
-    description:
-      "Adds a category for habits and tasks. The app gives it a plain icon; the user can pick another in the app's Categories tab. Refused when one with that name exists.",
-    args: { name: "string, required" },
     run: (data, args) => {
       const name = typeof args.name === "string" ? args.name.trim() : "";
       if (!name) return { status: "need_info", message: "Ask the user what to call the category." };
@@ -425,17 +415,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §64: reset_stats froze at launch; undoing a reset came later. Undoing only restores
-  // counting dates (history is never touched), so it isn't destructive.
+  // §64: reset_stats' `undo`. It only restores counting dates; history is never touched.
   undo_reset_stats: {
-    description:
-      'Undoes the last stats reset, so the stats count from where they did before: "undo the reset of my gym stats", "undo the stats reset". Scope as reset_stats: one item (id or name), a category (category), or everything (neither).',
-    args: {
-      id: "string, one item's id (or name)",
-      name: "string, one item's name in the user's words",
-      category: "string, a category's name",
-      type: '"habit", "recurringTask" or "singleTask", only this kind',
-    },
     run: (data, args, todayISO) => {
       const id = typeof args.id === "string" ? args.id : undefined;
       const name = typeof args.name === "string" ? args.name : undefined;
@@ -469,11 +450,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §77: schedule's `resume` also does it; this names it for "unarchive gym".
+  // §77: schedule's `unarchive` (its `resume` does the same for an archived item).
   unarchive: {
-    description:
-      'Brings back an archived habit or recurring task: due again from today, and the days it was archived count as paused, not missed. "unarchive gym", "bring back my reading habit". Archived items show in find_items with includeInactive.',
-    args: { id: "string, the item's id (or name)", name: "string, the item's name in the user's words (or id)" },
     run: (data, args, todayISO) => {
       const id = typeof args.id === "string" ? args.id : undefined;
       const name = typeof args.name === "string" ? args.name : undefined;
@@ -488,29 +466,18 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       return planUnarchive(item, todayISO);
     },
   },
-  // §70: Claude's own last change. It only puts back the state from just before that change,
-  // and refuses if anything touched those items since, so no data made afterwards is lost:
-  // not a destructive action, though undoing a create removes the item just created.
+  // §70: the undo tool: Claude's own last change. It only puts back the state from just before
+  // that change, and refuses if anything touched those items since, so no data made afterwards
+  // is lost; still marked destructive (§80), as undoing a create removes the item just created.
   undo: {
-    description:
-      'Undoes the last change made through Habit Assistant from Claude, today: "undo that", "take that back". Any change, a delete included (the item comes back with its history). Refused if those items changed since (in the app or here), or if it was made on an earlier day. Changes made in the app can only be undone there. Tell the user what `message` says was put back.',
-    args: {},
     run: (data, _args, todayISO) => {
       const plan = planUndo(data, "claude", todayISO);
       if (plan.status === "rejected") return plan;
       return { status: "ok", recordUndo: false, apply: plan.apply, describe: () => ({ message: plan.message }) };
     },
   },
-  // §76: no templates: Claude builds the set for this user, the app's rules check it.
+  // §76: create_items with `items`. No templates: Claude builds the set, the app's rules check it.
   add_pack: {
-    description: `Adds several new items at once, made for this user: "set me up a morning routine", "help me get fit for a 10K". Build the set from what the user told you (goals, schedule, level); if the request is broad and you know nothing about them, ask one short question first. Usually 3 to 8 items, at most ${PACK_MAX_ITEMS}. Items the user already has are left out. The first call never adds anything: it returns status "needs_confirm" with the list as \`question\`; show it to the user, drop any items they don't want, and only after a yes call again with the remaining items and confirm: true.`,
-    args: {
-      name: 'string, what the set is, e.g. "a morning routine"',
-      items:
-        'array of {kind: "habit" | "recurringTask" | "singleTask", name, category (name), dayPart, recurrence (create_item\'s format; habits and recurring tasks), completionType, target, unit, checklistItems}',
-      startDate: "YYYY-MM-DD, only if the user named a later start",
-      confirm: "boolean, true only after the user agreed to the list",
-    },
     run: (data, args, todayISO) => {
       const raw = Array.isArray(args.items) ? (args.items as Record<string, unknown>[]) : [];
       if (raw.length === 0) return { status: "need_info", message: "Pass the items of the set in `items`." };
@@ -520,7 +487,7 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
         let recurrence;
         if (kind !== "singleTask" && item.recurrence !== undefined) {
           const parsed = parseCompactRecurrence(typeof item.recurrence === "string" ? item.recurrence : undefined);
-          if (!parsed.ok) return { status: "rejected", message: `"${String(item.name)}": ${parsed.error}. Use create_item's recurrence format.` };
+          if (!parsed.ok) return { status: "rejected", message: `"${String(item.name)}": ${parsed.error}. Use create_items' recurrence format.` };
           recurrence = parsed.rule;
         }
         const text = (key: string) => (typeof item[key] === "string" ? (item[key] as string) : undefined);
@@ -545,11 +512,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       return { status: "ok", apply: (d) => applyPack(d, plan, todayISO), describe: () => ({ message: describePackAdded(plan, todayISO) }) };
     },
   },
-  // §72: the app's export, as text for Claude to save. Capped: a tool result has to stay small.
+  // §72: get_history with format csv, as text for Claude to save. Capped: a tool result has to stay small.
   export: {
-    description:
-      'A period of the user\'s history as a CSV spreadsheet, the same file the app gives: one row per item per day where something applies (done, missed, paused, skipped, to do today, or a note). Give the CSV to the user as a downloadable file named `filename`, unchanged. Pass from and to only when the user named a period; if not, ask which one. "export my October", "give me last month as a spreadsheet".',
-    args: { from: "YYYY-MM-DD, required", to: "YYYY-MM-DD, required" },
     run: (data, args, todayISO) => {
       const from = typeof args.from === "string" && args.from ? args.from : undefined;
       const to = typeof args.to === "string" && args.to ? args.to : undefined;
@@ -564,26 +528,9 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       return { result: { from: file.from, to: file.to, filename: file.filename, rows: file.rows, columns: EXPORT_COLUMNS, csv: file.csv } };
     },
   },
-  // §75: set_done takes several ids, but skip, pause and resume take one, and nothing filters.
-  // Never a delete: this action shares more_actions' "always allow".
+  // §75/§78: several items by names or filters, for set_done, schedule and update_items. Never
+  // a delete: those tools don't ask first.
   apply_to_many: {
-    description:
-      'One action on several items at once: "mark all my morning habits done", "skip everything in Sports today", "pause my Work tasks for a week", "mark floss and water done", and (action "edit") one change to all of them: "move all my Sports habits to the evening", "make my gym habits Mon, Wed, Fri". action: done, undone, skip, pause, resume or edit; edit takes newDayPart, newImportant, newCategory and/or newRecurrence. Give names (each as the user said it) or filters (dayPart, category, kind). Items the action doesn\'t fit are left out and named in the message. With no names and no filter it means every item, and asks first: status "needs_confirm"; put the question to the user word for word, and only after a yes call again with confirm: true.',
-    args: {
-      action: '"done", "undone", "skip", "pause", "resume" or "edit", required',
-      newDayPart: "edit: the part of the day to move them to",
-      newImportant: "edit: boolean, mark them important or not",
-      newCategory: "edit: a category's name to put them in",
-      newRecurrence: "edit: how often they repeat from now on, in create_item's recurrence format",
-      names: "string[], items named by the user",
-      dayPart: '"wakeUp", "morning", "workDay", "afternoon", "evening" or "bedtime"',
-      category: "string, a category's name",
-      kind: '"habit", "recurringTask" or "singleTask"',
-      date: "YYYY-MM-DD, done/undone/skip: the day, defaults to today",
-      from: "YYYY-MM-DD, pause: first paused day, defaults to today",
-      resumeOn: "YYYY-MM-DD, pause: first day back; omit for open-ended",
-      confirm: "boolean, true only after the user said yes to doing every item",
-    },
     run: (data, args, todayISO) => {
       const actions: BulkAction[] = ["done", "undone", "skip", "pause", "resume"];
       const action = args.action === "edit" ? "edit" : actions.find((a) => a === args.action);
@@ -608,7 +555,7 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
         let recurrence;
         if (args.newRecurrence !== undefined) {
           const parsed = parseCompactRecurrence(typeof args.newRecurrence === "string" ? args.newRecurrence : undefined);
-          if (!parsed.ok) return { status: "rejected", message: `${parsed.error}. Use create_item's recurrence format.` };
+          if (!parsed.ok) return { status: "rejected", message: `${parsed.error}. Use create_items' recurrence format.` };
           recurrence = parsed.rule;
         }
         let newCategoryId: string | undefined;
@@ -646,11 +593,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §73: get_history froze at launch; the misses-only reading, with the same nudges as the app.
+  // §73: get_history with view missed, with the same nudges as the app.
   missed: {
-    description:
-      'Only what the user missed over a period, plus one-off tasks still carried over (not done since their day), and up to two suggestions to put to the user: "what did I miss?", "what did I miss last week?". Leave from and to out unless the user named a period: it then uses this week up to yesterday (last week on the week\'s first day), and `period` says so; tell the user which period it was. Never offer to mark the missed days done: the app looks forward.',
-    args: { from: "YYYY-MM-DD, optional", to: "YYYY-MM-DD, optional" },
     run: (data, args, todayISO) => {
       const given = (value: unknown) => (typeof value === "string" && value ? value : undefined);
       let from = given(args.from) ?? given(args.to);
@@ -678,12 +622,9 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §69: the app's two chat-changeable settings. Claude has no device of its own, so
-  // read-aloud changes on every device (and any added later).
+  // §69: the settings tool. Claude has no device of its own, so read-aloud changes on every
+  // device (and any added later).
   settings: {
-    description:
-      'Shows the app\'s settings, or changes them: the first day of the week ("start my week on Monday") and reading replies aloud in the Habit Assistant app ("turn off read-aloud", for every device). With no args it shows them. API keys, the chat provider and voice transcription are changed in the app\'s Settings, never by chat: never ask for a key.',
-    args: { weekStartsOn: '"sunday" or "monday"', readAloud: "boolean" },
     run: (data, args) => {
       const weekStart = args.weekStartsOn === "monday" ? 1 : args.weekStartsOn === "sunday" ? 0 : undefined;
       if (args.weekStartsOn !== undefined && weekStart === undefined) {
@@ -716,10 +657,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §68: skipping is schedule's `skip` op, frozen at launch; taking one back came later.
+  // §68: schedule's `unskip`.
   unskip: {
-    description: 'Takes back a skipped day (today or later) of a habit or recurring task: "unskip gym", "actually I\'ll run today".',
-    args: { id: "string, the item's id (or name)", name: "string, the item's name in the user's words (or id)", date: "YYYY-MM-DD, defaults to today" },
     run: (data, args, todayISO) => {
       const date = typeof args.date === "string" && args.date ? args.date : todayISO;
       if (!isISODate(date)) return { status: "rejected", message: `"${date}" is not a YYYY-MM-DD date.` };
@@ -741,17 +680,9 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       };
     },
   },
-  // §67: notes also come with set_done and log_progress; this is for a note on its own,
-  // changing one, or removing one (like clearing a field with update_item).
+  // §67: the set_note tool. Notes also come with set_done and log_progress; this is for a
+  // note on its own, changing one, or removing one.
   set_note: {
-    description:
-      'Adds, replaces or removes the note on one day of an item, without marking anything: "add a note to today\'s run: legs tired", "note for tomorrow\'s gym: bring a towel", "remove the note from yesterday\'s gym". One note per item per day; a new one replaces it.',
-    args: {
-      id: "string, the item's id (or name)",
-      name: "string, the item's name in the user's words (or id)",
-      date: "YYYY-MM-DD, defaults to today",
-      note: 'string, required; "" removes the note',
-    },
     run: (data, args, todayISO) => {
       const date = typeof args.date === "string" && args.date ? args.date : todayISO;
       if (!isISODate(date)) return { status: "rejected", message: `"${date}" is not a YYYY-MM-DD date.` };
@@ -786,6 +717,3 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
   },
 };
 
-export function describeActions() {
-  return Object.entries(MORE_ACTIONS).map(([action, { description, args }]) => ({ action, description, args }));
-}

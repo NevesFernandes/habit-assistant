@@ -203,7 +203,7 @@ const s31: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Read", userMessage: "add a habit to read", category: "Study", dayPart: "evening", recurrence: "daily" },
         expect: {
           status: "ok",
@@ -223,7 +223,7 @@ const s31: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "habit",
           name: "Go running",
@@ -245,7 +245,7 @@ const s31: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "habit",
           name: "Drink water",
@@ -306,7 +306,7 @@ const s32: ToolScenario[] = [
     fixture: "baseline",
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "meditate", newStartWeekday: 1, newStartWeekdayMode: "next" },
         expect: {
           status: "ok",
@@ -325,9 +325,9 @@ const s32: ToolScenario[] = [
     fixture: "baseline",
     steps: [
       // The model may guess the wrong kind; the habits are still found.
-      { tool: "update_item", args: { name: "read", type: "recurringTask", newRecurrence: "days:mon,wed,fri" }, expect: { status: "ambiguous", text: /"read-1".*"read-2"/s, notText: /Technical Reading/, data: nothingRescheduled } },
+      { tool: "update_items", args: { name: "read", type: "recurringTask", newRecurrence: "days:mon,wed,fri" }, expect: { status: "ambiguous", text: /"read-1".*"read-2"/s, notText: /Technical Reading/, data: nothingRescheduled } },
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { id: "read-2", newRecurrence: "days:mon,wed,fri" },
         expect: {
           status: "ok",
@@ -346,12 +346,12 @@ const s32: ToolScenario[] = [
     fixture: "baseline",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Technical Reading", userMessage: "add a habit technical reading", category: "Study", dayPart: "evening", recurrence: "daily" },
         expect: { status: "needs_confirm", text: /You already have a habit called "Technical Reading".*Are you sure/s, data: (d) => check(habitsNamed(d, "technical reading").length === 1, "nothing created yet") },
       },
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Technical Reading", userMessage: "add a habit technical reading", category: "Study", dayPart: "evening", recurrence: "daily", confirmDuplicate: true },
         expect: { status: "ok", text: /^Added habit "/, data: (d) => check(habitsNamed(d, "technical reading").length === 2, "confirmed: now 2") },
       },
@@ -372,7 +372,7 @@ const s32: ToolScenario[] = [
     // Two "Read" habits plus "Technical Reading": the answer is the question, never a silent edit.
     name: "s35-stem-reading-habit",
     fixture: "baseline",
-    steps: [{ tool: "update_item", args: { name: "reading", newRecurrence: "days:mon" }, expect: { status: "ambiguous", text: /technical-reading/, data: nothingRescheduled } }],
+    steps: [{ tool: "update_items", args: { name: "reading", newRecurrence: "days:mon" }, expect: { status: "ambiguous", text: /technical-reading/, data: nothingRescheduled } }],
   },
   {
     name: "s35-stem-meditation",
@@ -393,7 +393,7 @@ const s50: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "recurringTask",
           name: "Take out the bins",
@@ -413,7 +413,7 @@ const s50: ToolScenario[] = [
         },
       },
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "bins", newRecurrence: `days:${WEEKDAYS[dayOfWeek(MOVED)]}` },
         expect: {
           status: "ok",
@@ -428,7 +428,7 @@ const s50: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Read", userMessage: "add a habit to read every day", category: "Study", dayPart: "evening", recurrence: "daily" },
         expect: { status: "ok", text: [/Starts: today/, /starting today/], notText: /First due/ },
       },
@@ -446,7 +446,7 @@ const s53: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Pay rent", userMessage: "add a task to pay rent, Finance category", category: "Finance", dayPart: "workDay" },
         expect: { status: "ok", text: [/^Added task "/, /Category: Finance/], data: (d) => check(d.singleTasks[0]?.categoryId === "finance", `got ${d.singleTasks[0]?.categoryId}`) },
       },
@@ -457,7 +457,7 @@ const s53: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "recurringTask",
           name: "Back up my laptop",
@@ -476,7 +476,7 @@ const s53: ToolScenario[] = [
     setup: (data) => ({ ...data, categories: [...data.categories, SELF_CARE] }),
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Book a massage", userMessage: "add a task to book a massage, selfcare category", category: "selfcare", dayPart: "afternoon" },
         expect: { status: "ok", text: /Category: Self-care/, data: (d) => check(d.singleTasks[0]?.categoryId === SELF_CARE.id, `got ${d.singleTasks[0]?.categoryId}`) },
       },
@@ -487,7 +487,7 @@ const s53: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Buy milk", userMessage: "add a task to buy milk", dayPart: "afternoon" },
         expect: { status: "ok", notText: /Category/, data: (d) => check(!!d.singleTasks[0] && d.singleTasks[0].categoryId === undefined, `got ${d.singleTasks[0]?.categoryId}`) },
       },
@@ -516,7 +516,7 @@ const s54: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Brush teeth", userMessage: "add a habit to brush my teeth first thing when I get up", category: "Health", dayPart: "wakeUp", recurrence: "daily" },
         expect: { status: "ok", text: /Part of day: Wake-up/, notText: /part of day Wake-up/, data: (d) => check(d.habits[0]?.dayPart === "wakeUp", `stored in ${d.habits[0]?.dayPart}`) },
       },
@@ -527,7 +527,7 @@ const s54: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "habit", name: "Floss", userMessage: "add a habit to floss every night before bed", category: "Health", dayPart: "bedtime", recurrence: "daily" },
         expect: { status: "ok", text: /Part of day: Bedtime/, data: (d) => check(d.habits[0]?.dayPart === "bedtime", `stored in ${d.habits[0]?.dayPart}`) },
       },
@@ -538,7 +538,7 @@ const s54: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Call the dentist", userMessage: "add a task to call the dentist tomorrow", dayPart: "workDay", startDate: TOMORROW },
         expect: { status: "ok", text: [/Part of day: Work day/, /Assumed: .*part of day/], data: (d) => check(isDayPart(d.singleTasks[0]?.dayPart), `no part: ${d.singleTasks[0]?.dayPart}`) },
       },
@@ -549,7 +549,7 @@ const s54: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Renew my passport", userMessage: "add an important task to renew my passport tomorrow morning", dayPart: "morning", important: true, startDate: TOMORROW },
         expect: {
           status: "ok",
@@ -565,7 +565,7 @@ const s54: ToolScenario[] = [
     setup: dayPartsSetup,
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "reading", newDayPart: "evening" },
         expect: { status: "ok", text: /Part of day: Morning → Evening/, data: (d) => all(fourAndOne(d), check(habitIn(d, "h-read")?.dayPart === "evening", `Read is in ${habitIn(d, "h-read")?.dayPart}`)) },
       },
@@ -577,7 +577,7 @@ const s54: ToolScenario[] = [
     setup: dayPartsSetup,
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "journal", newDayPart: "bedtime" },
         expect: { status: "ok", text: /Part of day: Not placed yet → Bedtime/, data: (d) => all(fourAndOne(d), check(habitIn(d, "h-old")?.dayPart === "bedtime", `in ${habitIn(d, "h-old")?.dayPart}`)) },
       },
@@ -589,7 +589,7 @@ const s54: ToolScenario[] = [
     setup: dayPartsSetup,
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "gym", newImportant: true },
         expect: {
           status: "ok",
@@ -605,7 +605,7 @@ const s54: ToolScenario[] = [
     setup: dayPartsSetup,
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "floss", newImportant: false },
         expect: { status: "ok", text: /Important: yes → no/, data: (d) => all(fourAndOne(d), check(!isImportant(habitIn(d, "h-floss")!), "Floss still flagged")) },
       },
@@ -620,7 +620,7 @@ const s54: ToolScenario[] = [
     },
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "call the bank", newDayPart: "workDay" },
         expect: { status: "ok", data: (d) => all(fourAndOne(d), check(d.singleTasks[0]?.dayPart === "workDay", `in ${d.singleTasks[0]?.dayPart}`)) },
       },
@@ -652,7 +652,7 @@ const clear = (name: string, args: Record<string, unknown>, expect: Step["expect
   name,
   fixture: "empty",
   setup: clearSetup,
-  steps: [{ tool: "update_item", args, expect: { status: "ok", ...expect } }],
+  steps: [{ tool: "update_items", args, expect: { status: "ok", ...expect } }],
 });
 
 const s55: ToolScenario[] = [
@@ -709,7 +709,7 @@ const s57: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: weekdayTask(
           "Ingress battle beacons",
           `add a task for next ${WEEKDAY_NAMES[dayOfWeek(IN_THREE_DAYS)]}, just that day, called ingress battle beacons, in the social category.`,
@@ -736,7 +736,7 @@ const s57: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: weekdayTask("Call the dentist", `add a task on ${WEEKDAY_NAMES[dayOfWeek(IN_THREE_DAYS)]} to call the dentist`, dayOfWeek(IN_THREE_DAYS), "closest"),
         expect: { status: "ok", text: `Date: ${dateText(IN_THREE_DAYS)}`, notText: /due today/, data: onlyTaskOn(IN_THREE_DAYS) },
       },
@@ -747,7 +747,7 @@ const s57: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: weekdayTask("Renew my passport", `add a task for next ${WEEKDAY_NAMES[dayOfWeek(TODAY)]} to renew my passport`, dayOfWeek(TODAY), "next"),
         expect: { status: "ok", text: `Date: ${dateText(IN_A_WEEK)}`, data: onlyTaskOn(IN_A_WEEK) },
       },
@@ -758,7 +758,7 @@ const s57: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Call the dentist", userMessage: "add a task to call the dentist tomorrow", dayPart: "workDay", startDate: TOMORROW },
         expect: { status: "ok", text: /Date: tomorrow/, data: onlyTaskOn(TOMORROW) },
       },
@@ -848,7 +848,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Go shopping", userMessage: "Add a go shopping task with a checklist inside.", dayPart: "afternoon", withChecklist: true },
         expect: { status: "ok", text: /Checklist: empty for now/ },
       },
@@ -888,7 +888,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Go Shopping", userMessage: "Add a task for Friday called Go Shopping, with a checklist inside", dayPart: "afternoon", startWeekday: 5, withChecklist: true },
         expect: { status: "ok", text: /Checklist: empty for now/, data: (d) => check(d.singleTasks[0]?.checklist?.length === 0, "expected an empty checklist") },
       },
@@ -899,7 +899,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "recurringTask",
           name: "Go shopping",
@@ -917,7 +917,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "singleTask", name: "Call the dentist", userMessage: "add a task to call the dentist tomorrow", dayPart: "workDay", startDate: TOMORROW },
         expect: { status: "ok", notText: /Checklist/, data: (d) => check(d.singleTasks[0]?.checklist === undefined, "a plain task got a checklist") },
       },
@@ -928,7 +928,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: { type: "recurringTask", name: "Go shopping", userMessage: "add a recurring task to go shopping every Saturday, with a checklist: milk and eggs", dayPart: "morning", recurrence: "days:sat", checklistItems: ["milk", "eggs"] },
         expect: {
           status: "ok",
@@ -943,7 +943,7 @@ const checklists: ToolScenario[] = [
     fixture: "empty",
     steps: [
       {
-        tool: "create_item",
+        tool: "create_items",
         args: {
           type: "recurringTask",
           name: "Cleaning routine",
@@ -962,7 +962,7 @@ const checklists: ToolScenario[] = [
     fixture: "baseline",
     steps: [
       {
-        tool: "update_item",
+        tool: "update_items",
         args: { name: "weekly shopping", newChecklistMode: "sameList" },
         expect: { status: "ok", text: /Checklist mode: unticked items carry over to the next time → same list every time/, data: (d) => check(shopping(d)?.checklistMode === "sameList", "not sameList") },
       },
@@ -1064,7 +1064,7 @@ const s56: ToolScenario[] = [
   ]),
   removal("s56-replace-habit-steps", [
     {
-      tool: "update_item",
+      tool: "update_items",
       args: { name: "morning routine", newChecklistItems: ["stretch", "meditate", "journal"] },
       expect: {
         status: "ok",

@@ -264,7 +264,7 @@ export function findItems(
   return items.map((item) => summarize(data, item, todayISO));
 }
 
-// --- create_item / update_item -----------------------------------------------------------
+// --- create_items / update_items -----------------------------------------------------------
 
 /** Not allowed as asked: `reason` is for the user. `need_info` means ask the user something first. */
 export type Refusal = { status: "rejected" | "need_info" | "invalid_recurrence"; message: string };
