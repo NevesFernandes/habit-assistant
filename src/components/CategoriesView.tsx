@@ -8,6 +8,8 @@ import CategoryIcon from "./CategoryIcon";
 import IconPicker from "./IconPicker";
 import StatTile from "./StatTile";
 import { DEFAULT_ICON_NAME } from "../lib/icons";
+import type { GoalProgress } from "../lib/goals";
+import GoalCard from "./GoalCard";
 
 interface CategoriesViewProps {
   categories: Category[];
@@ -15,6 +17,8 @@ interface CategoriesViewProps {
   recurringTasks: RecurringTask[];
   singleTasks: SingleTask[];
   completionLog: CompletionLogEntry[];
+  /** §81: running category goals, then finished ones; a category's page shows the first that is its own. */
+  goals: GoalProgress[];
   onAdd: (input: CreateCategoryInput) => void;
   onUpdate: (id: string, patch: UpdateCategoryPatch) => void;
   onDelete: (id: string) => boolean;
@@ -24,6 +28,7 @@ export default function CategoriesView({
   categories,
   habits,
   completionLog,
+  goals,
   onAdd,
   onUpdate,
   onDelete,
@@ -81,6 +86,7 @@ export default function CategoriesView({
         category={viewingStatsFor}
         habits={habits.filter((h) => h.categoryId === viewingStatsFor.id)}
         completionLog={completionLog}
+        goal={goals.find((g) => g.categoryId === viewingStatsFor.id)}
         onBack={() => setViewingStatsForId(null)}
       />
     );
@@ -166,11 +172,13 @@ function CategoryStatsView({
   category,
   habits,
   completionLog,
+  goal,
   onBack,
 }: {
   category: Category;
   habits: Habit[];
   completionLog: CompletionLogEntry[];
+  goal?: GoalProgress;
   onBack: () => void;
 }) {
   const weekStartsOn = useWeekStart();
@@ -190,6 +198,14 @@ function CategoryStatsView({
           <CategoryIcon name={category.icon} className="h-5 w-5 shrink-0" />
           {category.name}
         </div>
+
+        {/* §81: the category's own goal, across everything in it. */}
+        {goal && (
+          <div className="flex flex-col gap-1 border-b border-slate-700 pb-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Goal</div>
+            <GoalCard progress={goal} />
+          </div>
+        )}
 
         {habits.length === 0 ? (
           <p className="text-sm text-slate-500">No habits in this category yet.</p>

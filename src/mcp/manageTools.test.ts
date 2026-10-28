@@ -573,4 +573,28 @@ const fresh = () => {
   assert.equal((await call("goals", { op: "create", kind: "total", target: 3, by: "soon", name: "read" })).status, "invalid_date");
 }
 
+// --- §81: goals across a category ---------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const by = addDays(TODAY, 60);
+  // Health holds Floss and Routine; Floss is done today.
+  await call("set_done", { name: "floss" });
+  const set = await call("goals", { op: "create", category: "health", kind: "total", target: 40, by });
+  assert.equal(set.status, "ok");
+  assert.match(set.message, /^Goal set for "Health" \(category\): 40 times by .*1 of 40 times;/);
+  assert.equal(store.file().goals![0].categoryId, "health");
+  // A second one asks; a challenge or an unknown category is refused.
+  assert.equal((await call("goals", { op: "create", category: "health", kind: "total", target: 10, by })).status, "needs_confirm");
+  assert.match((await call("goals", { op: "create", category: "health", kind: "challenge", target: 30 })).message, /A challenge goes on one habit/);
+  assert.match((await call("goals", { op: "create", category: "juggling", kind: "total", target: 3, by })).message, /no category called "juggling"/);
+  // It shows in list and in get_stats for the category; update, then remove.
+  const list = await call("goals", { op: "list" });
+  assert.deepEqual([list.active[0].category, list.active[0].counts, list.active[0].done], ["Health", "times", 1]);
+  assert.equal((await call("get_stats", { scope: "category", category: "Health" })).goal.target, 40);
+  assert.match((await call("goals", { op: "update", category: "health", target: 45 })).message, /^Changed the goal for "Health" \(category\): 45 times/);
+  assert.match((await call("goals", { op: "remove", category: "health" })).message, /Its items and their own goals are untouched/);
+  assert.equal(store.file().goals!.length, 0);
+}
+
 console.log("mcp manage tools: all assertions passed");

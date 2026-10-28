@@ -16,16 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §81 — Goals across a category
-A goal over a whole category rather than one item: "work out 50 times this quarter" across Sports. Decided with the owner:
-- **What counts:** every completion across the category's items by default ("50 times", "20 tasks"); days with at least one done when the user says days ("50 days of exercise").
-- **Amounts** only from items with the same unit: timer minutes always add up ("60 hours of study"); items with another unit are left out and named.
-- **Membership is live:** whatever is in the category now counts, its done days in the window included; an item moved out leaves with its days.
-- **Totals only**, no challenges on a category.
-- **Habits, recurring tasks and one-off tasks** (counted by the day they were marked done); "habits" or "tasks" in the request narrows it to one kind.
-- **One running goal per category**, independent of item goals: an item can have its own and still count toward its category's.
-- **Shown** in the Goals tab, the stats tab and the category's page; app chat `setGoal` (and the other goal tools) take a category; the connector's `goals` takes `category` (one more reconnect).
-
 ## Next
 
 ## Later

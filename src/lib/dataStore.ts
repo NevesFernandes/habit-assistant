@@ -21,7 +21,7 @@ import { withoutNotesOf } from "./dayNotes";
 
 /** §71: deleting an item deletes its goals, as it deletes its history. */
 function withoutGoalsOf(data: AppData, ids: Set<string>): AppData {
-  return data.goals ? { ...data, goals: data.goals.filter((goal) => !ids.has(goal.itemId)) } : data;
+  return data.goals ? { ...data, goals: data.goals.filter((goal) => !goal.itemId || !ids.has(goal.itemId)) } : data;
 }
 import {
   isRecurringTaskChecklistItemChecked,
@@ -878,7 +878,9 @@ export function isCategoryInUse(data: AppData, categoryId: string): boolean {
 }
 
 export function deleteCategory(data: AppData, id: string): AppData {
-  return { ...data, categories: data.categories.filter((category) => category.id !== id) };
+  // §81: an (empty) category's goals go with it.
+  const goals = data.goals?.filter((goal) => goal.categoryId !== id);
+  return { ...data, categories: data.categories.filter((category) => category.id !== id), ...(goals ? { goals } : {}) };
 }
 
 // See §20 in Roadmap.md — client-trusted nudge off the shared trial key toward BYOK.

@@ -38,3 +38,20 @@ export const scenarios: Scenario[] = [
     ],
   },
 ];
+
+// §81: a total across a whole category.
+scenarios.push({
+  name: "s81-category-goal",
+  fixture: "baseline",
+  turns: [
+    {
+      user: "I want to work out 40 times across my Sports habits by the end of the year",
+      expect: {
+        toolCall: "setGoal",
+        bucket: /goals/,
+        reply: /^Goal set for "Sports" \(category\): 40 times/,
+        data: (d) => check(d.goals?.length === 1 && d.goals[0].categoryId === "sports" && d.goals[0].measure === "times", "no category goal on Sports"),
+      },
+    },
+  ],
+});

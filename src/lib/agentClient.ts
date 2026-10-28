@@ -261,9 +261,12 @@ export interface SetGoalToolCall {
     name?: string;
     categoryId?: string;
     newItem?: PackItem;
+    /** §81: a category id or name; the goal covers the whole category. */
+    acrossCategory?: string;
+    onlyKind?: "habit" | "recurringTask" | "singleTask";
     kind: "total" | "challenge";
     target?: number;
-    measure?: "days" | "amount";
+    measure?: "days" | "amount" | "times";
     unit?: string;
     by?: string;
     from?: string;
@@ -272,17 +275,17 @@ export interface SetGoalToolCall {
 
 export interface ChangeGoalToolCall {
   name: "changeGoal";
-  input: { name: string; categoryId?: string; newTarget?: number; newBy?: string; newDays?: number };
+  input: { name?: string; categoryId?: string; acrossCategory?: string; newTarget?: number; newBy?: string; newDays?: number; newUnit?: string };
 }
 
 export interface RemoveGoalToolCall {
   name: "removeGoal";
-  input: { name: string; categoryId?: string };
+  input: { name?: string; categoryId?: string; acrossCategory?: string };
 }
 
 export interface GetGoalsToolCall {
   name: "getGoals";
-  input: { name?: string };
+  input: { name?: string; acrossCategory?: string };
 }
 
 export type AgentToolCall =

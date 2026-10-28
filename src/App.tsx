@@ -823,6 +823,7 @@ export default function App() {
 
           {activeTab === "categories" && (
             <CategoriesView
+              goals={allGoals}
               categories={data.categories}
               habits={data.habits}
               recurringTasks={data.recurringTasks}

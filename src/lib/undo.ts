@@ -109,9 +109,18 @@ function namesIn(record: UndoRecord, data: AppData): string[] {
     if (name) names.set(id, name);
   }
   for (const snapshot of [record.before, record.after]) {
-    for (const entry of [...Object.values(snapshot.log), ...Object.values(snapshot.notes), ...Object.values(snapshot.goals ?? {})]) {
+    for (const entry of [...Object.values(snapshot.log), ...Object.values(snapshot.notes)]) {
       const name = entry && !names.has(entry.itemId) ? nameOf(entry.itemId) : undefined;
       if (entry && name) names.set(entry.itemId, name);
+    }
+    // §71/§81: a goal is named by its item, or by its category.
+    for (const goal of Object.values(snapshot.goals ?? {})) {
+      if (goal?.itemId && !names.has(goal.itemId)) {
+        const name = nameOf(goal.itemId);
+        if (name) names.set(goal.itemId, name);
+      }
+      const category = goal?.categoryId ? data.categories.find((c) => c.id === goal.categoryId)?.name : undefined;
+      if (category) names.set(`category:${goal!.categoryId}`, category);
     }
   }
   return [...names.values()];
@@ -136,16 +145,22 @@ function restore<T extends { id: string }>(list: T[], records: Record<string, T 
 }
 
 /** The items whose records changed since `record` was made (by id), and whether the week start or a category did. */
-function changedSince(data: AppData, record: UndoRecord): { ids: Set<string>; week: boolean; category: boolean } {
+function changedSince(data: AppData, record: UndoRecord): { ids: Set<string>; week: boolean; category: boolean; goal: boolean } {
   const ids = new Set<string>();
   const all = itemsOf(data);
   for (const [id, item] of Object.entries(record.after.items)) if (stable(current(all, id)) !== stable(item)) ids.add(id);
   for (const [id, entry] of Object.entries(record.after.log)) if (stable(current(data.completionLog, id)) !== stable(entry)) ids.add((entry ?? record.before.log[id])!.itemId);
   for (const [id, note] of Object.entries(record.after.notes)) if (stable(current(data.notes, id)) !== stable(note)) ids.add((note ?? record.before.notes[id])!.itemId);
-  for (const [id, goal] of Object.entries(record.after.goals ?? {})) if (stable(current(data.goals, id)) !== stable(goal)) ids.add((goal ?? record.before.goals![id])!.itemId);
+  let goal = false;
+  for (const [id, after] of Object.entries(record.after.goals ?? {})) {
+    if (stable(current(data.goals, id)) === stable(after)) continue;
+    const itemId = (after ?? record.before.goals![id])!.itemId;
+    if (itemId) ids.add(itemId);
+    else goal = true; // §81: a category goal
+  }
   const category = Object.entries(record.after.categories).some(([id, value]) => stable(current(data.categories, id)) !== stable(value));
   const week = !!record.after.weekStartsOn && (data.weekStartsOn ?? 0) !== (record.after.weekStartsOn.value ?? 0);
-  return { ids, week, category };
+  return { ids, week, category, goal };
 }
 
 /** Undoing `side`'s last change, or why not. Undoing clears it: a second undo has nothing to undo. */
@@ -157,9 +172,9 @@ export function planUndo(stored: AppData, side: UndoSide, today: string): UndoPl
 
   // Only if nothing changed those records since: never overwrite a newer change.
   const since = changedSince(data, record);
-  if (since.ids.size || since.week || since.category) {
+  if (since.ids.size || since.week || since.category || since.goal) {
     const names = [...since.ids].map((id) => current(itemsOf(data), id)?.name ?? (record.after.items[id] ?? record.before.items[id])?.name).filter((name): name is string => !!name);
-    const what = names.length ? quoted(names) : since.week ? "the first day of the week" : "a category";
+    const what = names.length ? quoted(names) : since.week ? "the first day of the week" : since.goal ? "that goal" : "a category";
     return { status: "rejected", message: `${what} changed again since then, so I can't undo that without losing the newer change.` };
   }
 
@@ -184,7 +199,7 @@ export function planUndo(stored: AppData, side: UndoSide, today: string): UndoPl
       const fresh = rolloverPersistentTasks(read, today);
       // A save replayed on a re-read file checks again: a newer change there wins.
       const again = changedSince(fresh, record);
-      if (again.ids.size || again.week || again.category) return read;
+      if (again.ids.size || again.week || again.category || again.goal) return read;
       const items = restore(itemsOf(fresh), record.before.items);
       const { [side]: _done, ...otherSides } = fresh.undo ?? {};
       const next: AppData = {
