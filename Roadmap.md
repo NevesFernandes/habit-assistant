@@ -33,11 +33,8 @@ Transcribe in the browser (Whisper via WASM/WebGPU) instead of sending audio to 
 ### §79 — Export button in the app
 An Export button with a period picker (on the stats tab or in Settings), for users who'd rather tap than ask. §72 built the export by chat only ("export my October", with a Download button in the reply); this would reuse its file (`buildExportCsv` in `src/lib/exportCsv.ts`). A small form, which the app otherwise avoids, so only if people ask for it.
 
-### §60 — Extra priority inside a part of the day
-§54 replaced the priority number with six parts of the day; inside a part the order is important items first, then A–Z. The user expects that to be enough for their own lists, but another user's part could get cluttered. Only pick this up if that shows in real use.
-
-- Ideas, not decisions: an exact order the user sets ("put reading before meditation", or drag to reorder), or more than one level of importance.
-- Whatever is chosen has to stay sayable in chat and readable without numbers, which is what §54 removed.
+### §60 — Drag to order today (parked)
+Parked by the owner (2026-10-28): after a month of real use the parts of the day and the ★ are enough. If users ask for it, the shape is settled: on the Today tab, drag items into the order you'll do them **that day** (within each part), saved for that date only and gone the next day, so it never goes stale. No chat or connector tool to set it (the UI-first exception in CLAUDE.md): the app's lists and `get_day` just follow it, and in Claude the user can simply ask to see the day in another order, which the model does itself. Touch drag-and-drop with no library is the main work, and it has to feel good on Android.
 
 ### §81 — Goals across a category
 A goal over a whole category rather than one item: "work out 50 times this quarter" across Sports. §71 hangs every goal on one habit or recurring task; this would count the done days (or amounts, where units agree) of every item in the category. Open questions: what counts when items have different units, and whether items added to the category later join the goal.
