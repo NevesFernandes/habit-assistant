@@ -3,6 +3,7 @@
 // Only SingleTask is wired end-to-end in this first scaffold. Habit and
 // RecurringTask are typed now so the recurrence engine and Drive file shape
 // don't need to be reshaped later.
+import type { UndoRecords } from "../lib/undo.ts";
 
 export interface Category {
   id: string;
@@ -171,6 +172,9 @@ export interface AppData {
   // §67: a short note per item per day ("5 km, legs tired"), kept apart from the completion
   // log so it survives un-ticking and can sit on a missed day too. Absent = none yet.
   notes?: DayNote[];
+  // §70: the last change made by chat, per side (the app's chat, Claude), for "undo that".
+  // Overwritten by the next change from that side, cleared by undoing it.
+  undo?: UndoRecords;
 }
 
 export interface DayNote {

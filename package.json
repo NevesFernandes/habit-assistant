@@ -41,6 +41,7 @@
     "test:bulk": "tsx src/lib/bulk.test.ts",
     "test:exportCsv": "tsx src/lib/exportCsv.test.ts",
     "test:pack": "tsx src/lib/pack.test.ts",
+    "test:undo": "tsx src/lib/undo.test.ts",
     "test:mcp": "tsx src/mcp/mcp.test.ts && tsx src/mcp/writeTools.test.ts && tsx src/mcp/manageTools.test.ts && tsx src/mcp/scenarios.test.ts",
     "test:chat": "tsx tests/chat/run.ts",
     "measure:payload": "tsx scripts/measurePayload.ts",

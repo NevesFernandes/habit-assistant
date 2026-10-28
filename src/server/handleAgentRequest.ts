@@ -122,6 +122,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
   { name: "exportCsv", buckets: ["history"], listBlurb: "export a period as a spreadsheet (CSV) the user can download; changes nothing." },
   { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
+  { name: "undoLastChange", buckets: ["undo"], listBlurb: "undo the last change made in this chat today (anything, a delete included), if nothing changed it since." },
   { name: "createPack", buckets: ["pack"], listBlurb: "set up several new items at once, made for this user (a routine, a plan, a fresh start); the app shows the list and asks before adding." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
 ];
@@ -1120,6 +1121,12 @@ export function buildTools(
       },
     },
     {
+      name: "undoLastChange",
+      description:
+        "Undo the last change the user made by chat in this app: 'undo that', 'undo', 'take that back', 'I didn't mean that, revert it'. Works for any change (added, edited, marked done, paused, a set of items, a delete) made today, and only if nothing changed those items since; the app says what it put back. For undoing one specific thing that isn't the last change (a skip, a stats reset), use that tool's own undo instead.",
+      parameters: { type: "object", properties: {} },
+    },
+    {
       name: "createPack",
       description:
         "Propose several new items at once, made for this user: 'set me up a morning routine', 'help me get fit', 'a plan to sleep better'. The app shows the list and adds them only after the user agrees.",
@@ -1234,7 +1241,7 @@ export function buildTools(
   return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
 }
 
-export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings", "pack"];
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings", "pack", "undo"];
 
 const FAMILY_BLURBS: Record<IntentBucket, string> = {
   create: "add a new habit or task",
@@ -1246,6 +1253,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   history: "look at stats, or what was done, missed or is coming up over a period, or export it as a spreadsheet",
   settings: "show or change settings: the first day of the week, reading replies aloud",
   pack: "set up several new items at once, made for the user (a routine, a plan)",
+  undo: "undo the last change made in this chat",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");

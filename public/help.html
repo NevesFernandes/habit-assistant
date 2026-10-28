@@ -281,6 +281,10 @@
           <td><span class="say">pause gym for two weeks</span>, <span class="say">resume gym</span></td>
         </tr>
         <tr>
+          <td>Undo</td>
+          <td><span class="say">undo that</span>, <span class="say">take that back</span></td>
+        </tr>
+        <tr>
           <td>Set up several new ones</td>
           <td><span class="say">set me up a morning routine: I get up at 6:30 and want more energy</span>, <span class="say">help me get fit for a 10K in 8 weeks</span>, <span class="say">a plan to sleep better</span></td>
         </tr>
@@ -330,6 +334,14 @@
         half its days (3 or more), or a task has been carried over for a week or more, it asks whether you'd like to change
         its days, pause it, give it a new date or drop it. Paused and skipped days are never misses, and a habit set to a
         number of times a week or month counts only a week or month that's over.
+      </p>
+      <p id="undo">
+        <strong>Undo.</strong> <span class="say">undo that</span> puts back whatever your last change by chat changed:
+        an item added (or a whole set), an edit, a day marked done, a pause, several items at once, even a delete, which
+        brings the item back with its history. Only the last change, and only the same day. If that item changed again
+        since (a tap, another device, or Claude), it won't undo, so nothing newer is lost; and a change made in Claude is
+        undone in Claude, one made in the app's chat in the app. Taps aren't part of it: tap again instead. To make this
+        possible, a deleted item stays in your Drive file until the end of that day.
       </p>
       <p id="packs">
         <strong>Setting up several at once.</strong> Ask for a routine or a plan and the assistant puts together a few
@@ -729,6 +741,9 @@
           Claude gets the same numbers and summary the app works out, so you can ask it for a picture too:
           <span class="say">show my month in Habit Assistant as a calendar</span>,
           <span class="say">chart my last four weeks of habits</span>.
+        </li>
+        <li>
+          <span class="say">Undo that</span> works in Claude too, for the last change made from Claude.
         </li>
         <li>
           Claude can set up a routine or a plan too, made for you, and shows you the list before adding it.

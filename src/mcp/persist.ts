@@ -4,6 +4,7 @@
 // anything they depend on from the data they're given.
 import type { AppData } from "../types/models.ts";
 import { rolloverPersistentTasks } from "../lib/dataStore.ts";
+import { withUndoRecord } from "../lib/undo.ts";
 import { DriveConflictError, type DriveFileRef } from "./drive.ts";
 
 export interface LoadedFile {
@@ -31,10 +32,14 @@ export async function persist(
   first: LoadedFile,
   todayISO: string,
   mutate: (data: AppData) => AppData,
+  // §70: each change is Claude's last one, for "undo that"; the undo itself isn't.
+  options: { recordUndo?: boolean } = {},
 ): Promise<{ data: AppData; written: boolean }> {
   let loaded = first;
   for (let attempt = 1; ; attempt++) {
-    const next = mutate(rolloverPersistentTasks(loaded.data, todayISO));
+    const base = rolloverPersistentTasks(loaded.data, todayISO);
+    const changed = mutate(base);
+    const next = options.recordUndo === false ? changed : withUndoRecord(base, changed, "claude", todayISO);
     if (next === loaded.data) return { data: next, written: false };
     try {
       await store.save(loaded.ref, next);

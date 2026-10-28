@@ -276,7 +276,7 @@ async function runPlan(
   plan: Plan,
 ): Promise<Body> {
   if (plan.status !== "ok") return plan;
-  const saved = (await persist(store, loaded, today, (plan as Change).apply)).data;
+  const saved = (await persist(store, loaded, today, (plan as Change).apply, { recordUndo: (plan as Change).recordUndo })).data;
   const { message, ownerId, date } = (plan as Change).describe(saved);
   const owner = ownerId ? itemsOf(saved).find((item) => item.id === ownerId) : undefined;
   return {

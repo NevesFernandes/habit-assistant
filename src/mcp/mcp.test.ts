@@ -281,7 +281,7 @@ assert.equal((await callGetDay(deps, { date: DAY, timeZone: "Lisbon" })).body.st
   const steps: [string, (d: AppData) => AppData][] = [
     ["setHabitDone", (d) => setHabitDone(d, "Read", DAY, true)],
     ["setHabitValue", (d) => setHabitValue(d, "Water", DAY, 8)],
-    ["addHabit", (d) => addHabit(d, { name: "Stretch hamstrings", categoryId: "sports", dayPart: "morning", recurrence: { type: "daily" }, startDate: DAY })],
+    ["addHabit", (d) => addHabit(d, { name: "Stretch hamstrings", categoryId: "sports", dayPart: "morning", recurrence: { type: "daily" }, startDate: DAY }, DAY)],
     ["updateHabit", (d) => updateHabit(d, "Read", { newImportant: true })],
     ["pauseItem", (d) => pauseItem(d, "habit", "Gym", { from: "2026-10-28" }, DAY)],
     ["addRecurringTaskChecklistItem", (d) => addRecurringTaskChecklistItem(d, "shop", "Bread", DAY)],

@@ -13,8 +13,8 @@
 // family comes near Groq's free-tier request limit.
 // §66: "history" reads what was done, missed or is coming up over a period; it changes nothing.
 // §69: "settings" shows or changes the first day of the week and reading replies aloud.
-// §76: "pack" sets up several new items at once, made for the user.
-export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings" | "pack";
+// §76: "pack" sets up several new items at once, made for the user. §70: "undo" the last change.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings" | "pack" | "undo";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -144,6 +144,9 @@ const SETTINGS_PATTERNS = [
   /\bread\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\breading\b[\s\S]{0,30}\b(?:aloud|out loud)\b/, /\bspeak\b/, /\bspoken\b/, /\btalk(?:ing)? back\b/,
 ];
 
+// §70: taking back the last change.
+const UNDO_PATTERNS = [/\bundo\b/, /\brevert\b/, /\btake (?:that|it) back\b/, /\bput (?:it|that|them) back\b/, /\bi didn'?t mean (?:that|to)\b/];
+
 // §76: asking for a set of new items rather than one.
 // "routine" alone is too loose: items get called that ("my cleaning routine").
 const PACK_PATTERNS = [
@@ -233,6 +236,8 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   if (asksHistory) buckets.add("history");
   if (SETTINGS_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("settings");
   if (PACK_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("pack");
+  // "undo the reset" / "undo the skip" have their own undo, in their own families.
+  if (UNDO_PATTERNS.some((pattern) => pattern.test(text)) && !/\b(?:reset|skip|skipped)\b/.test(text)) buckets.add("undo");
 
   // Safety net: a bare completion report ("I did my stretching today") with
   // no number/duration and no list/check signal is genuinely ambiguous
