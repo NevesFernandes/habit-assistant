@@ -163,6 +163,8 @@ const PACK_PATTERNS = [
 const GOALS_PATTERNS = [
   /\bgoals?\b/, /\bchallenges?\b/, /\bon track\b/,
   /\b\d+[\s\S]{0,30}\bby (?:the end of |end of |next |mid-?)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|christmas|summer|spring|autumn|fall|winter|the end|year|month|\d)/,
+  // §81: "work out 50 times this quarter", "60 hours of study this year"
+  /\b\d+ (?:times|days|hours|tasks|sessions|workouts)\b[\s\S]{0,40}\b(?:this|next) (?:week|month|quarter|year)\b/,
 ];
 
 export function classifyIntent(rawText: string): ClassifyIntentResult {

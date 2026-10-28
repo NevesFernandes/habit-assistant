@@ -3,18 +3,22 @@
 // Run: npm run test:goals
 import assert from "node:assert/strict";
 import {
+  activeCategoryGoalOf,
   activeGoalOf,
   describeGoals,
   describeProgress,
   goalProgress,
   goalsOverview,
+  planChangeCategoryGoal,
   planChangeGoal,
   planGoalWithNewItem,
+  planRemoveCategoryGoal,
   planRemoveGoal,
+  planSetCategoryGoal,
   planSetGoal,
   type GoalPlan,
 } from "./goals.ts";
-import { deleteHabits, setHabitValue } from "./dataStore.ts";
+import { deleteCategory, deleteHabits, setHabitValue, updateHabit } from "./dataStore.ts";
 import { skipDay } from "./skip.ts";
 import { planUndo, withUndoRecord } from "./undo.ts";
 import { ChatSession } from "./chatEngine.ts";
@@ -209,6 +213,73 @@ const onlyGoal = (data: AppData): Goal => data.goals![data.goals!.length - 1];
   assert.equal(again.apply(removed).goals!.length, 1);
 }
 
+// --- §81: goals across a category ---------------------------------------------------------
+
+{
+  const sports: AppData = {
+    categories: DEFAULT_CATEGORIES,
+    habits: [
+      habit("Gym", { categoryId: "sports" }),
+      habit("Swim", { categoryId: "sports", recurrence: { type: "daysOfWeek", days: [6] } }),
+      habit("Cycle", { categoryId: "sports", completionType: "timer", target: 30 }),
+      habit("Row", { categoryId: "sports", completionType: "value", target: 2, unit: "km" }),
+      habit("Read", { categoryId: "study", completionType: "timer", target: 20 }),
+    ],
+    recurringTasks: [{ ...bins, categoryId: "sports" }],
+    singleTasks: [
+      { kind: "singleTask", id: "shoes", name: "Buy shoes", categoryId: "sports", startDate: TODAY, done: true, doneOn: TODAY, persistency: true },
+      { kind: "singleTask", id: "kit", name: "Wash kit", categoryId: "sports", startDate: TODAY, done: false, persistency: true },
+    ],
+    completionLog: [],
+  };
+  const quarter = "2026-12-31";
+  // "times": every completion counts, one-off tasks by the day marked done; earlier days don't.
+  const plan = ok(planSetCategoryGoal(sports, "sports", { kind: "total", target: 50, by: quarter }, TODAY));
+  let data = done(plan.apply(sports), "Gym", ["2026-10-27", TODAY]);
+  data = done(data, "Bins", [TODAY]);
+  const goal = onlyGoal(data);
+  assert.deepEqual([goal.categoryId, goal.itemId, goal.measure], ["sports", undefined, "times"]);
+  assert.match(plan.message(data), /^Goal set for "Sports" \(category\): 50 times by Thu 31 Dec\. Every habit, task and one-off task done in it counts as one, including ones added to it later\. 3 of 50 times;/);
+  // "days": the same day counts once.
+  const days = ok(planSetCategoryGoal(sports, "sports", { kind: "total", target: 20, measure: "days", by: quarter }, TODAY)).apply(sports);
+  assert.equal(goalProgress(done(done(days, "Gym", [TODAY]), "Swim", [TODAY]), onlyGoal(days), TODAY)!.done, 1, "two habits and a one-off task, all today: one day");
+  // Membership is live: an item moved in later counts with its days in the window; moved out, it leaves.
+  const moved = updateHabit(done(data, "Read", [TODAY], 20), "Read", { newCategoryId: "sports" }, TODAY);
+  assert.equal(goalProgress(moved, goal, TODAY)!.done, 4);
+  assert.equal(goalProgress(updateHabit(moved, "Gym", { newCategoryId: "health" }, TODAY), goal, TODAY)!.done, 3);
+  // "habits only".
+  const habitsOnly = ok(planSetCategoryGoal(sports, "sports", { kind: "total", target: 10, by: quarter, itemKind: "habit" }, TODAY)).apply(sports);
+  assert.equal(goalProgress(data, { ...onlyGoal(habitsOnly) }, TODAY)!.done, 1, "only Gym is a habit done today");
+  assert.match(describeGoals(habitsOnly, TODAY), /10 times \(habits only\) by/);
+  // Amounts: the unit must be named when the category has several; hours count timer minutes; other units are left out and named.
+  assert.match(refused(planSetCategoryGoal(sports, "sports", { kind: "total", target: 10, measure: "amount", by: quarter }, TODAY)), /different units \(min, km\)/);
+  const hours = ok(planSetCategoryGoal(sports, "sports", { kind: "total", target: 10, measure: "amount", unit: "hours", by: quarter }, TODAY));
+  let timed = hours.apply(sports);
+  assert.deepEqual([onlyGoal(timed).target, onlyGoal(timed).unit], [600, "min"]);
+  timed = setHabitValue(setHabitValue(timed, "Cycle", TODAY, 90), "Row", TODAY, 5);
+  assert.equal(describeProgress(goalProgress(timed, onlyGoal(timed), TODAY)!, TODAY), "1 h 30 min of 10 h; 65 days left, on track. Not counted (another unit): Row.");
+  assert.match(refused(planSetCategoryGoal(sports, "sports", { kind: "total", target: 10, measure: "amount", unit: "pages", by: quarter }, TODAY)), /Nothing in "Sports" logs pages/);
+  // Totals only; an empty category has nothing to count.
+  assert.match(refused(planSetCategoryGoal(sports, "sports", { kind: "challenge", target: 30 }, TODAY)), /A challenge goes on one habit/);
+  assert.match(refused(planSetCategoryGoal(sports, "finance", { kind: "total", target: 3, by: quarter }, TODAY)), /nothing in "Finance"/);
+  // One running goal per category, apart from item goals; replacing asks.
+  assert.equal(planSetCategoryGoal(data, "sports", { kind: "total", target: 9, by: quarter }, TODAY).status, "needs_confirm");
+  const withItem = ok(planSetGoal(data, data.habits[0], { kind: "total", target: 5, by: quarter }, TODAY)).apply(data);
+  assert.equal(withItem.goals!.length, 2);
+  assert.equal(activeCategoryGoalOf(withItem, "sports", TODAY)?.id, goal.id);
+  // Change, overview label, remove; an empty category deleted takes its goal.
+  const changed = ok(planChangeCategoryGoal(data, "sports", { target: 60 }, TODAY));
+  assert.match(changed.message(changed.apply(data)), /^Changed the goal for "Sports" \(category\): 60 times/);
+  assert.match(describeGoals(data, TODAY), /^"Sports" \(category\): 50 times by/);
+  assert.match(ok(planRemoveCategoryGoal(data, "sports", TODAY)).message(data), /Its items and their own goals are untouched/);
+  assert.equal(deleteCategory(data, "sports").goals!.length, 0);
+  // Undo takes a category goal back.
+  const recorded = withUndoRecord(sports, plan.apply(sports), "app", TODAY);
+  const back = planUndo(recorded, "app", TODAY) as Extract<ReturnType<typeof planUndo>, { status: "ok" }>;
+  assert.equal(back.message, 'Undone: I put the goal on "Sports" back as it was.');
+  assert.equal(back.apply(recorded).goals, undefined);
+}
+
 // The app's chat, through the engine: set, replace (asked first), unknown name, a one-off task, change, check, remove.
 {
   let saved: AppData = { ...base, singleTasks: [{ kind: "singleTask", id: "bank", name: "Call the bank", startDate: TODAY, done: false, persistency: true }] };
@@ -258,6 +329,43 @@ const onlyGoal = (data: AppData): Goal => data.goals![data.goals!.length - 1];
   await session.send("undo that");
   assert.equal(last(), 'Undone: I put the goal on "Read" back as it was.');
   assert.equal(saved.goals!.length, 2);
+}
+
+// §81 through the engine: a category goal by name, asked before replacing, shown, removed.
+{
+  let saved: AppData = { ...base, habits: base.habits.map((h) => ({ ...h, categoryId: "sports" })) };
+  let next: AgentToolCall;
+  const session = new ChatSession({
+    getData: () => saved,
+    persist: async (mutate) => {
+      saved = mutate(saved);
+      return true;
+    },
+    callAgent: async () => ({ toolCall: { ...next, id: String(Math.random()) } as AgentToolCall & { id: string } }),
+    todayISO: () => TODAY,
+  });
+  const last = () => {
+    const message = session.messages.filter((m) => m.role === "assistant").pop();
+    return message && "content" in message ? (message.content as string) : "";
+  };
+  next = { name: "setGoal", input: { acrossCategory: "Sports", kind: "total", target: 50, by: "2026-12-31" } };
+  await session.send("work out 50 times this quarter");
+  assert.match(last(), /^Goal set for "Sports" \(category\): 50 times by Thu 31 Dec\./);
+  next = { name: "setGoal", input: { acrossCategory: "sports", kind: "total", target: 30, measure: "days", by: "2026-12-31" } };
+  await session.send("actually 30 days of exercise this quarter");
+  assert.match(last(), /"Sports" already has a goal/);
+  next = { name: "confirmPendingAction", input: { confirmed: true } };
+  await session.send("yes");
+  assert.match(last(), /30 days by Thu 31 Dec.*\(The old goal was removed\.\)$/);
+  next = { name: "getGoals", input: { acrossCategory: "sports" } };
+  await session.send("how's my sports goal?");
+  assert.match(last(), /^"Sports" \(category\): 30 days by/);
+  next = { name: "setGoal", input: { acrossCategory: "juggling", kind: "total", target: 3, by: "2026-12-31" } };
+  await session.send("juggle 3 times this year");
+  assert.equal(last(), 'There\'s no category called "juggling".');
+  next = { name: "removeGoal", input: { acrossCategory: "sports" } };
+  await session.send("drop my sports goal");
+  assert.match(last(), /^Removed the goal on "Sports" \(category\)/);
 }
 
 console.log("goals.test.ts: all passed");

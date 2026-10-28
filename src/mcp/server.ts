@@ -38,6 +38,7 @@ import { summarizeHistory } from "../lib/historySummary.ts";
 import { NOTE_MAX_LENGTH, setDayNote } from "../lib/dayNotes.ts";
 import {
   canTakeChecklistOp,
+  categoryGoalOf,
   categoryStats,
   checklistIneligible,
   habitStats,
@@ -154,7 +155,8 @@ It asks first (status "needs_confirm"): ask the user the question word for word,
 const GOALS_DESCRIPTION = `Goals and challenges, each on one habit or recurring task, counted on what's logged there (§71).
 - op "list": every goal with its progress, pace and a one-line \`summary\` in the app's words ("how are my goals?"); running ones in \`active\`, finished ones in \`finished\`.
 - op "create": a total ("read 20 books by December", "run 100 km by the end of the year": \`kind: "total"\`, \`target\`, \`by\` as YYYY-MM-DD, the last day) or a challenge ("a 30-day no-sugar challenge": \`kind: "challenge"\`, \`target\` = days). A total counts done days (\`measure: "days"\`, default for yes/no items; \`unit\` names what one stands for, e.g. "books") or a number/timer habit's amount (\`measure: "amount"\`, their default). It counts from today; pass \`from\` only when the user names another first day ("this year" = Jan 1). Name the item with \`id\` or \`name\`; when the user doesn't have it (status "rejected" saying nothing is called that), call again with \`newItem\` (as one of create_items' items): it's created with the goal, and a challenge's item ends with it. An item has one running goal: "needs_confirm" asks to replace it; only after a yes call again with \`confirm: true\`. A missed challenge day doesn't end it; it's achieved only with no misses.
-- op "update": change the running goal's \`target\`, \`by\`, or a challenge's \`days\`.
+- Across a whole category (§81: "work out 50 times this quarter" in Sports, "60 hours of study by December", "finish 20 Work tasks by Christmas"): \`category\` (its name) instead of the item, a total only. \`measure\` "times" (default: every habit, task or one-off task done counts one), "days" (days with something done) or "amount" with \`unit\` ("hours" or "min" add up timers; "km"…); items in another unit are left out and named. \`type\` limits it to one kind. Whatever is in the category counts, items added later too. One running goal per category, apart from its items' own goals.
+- op "update": change the running goal's \`target\`, \`by\`, or a challenge's \`days\` (\`category\` for a category's goal).
 - op "remove": remove the running goal; the item and its history stay.
 Not for a habit's per-day goal ("8 glasses a day"): that's update_items' newTarget. Reply with \`message\` (or the summaries); "undo" takes a change back.`;
 
@@ -681,6 +683,7 @@ export function buildServer(deps: McpDeps): McpServer {
             category: data.categories.find((c) => c.id === categoryId)?.name,
             ...(wants("habit") ? { ...categoryStats(data, categoryId, today), habits: habits.map((habit) => habitStats(data, habit, today)) } : {}),
             ...tasksIn(categoryId),
+            ...categoryGoalOf(data, categoryId, today),
           };
         }
         const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
@@ -823,8 +826,10 @@ export function buildServer(deps: McpDeps): McpServer {
         name: z.string().optional().describe("The item's name in the user's words."),
         kind: z.enum(["total", "challenge"]).optional().describe("create: a total by an end date, or a challenge of N days."),
         target: z.number().positive().optional().describe("create/update: a total's target, or a challenge's days."),
-        measure: z.enum(["days", "amount"]).optional().describe("create, total: done days, or a number/timer habit's amount."),
-        unit: z.string().optional().describe('create, total in days: what one done day stands for, e.g. "books".'),
+        measure: z.enum(["times", "days", "amount"]).optional().describe("create, total: things done, days done, or an amount logged."),
+        unit: z.string().optional().describe('days on an item: what one done day stands for, e.g. "books"; amount across a category: "hours", "km"…'),
+        category: z.string().optional().describe("A category's name: the goal covers everything in it (instead of id/name)."),
+        type: ITEM_TYPE.optional().describe("With category: only this kind of item."),
         by: z.string().optional().describe("create/update, total: the last day, YYYY-MM-DD."),
         days: z.number().int().positive().optional().describe("update, challenge: its new length in days."),
         from: z.string().optional().describe("create: the first day counted, YYYY-MM-DD, only when the user named one."),

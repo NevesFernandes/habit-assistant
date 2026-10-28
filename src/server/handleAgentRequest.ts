@@ -259,7 +259,7 @@ const PACK_PROSE = `For createPack: the user wants several new items set up at o
 recurrence: ${RECURRENCE_SPEC_GRAMMAR}`;
 
 // §71
-const GOALS_PROSE = `For goals: a goal hangs on one habit or recurring task and counts what is logged there. A total: target is how many done days (measure "days", the default for yes/no items; set unit to what each one stands for, e.g. "books" for "read 20 books" on a "finish a book" habit) or how much of a number or timer habit (measure "amount", its default for those), and by is the last day: resolve "by December" to that month's last day, "by the end of the year" to 31 December. A challenge: target is its length in days ("a 30-day no-sugar challenge"), counted from today. from only when the user names another first day ("this year" = 1 January). Pass name for an item the user has; when they have none for it (the app tells you), call setGoal again with newItem instead: kind, a short name, dayPart, a compact recurrence (below), for habits a categoryId and, for amounts, completionType "value" or "timer" with a per-day target. A habit's per-day target ("change my water goal to 10 glasses") is updateHabit, not a goal. The app asks before replacing a running goal; never ask yourself.
+const GOALS_PROSE = `For goals: a goal hangs on one habit or recurring task and counts what is logged there. A total: target is how many done days (measure "days", the default for yes/no items; set unit to what each one stands for, e.g. "books" for "read 20 books" on a "finish a book" habit) or how much of a number or timer habit (measure "amount", its default for those), and by is the last day: resolve "by December" to that month's last day, "by the end of the year" to 31 December. A challenge: target is its length in days ("a 30-day no-sugar challenge"), counted from today. from only when the user names another first day ("this year" = 1 January). Pass name for an item the user has; when they have none for it (the app tells you), call setGoal again with newItem instead: kind, a short name, dayPart, a compact recurrence (below), for habits a categoryId and, for amounts, completionType "value" or "timer" with a per-day target. A goal over a whole category ("work out 50 times this quarter" across Sports, "60 hours of study by December", "finish 20 Work tasks by Christmas"): acrossCategory instead of name, a total only; measure "times" (default: each thing done counts), "days" (days with something done) or "amount" with unit ("hours", "km"); onlyKind when the user says habits or tasks. A habit's per-day target ("change my water goal to 10 glasses") is updateHabit, not a goal. The app asks before replacing a running goal; never ask yourself.
 recurrence: ${RECURRENCE_SPEC_GRAMMAR}`;
 
 const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For "what did I miss?" (only the misses) use getMissed. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
@@ -1197,8 +1197,10 @@ export function buildTools(
           categoryId: CATEGORY_SELECTOR_FIELD,
           kind: { type: "string", enum: ["total", "challenge"] },
           target: { type: "number", description: "total: how many or how much; challenge: days." },
-          measure: { type: "string", enum: ["days", "amount"], description: "total: days done, or the amount logged." },
-          unit: { type: "string", description: "measure days: what one done day stands for, e.g. books." },
+          measure: { type: "string", enum: ["times", "days", "amount"], description: "total: things done, days done, or the amount logged." },
+          unit: { type: "string", description: "days: what one done day stands for, e.g. books; amount across a category: e.g. hours, km." },
+          acrossCategory: { type: "string", description: "A category id: the goal covers everything in it." },
+          onlyKind: { type: "string", enum: ["habit", "recurringTask", "singleTask"], description: "With acrossCategory, only this kind." },
           by: { type: "string", description: "total: the last day, ISO date." },
           from: { type: "string", description: "Only when the user named another first day, ISO date." },
           newItem: {
@@ -1222,26 +1224,30 @@ export function buildTools(
     },
     {
       name: "changeGoal",
-      description: "Change the running goal of an item: 'make my reading goal 25 books', 'extend it to January', 'make the challenge 40 days'. Set only what changes.",
+      description: "Change the running goal of an item or category: 'make my reading goal 25 books', 'extend it to January', 'make the challenge 40 days'. Set only what changes.",
       parameters: {
         type: "object",
         properties: {
           name: { type: "string", description: "Fragment of the item's name." },
           categoryId: CATEGORY_SELECTOR_FIELD,
+          acrossCategory: { type: "string", description: "A category id, for a category's goal (instead of name)." },
           newTarget: { type: "number", description: "A total's new target." },
+          newUnit: { type: "string", description: "Only when newTarget is in hours for a minutes goal: hours." },
           newBy: { type: "string", description: "A total's new last day, ISO date." },
           newDays: { type: "number", description: "A challenge's new length in days." },
         },
-        required: ["name"],
       },
     },
     {
       name: "removeGoal",
-      description: "Remove the running goal of an item ('drop my reading goal', 'stop the no-sugar challenge'). The item and its history stay.",
+      description: "Remove the running goal of an item or category ('drop my reading goal', 'stop the no-sugar challenge'). The items and their history stay.",
       parameters: {
         type: "object",
-        properties: { name: { type: "string", description: "Fragment of the item's name." }, categoryId: CATEGORY_SELECTOR_FIELD },
-        required: ["name"],
+        properties: {
+          name: { type: "string", description: "Fragment of the item's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          acrossCategory: { type: "string", description: "A category id, for a category's goal (instead of name)." },
+        },
       },
     },
     {
@@ -1249,7 +1255,10 @@ export function buildTools(
       description: "Show how the goals and challenges are going: 'how are my goals?', 'am I on track for 20 books?'. Reads only; the app words the answer.",
       parameters: {
         type: "object",
-        properties: { name: { type: "string", description: "Optional. Fragment of one item's name." } },
+        properties: {
+          name: { type: "string", description: "Optional. Fragment of one item's name." },
+          acrossCategory: { type: "string", description: "Optional. A category id, for that category's goal." },
+        },
       },
     },
     {

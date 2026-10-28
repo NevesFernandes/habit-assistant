@@ -183,16 +183,23 @@ export interface AppData {
  * §71: a target with an end date on one habit or recurring task, measured on its log.
  * "total": `target` done days ("days") or `target` of a number/timer habit's amount
  * ("amount") from `from` to `to`. "challenge": done every due day from `from` to `to`
- * (`target` days long). Progress and achieved/missed are worked out from the log
+ * (`target` days long). §81: or a total across a whole category (`categoryId` instead of
+ * `itemId`): every completion ("times"), days with one done ("days"), or an amount in one
+ * unit ("amount"). Progress and achieved/missed are worked out from the log
  * (src/lib/goals.ts), never stored.
  */
 export interface Goal {
   id: string;
-  itemId: string;
+  /** The habit or recurring task, for an item goal. */
+  itemId?: string;
+  /** §81: the category, for a category goal (live: whatever is in it counts). */
+  categoryId?: string;
+  /** §81: a category goal counting only this kind of item. */
+  itemKind?: "habit" | "recurringTask" | "singleTask";
   kind: "total" | "challenge";
   target: number;
-  measure: "days" | "amount";
-  /** What a done day stands for, for the replies ("books"); "days" goals only. */
+  measure: "days" | "amount" | "times";
+  /** Item "days" goals: what a done day stands for ("books"). Category "amount" goals: the unit added up ("min" for timers). */
   unit?: string;
   /** First day counted, YYYY-MM-DD. */
   from: string;

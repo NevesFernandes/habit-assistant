@@ -25,6 +25,7 @@ import {
   removeRecurringTaskChecklistItem,
   removeSingleTaskChecklist,
   removeSingleTaskChecklistItem,
+  resolveCategoryId,
   resolveHabits,
   resolveRecurringTasks,
   resolveSingleTasks,
@@ -91,7 +92,19 @@ import { applyPack, describePackAdded, describePackPreview, planPack, withoutIte
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
-import { describeGoals, planChangeGoal, planGoalWithNewItem, planRemoveGoal, planSetGoal, type GoalInput, type GoalItem, type GoalPlan } from "./goals";
+import {
+  describeGoals,
+  planChangeCategoryGoal,
+  planChangeGoal,
+  planGoalWithNewItem,
+  planRemoveCategoryGoal,
+  planRemoveGoal,
+  planSetCategoryGoal,
+  planSetGoal,
+  type GoalInput,
+  type GoalItem,
+  type GoalPlan,
+} from "./goals";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "./skip";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
@@ -154,7 +167,7 @@ export type PendingConfirmation =
   // §76: a set of new items, shown before anything is added.
   | { type: "pack"; plan: PackPlan }
   // §71: a new goal on an item that already has one running; a yes replaces it.
-  | { type: "replaceGoal"; itemId: string; newItem?: PackItem; input: GoalInput };
+  | { type: "replaceGoal"; itemId?: string; categoryId?: string; input: GoalInput };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -477,21 +490,47 @@ export class ChatSession {
     } else if (toolCall.name === "setGoal") {
       await this.handleSetGoal(toolCall.input, toolCall);
     } else if (toolCall.name === "changeGoal") {
-      const { newTarget, newBy, newDays } = toolCall.input;
-      const item = this.pickGoalItem(toolCall.input, toolCall);
+      const { newTarget, newBy, newDays, newUnit, acrossCategory } = toolCall.input;
+      const change = { target: newTarget, by: newBy, days: newDays, unit: newUnit };
       const data = this.deps.getData();
-      if (item && data) await this.runGoalPlan(planChangeGoal(data, item, { target: newTarget, by: newBy, days: newDays }, this.todayISO), toolCall);
+      if (!data) return;
+      if (acrossCategory) {
+        const categoryId = this.goalCategory(acrossCategory, toolCall);
+        if (categoryId) await this.runGoalPlan(planChangeCategoryGoal(data, categoryId, change, this.todayISO), toolCall);
+        return;
+      }
+      const item = this.pickGoalItem(toolCall.input, toolCall);
+      if (item) await this.runGoalPlan(planChangeGoal(data, item, change, this.todayISO), toolCall);
     } else if (toolCall.name === "removeGoal") {
-      const item = this.pickGoalItem(toolCall.input, toolCall);
       const data = this.deps.getData();
-      if (item && data) await this.runGoalPlan(planRemoveGoal(data, item, this.todayISO), toolCall);
+      if (!data) return;
+      if (toolCall.input.acrossCategory) {
+        const categoryId = this.goalCategory(toolCall.input.acrossCategory, toolCall);
+        if (categoryId) await this.runGoalPlan(planRemoveCategoryGoal(data, categoryId, this.todayISO), toolCall);
+        return;
+      }
+      const item = this.pickGoalItem(toolCall.input, toolCall);
+      if (item) await this.runGoalPlan(planRemoveGoal(data, item, this.todayISO), toolCall);
     } else if (toolCall.name === "getGoals") {
       this.handleGetGoals(toolCall.input, toolCall);
     }
   }
 
+  // §81: the category a goal is across, or null after saying there's none by that name.
+  private goalCategory(raw: string, toolCall: ToolCallRef): string | null {
+    const data = this.deps.getData();
+    const id = data && resolveCategoryId(data, raw);
+    if (!id) this.pushAssistantMessage(`There's no category called "${raw}".`, toolCall);
+    return id || null;
+  }
+
   // §71: the habit or recurring task a goal is about. A one-off task can't have one.
-  private pickGoalItem(selector: ItemSelector, toolCall: ToolCallRef): GoalItem | null {
+  private pickGoalItem(input: { name?: string; categoryId?: string }, toolCall: ToolCallRef): GoalItem | null {
+    if (!input.name?.trim()) {
+      this.pushAssistantMessage("Which habit, recurring task or category is the goal on?", toolCall);
+      return null;
+    }
+    const selector: ItemSelector = { name: input.name, categoryId: input.categoryId };
     const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
     if (kind === "singleTask") {
       const task = this.pickItem("singleTask", selector, toolCall);
@@ -523,13 +562,23 @@ export class ChatSession {
     const goal: GoalInput = {
       kind: input.kind === "challenge" ? "challenge" : "total",
       target: input.target,
-      measure: input.measure === "amount" || input.measure === "days" ? input.measure : undefined,
+      measure: input.measure === "amount" || input.measure === "days" || input.measure === "times" ? input.measure : undefined,
       unit: input.unit,
+      itemKind: input.onlyKind,
       by: input.by && isISODate(input.by) ? input.by : undefined,
       from: input.from && isISODate(input.from) ? input.from : undefined,
     };
     let plan: GoalPlan;
     let itemId: string | undefined;
+    if (input.acrossCategory) {
+      // §81: a total across a whole category.
+      const categoryId = this.goalCategory(input.acrossCategory, toolCall);
+      if (!categoryId) return;
+      plan = planSetCategoryGoal(data, categoryId, goal, today);
+      if (plan.status === "needs_confirm") this.pendingConfirmation = { type: "replaceGoal", categoryId, input: goal };
+      await this.runGoalPlan(plan, toolCall);
+      return;
+    }
     if (input.newItem && !this.forcedPick) {
       plan = planGoalWithNewItem(data, input.newItem, goal, today);
     } else {
@@ -556,15 +605,20 @@ export class ChatSession {
     await this.runGoalPlan(plan, toolCall);
   }
 
-  private handleGetGoals(input: { name?: string }, toolCall: ToolCallRef) {
+  private handleGetGoals(input: { name?: string; acrossCategory?: string }, toolCall: ToolCallRef) {
     const data = this.deps.getData();
     if (!data) return;
+    if (input.acrossCategory) {
+      const categoryId = this.goalCategory(input.acrossCategory, toolCall);
+      if (categoryId) this.pushAssistantMessage(describeGoals(data, this.todayISO, { categoryId }), toolCall);
+      return;
+    }
     if (!input.name?.trim()) {
       this.pushAssistantMessage(describeGoals(data, this.todayISO), toolCall);
       return;
     }
     const item = this.pickGoalItem({ name: input.name }, toolCall);
-    if (item) this.pushAssistantMessage(describeGoals(data, this.todayISO, item.id), toolCall);
+    if (item) this.pushAssistantMessage(describeGoals(data, this.todayISO, { itemId: item.id }), toolCall);
   }
 
   private async handleDeleteRequest(kind: ItemKind, criteria: DeleteCriteria, toolCall: ToolCallRef) {
@@ -633,6 +687,10 @@ export class ChatSession {
         return;
       }
       const data = this.deps.getData();
+      if (data && pending.categoryId) {
+        await this.runGoalPlan(planSetCategoryGoal(data, pending.categoryId, pending.input, this.todayISO, true), toolCall);
+        return;
+      }
       const item = data && [...data.habits, ...data.recurringTasks].find((i) => i.id === pending.itemId);
       if (!data || !item) {
         this.pushAssistantMessage("That item doesn't seem to exist anymore.", toolCall);

@@ -16,7 +16,12 @@ export default function GoalCard({ progress, showName = false }: { progress: Goa
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm">
-          {showName && <span className="font-medium">{progress.itemName}: </span>}
+          {showName && (
+            <span className="font-medium">
+              {progress.itemName}
+              {progress.categoryId && <span className="font-normal text-slate-400"> (category)</span>}:{" "}
+            </span>
+          )}
           {describeGoalTarget(goal, progress.unit, today)}
         </span>
         <span className={`shrink-0 text-xs ${status === "achieved" ? "text-emerald-400" : status === "missed" ? "text-amber-400" : "text-slate-400"}`}>{label}</span>

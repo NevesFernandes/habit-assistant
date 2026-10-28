@@ -43,7 +43,22 @@ import { applyPack, describePackAdded, describePackPreview, planPack, type PackI
 import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
 import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
 import { isDayPart } from "../lib/dayParts.ts";
-import { activeGoalOf, goalProgress, goalsOverview, goalView, planChangeGoal, planGoalWithNewItem, planRemoveGoal, planSetGoal, type GoalInput, type GoalPlan } from "../lib/goals.ts";
+import {
+  activeCategoryGoalOf,
+  activeGoalOf,
+  goalProgress,
+  goalsOverview,
+  goalView,
+  planChangeCategoryGoal,
+  planChangeGoal,
+  planGoalWithNewItem,
+  planRemoveCategoryGoal,
+  planRemoveGoal,
+  planSetCategoryGoal,
+  planSetGoal,
+  type GoalInput,
+  type GoalPlan,
+} from "../lib/goals.ts";
 import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
 import { HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import { NOT_BY_CHAT, describeReadAloudEverywhere, describeWeekStart, readAloudEverywhere, withReadAloudEverywhere, withWeekStart } from "../lib/settingsByChat.ts";
@@ -359,6 +374,13 @@ export function taskStats(data: AppData, todayISO: string, categoryId?: string) 
 }
 
 /** The stats tab: overall, per category (habits; tasks come apart, see taskStats), and the same per category when asked for one. */
+/** §81: the category's running goal, as the app shows it, if any. */
+export function categoryGoalOf(data: AppData, categoryId: string, todayISO: string) {
+  const goal = activeCategoryGoalOf(data, categoryId, todayISO);
+  const progress = goal && goalProgress(data, goal, todayISO);
+  return progress ? { goal: goalView(progress, todayISO) } : {};
+}
+
 export function categoryStats(data: AppData, categoryId: string | undefined, todayISO: string) {
   const habits = categoryId === undefined ? data.habits : data.habits.filter((habit) => habit.categoryId === categoryId);
   return aggregateCategoryStats(habits, data.completionLog, todayISO, weekStartOf(data));
@@ -552,11 +574,23 @@ export const HANDLERS: Record<string, Handler> = {
       const input: GoalInput = {
         kind: args.kind === "challenge" ? "challenge" : "total",
         target: num("target") ?? num("days"),
-        measure: args.measure === "days" || args.measure === "amount" ? args.measure : undefined,
+        measure: args.measure === "days" || args.measure === "amount" || args.measure === "times" ? args.measure : undefined,
         unit: typeof args.unit === "string" ? args.unit : undefined,
+        itemKind: args.type === "habit" || args.type === "recurringTask" || args.type === "singleTask" ? args.type : undefined,
         by: date("by"),
         from: date("from"),
       };
+      // §81: a goal across a whole category.
+      if (typeof args.category === "string" && args.category.trim() && !id && !name) {
+        const categoryId = resolveCategoryId(data, args.category);
+        if (!categoryId) {
+          return { status: "rejected", message: `There's no category called "${args.category}". The categories are: ${data.categories.map((c) => c.name).join(", ")}.` };
+        }
+        if (op === "create") return goalOutcome(planSetCategoryGoal(data, categoryId, input, todayISO, args.confirm === true));
+        if (op === "update") return goalOutcome(planChangeCategoryGoal(data, categoryId, { target: num("target"), by: date("by"), unit: input.unit }, todayISO));
+        if (op === "remove") return goalOutcome(planRemoveCategoryGoal(data, categoryId, todayISO));
+        return { status: "rejected", message: 'op is one of "list", "create", "update", "remove".' };
+      }
       if (op === "create" && args.newItem && typeof args.newItem === "object" && !id && !name) {
         const raw = args.newItem as Record<string, unknown>;
         const item = packItemFrom({ ...raw, kind: raw.type ?? raw.kind });

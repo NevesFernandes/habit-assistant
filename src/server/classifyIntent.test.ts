@@ -159,6 +159,9 @@ const cases: Case[] = [
   ["how are my goals going?", ["goals"]],
   ["am I on track for my reading?", ["goals"]],
   ["run 100 km by the end of the year", ["goals"]],
+  // §81
+  ["work out 50 times this quarter", ["goals"]],
+  ["60 hours of study this year", ["goals"]],
 ];
 
 let failures = 0;
