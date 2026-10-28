@@ -40,11 +40,10 @@ import {
   canTakeChecklistOp,
   categoryStats,
   checklistIneligible,
-  describeActions,
   habitStats,
   itemStats,
   taskStats,
-  MORE_ACTIONS,
+  HANDLERS,
   overallStats,
   planChecklist,
   planDelete,
@@ -68,17 +67,28 @@ Act directly; ask a question only when a tool can't run without the answer.
 Present days grouped by part of the day (Wake-up, Morning, Work day, Afternoon, Evening, Bedtime), in the order the tool returns them; important items carry a star.`;
 
 const GET_DAY_DESCRIPTION = `The user's to-do list and habits for a day. Use it for "what's on today?", "what do I have to do?", "what's left?", "did I do X today?", "what's planned tomorrow?". It holds habits, recurring tasks and one-off tasks due that day, grouped by part of the day in the same order as the app's Today tab, with what's done, logged amounts, checklist progress and "N times a week" progress. Calendar events aren't in it.
-For today, call it with no arguments: the user's time zone is stored with their data. Pass \`date\` (YYYY-MM-DD) for another day. When the user says they're somewhere else now, call set_time_zone so it sticks.
-If the result's status is "need_timezone", ask the user which city or time zone they're in, then call set_time_zone and try again.
+For today, call it with no arguments: the user's time zone is stored with their data. Pass \`date\` (YYYY-MM-DD) for another day. When the user says they're somewhere else now, save it with settings' \`timeZone\` so it sticks.
+If the result's status is "need_timezone", ask the user which city or time zone they're in, save it with settings, and try again.
 Reply briefly: list what's left first, then what's done; mention a part of the day only when it has items. Never invent items that aren't in the result.`;
 
-const SET_TIME_ZONE_DESCRIPTION = `Saves the user's time zone, which decides what "today" is for every Habit Assistant tool. Call it when the user says where they are now ("I'm in Tokyo this week", "I moved to Lisbon"), or answers a need_timezone question. Pass an IANA name, e.g. "Asia/Tokyo". The app also sets it from the phone's clock whenever it's opened, so a trip is followed either way. Reply in one line with the new today.`;
+const SETTINGS_DESCRIPTION = `Shows or changes the user's Habit Assistant settings. With nothing set it shows them.
+- \`weekStartsOn\`: "sunday" or "monday", the first day of the week ("start my week on Monday"); "this week" and weekly counts follow it.
+- \`readAloud\`: whether the app reads its replies aloud, set on every device the user has ("turn off read-aloud").
+- \`timeZone\`: an IANA name ("Asia/Tokyo") saved as the user's time zone, which decides what "today" is for every tool. Use it when the user says where they are now ("I'm in Tokyo this week"), or answers a need_timezone question. The app also sets it from the phone's clock when opened.
+API keys, the chat provider and voice transcription change only in the app's Settings, never here: never ask for a key. Reply in one line with \`message\` (or the new today).`;
+
+const CATEGORIES_DESCRIPTION = `The user's categories. op "list": each with how many habits and tasks use it. op "add": a new category called \`name\` (the app gives it a plain icon; the user can pick another in the app). To put items in a category, use update_items.`;
+
+const SET_NOTE_DESCRIPTION = `Adds, replaces or removes the note on one day of an item, without marking anything: "add a note to today's run: legs tired", "note for tomorrow's gym: bring a towel", "remove the note from yesterday's gym". One note per item per day; a new one replaces it; \`note: ""\` removes it. A note can also ride on set_done or log_progress. Reply in one line with \`message\`.`;
+
+const UNDO_DESCRIPTION = `Undoes the last change made through Habit Assistant from Claude, today: "undo that", "take that back". Any change, a delete included (the item comes back with its history), even a whole set of items. Refused if those items changed since (in the app or here), or if the change was made on an earlier day. Changes made in the app's own chat are undone there. Tell the user what \`message\` says was put back.`;
 
 const FIND_ITEMS_DESCRIPTION = `Looks up the user's habits, recurring tasks and one-off tasks by name, or lists them all, with ids, schedule, part of the day, pause/archive state, goal and checklist.
 Use it to answer "what habits do I have?" and to get ids when a name is unclear. Archived items and finished one-off tasks are left out unless \`includeInactive\` is true or they're the only match.`;
 
 const SET_DONE_DESCRIPTION = `Marks items done or not done for a day. It sets, never toggles, so repeating a call is safe.
 Name the item with \`name\` (the user's words) or \`ids\` (from get_day or find_items; several ids apply the same change to each, e.g. "both", "all of them"). \`date\` defaults to the user's today.
+Several at once by the user's words: \`names\` ("floss and water"), or filters \`dayPart\`, \`category\`, \`type\` ("all my morning habits"), or \`all: true\` for everything (that asks first: status "needs_confirm", then call again with \`confirm: true\`). Items it doesn't fit (not due that day, already done) are left out and named in \`message\`.
 A number or timer habit marked done gets its full goal logged (a bigger amount already logged is kept); a checklist habit gets every item ticked. For a stated amount use log_progress instead.
 Statuses: "ambiguous": list the candidates and ask which one, then call again with \`ids\`. "rejected": tell the user the reason. "needs_confirm": a one-off task set for a later day; ask the question, and only after a yes call again with \`moveToToday: true\`.
 Pass \`note\` when the user adds a detail about it ("5 km, legs tired"); it's kept with that day's completion. If the result has \`noteNotSaved\`, say why.
@@ -88,7 +98,7 @@ const LOG_PROGRESS_DESCRIPTION = `Logs an amount on a number or timer habit for 
 Pass \`note\` when the user adds a detail ("felt easy today"); it's kept with that day. If the result has \`noteNotSaved\`, say why.
 Reply in one line with the day's total against the goal, from the returned item.`;
 
-const CREATE_ITEM_DESCRIPTION = `Creates a habit, a recurring task or a one-off task.
+const CREATE_ITEMS_DESCRIPTION = `Creates a habit, a recurring task or a one-off task: its fields at the top level. Or several new items at once (\`items\`, each with the same fields, and \`packName\`), described below.
 - habit: something the user wants to build or track, with stats and streaks. Needs \`category\` (pick the best fit from the user's categories; "Other" when nothing fits; never ask) and a \`recurrence\`. Tracking (\`completionType\`) is "yesno" unless the user describes an amount ("value", with \`target\` and \`unit\`), a duration ("timer", \`target\` in minutes) or steps ("checklist", with \`checklistItems\`). Never ask how to track it; do ask for the goal amount when they gave none for a number or timer habit.
 - recurringTask: a chore or errand that repeats (bins, weekly shopping), done/not done only. Category optional.
 - singleTask: a one-off to-do. An unfinished one carries over to the next day unless \`carriesOver\` is false.
@@ -96,17 +106,19 @@ Always pick \`dayPart\` yourself from what the item is, even when the user named
 Pass the user's message word for word as \`userMessage\`: the confirmation marks what you assumed from it.
 \`startDate\` defaults to today; for a weekday the user named ("from next Tuesday") pass \`startWeekday\` (0 = Sunday) instead of working out the date.
 Statuses: "ok": reply with \`confirmation\`, keeping its "Assumed:" line. "needs_confirm": the name is already in use; ask the question, and only after a yes call again with \`confirmDuplicate: true\`. "need_info": ask what \`message\` says, then call again.
+Several at once ("set me up a morning routine", "help me get fit for a 10K"): build the set for this user from what they said (goals, schedule, level); if the request is broad and you know nothing about them, ask one short question first. Usually 3 to 8 items, at most 10. Items the user already has are left out. The first call adds nothing: it returns "needs_confirm" with the list as \`question\`; show it, drop any items the user doesn't want, and only after a yes call again with the remaining items and \`confirm: true\`. They all start on the same day (\`startDate\` on the items, or today).
 
 recurrence (habits and recurring tasks): ${RECURRENCE_SPEC_GRAMMAR}`;
 
-const UPDATE_ITEM_DESCRIPTION = `Changes an existing item: rename, note, category, part of the day, important (star), start or end date, how often it repeats, a habit's tracking, goal, unit or checklist steps, a recurring task's checklist mode, whether a one-off task carries over. Pass only what changes. Not for done/not done (set_done) or logging amounts (log_progress).
+const UPDATE_ITEMS_DESCRIPTION = `Changes an existing item: rename, note, category, part of the day, important (star), start or end date, how often it repeats, a habit's tracking, goal, unit or checklist steps, a recurring task's checklist mode, whether a one-off task carries over. Pass only what changes. Not for done/not done (set_done) or logging amounts (log_progress).
 Name the item with \`id\` (from get_day or find_items) or \`name\` (the user's words).
 \`newChecklistItems\` replaces a habit's whole list of steps, from today on; earlier days keep theirs. Only when the user names an earlier day, pass it as \`newChecklistItemsFrom\`.
-\`newRecurrence\` uses the same format as create_item's \`recurrence\` and replaces the whole rule.
-Statuses: "ok": reply with \`confirmation\`. "ambiguous": list the candidates and ask which one, then call again with \`id\`. "rejected" or "need_info": tell or ask the user what \`message\` says.`;
+\`newRecurrence\` uses the same format as create_items' \`recurrence\` and replaces the whole rule.
+Statuses: "ok": reply with \`confirmation\`. "ambiguous": list the candidates and ask which one, then call again with \`id\`. "rejected" or "need_info": tell or ask the user what \`message\` says.
+One change on several items ("move all my Sports habits to the evening", "make gym and run Mon, Wed, Fri"): choose them with \`names\`, or filters \`dayPart\`, \`category\`, \`type\`, or \`all: true\` (asks first: "needs_confirm", then \`confirm: true\`). Only \`newDayPart\`, \`newImportant\`, \`newCategory\` and \`newRecurrence\` change several at once. Items already like that, or a one-off task given a repeat rule, are left out and named. Reply with \`message\`.`;
 
 const CHECKLIST_DESCRIPTION = `A checklist on an item: a habit's steps, or the list on a task (e.g. a weekly shopping list).
-- op "add": add \`items\` to a task's list (gives a task without one its first list). Habits' steps change with update_item instead.
+- op "add": add \`items\` to a task's list (gives a task without one its first list). Habits' steps change with update_items instead.
 - op "tick" / "untick": check items off or back on, for \`date\` (default today; a recurring task and a habit have a list per day). Each item is matched by the user's words.
 - op "remove": take \`items\` off for good, from today on (or an earlier \`date\` the user named); earlier days keep them. A checklist habit keeps at least one step.
 - op "remove_all": take the whole list off a task, which stays as a plain task. Asks first when it has items: ask the question, and only after a yes call again with \`confirm: true\`.
@@ -114,36 +126,34 @@ Name the item with \`id\` or \`name\`. After ticking a task's last item, offer (
 
 const SCHEDULE_DESCRIPTION = `Pauses, skips, resumes or archives a habit or recurring task (not one-off tasks: delete those instead).
 - op "pause": from \`from\` (default today; never a past day) until \`resumeOn\`, the first day back (omit for open-ended). Paused days count as neither done nor missed, so streaks survive. A new pause replaces one that's running or upcoming.
-- op "skip": one excused day (\`date\`, default today) that counts as neither done nor missed, lighter than a pause ("I'm sick today, skip gym").
-- op "resume": due again from today; cancels an upcoming pause.
-- op "archive": no more occurrences after today; the history and stats stay. For "stop tracking it" or "I'm done with this habit". Erasing it with its history is delete_items.
-Reply in one line with \`message\`. If the status is "not_available", tell the user that isn't available yet.`;
+- op "skip": one excused day (\`date\`, default today or later, never past) that counts as neither done nor missed, lighter than a pause ("I'm sick today, skip gym"). op "unskip" takes it back.
+- op "resume": due again from today; cancels an upcoming pause; also brings back an archived item.
+- op "archive": no more occurrences after today; the history and stats stay. For "stop tracking it". op "unarchive" brings it back: due from today, and the days it was archived count as paused, not missed. Erasing it with its history is delete_items.
+Several at once (pause, skip, resume): \`names\`, or filters \`dayPart\`, \`category\`, \`type\`, or \`all: true\` (asks first: "needs_confirm", then \`confirm: true\`); items it doesn't fit are left out and named.
+Reply in one line with \`message\`.`;
 
-const GET_HISTORY_DESCRIPTION = `What happened over a period, day by day: what was due, done, missed, skipped or paused, logged amounts and notes. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what did I miss this week?", and to plan ahead.
+const GET_HISTORY_DESCRIPTION = `What happened over a period, day by day: what was due, done, missed, skipped or paused, logged amounts and notes, with a summary. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", and to plan ahead.
 \`from\` and \`to\` are YYYY-MM-DD, both included. Limit it to one item with \`id\` or \`name\`, or to one kind with \`type\`. For a single day, get_day is enough.
-If the status is "not_available", tell the user history isn't available yet; get_day still answers for one day at a time.`;
+- \`view: "missed"\`: only the misses, plus one-off tasks still carried over, and up to two \`suggestions\` to put to the user ("what did I miss?"). \`from\`/\`to\` optional: without them it uses this week up to yesterday, and \`period\` says so; tell the user which period. Never offer to mark missed days done: the app looks forward.
+- \`format: "csv"\`: the period as a spreadsheet ("export my October"), the same file the app gives; give \`csv\` to the user as a file named \`filename\`, unchanged. Ask which period if the user didn't say. At most 3,000 rows.`;
 
 const DELETE_DESCRIPTION = `Permanently deletes items and, for habits and recurring tasks, all their history. Prefer schedule's archive when the user only wants to stop an item.
 It asks first (status "needs_confirm", with details of each item): ask the user the question word for word, and only after a yes call again with the same items and \`confirm: true\`. One one-off task named by the user goes without asking.`;
 
-// The tool list freezes at launch (claude.ai caches it), so these two describe the finished
-// features. Everything they describe is built now (§63, §64, §66–§68); the "not_available"
-// lines stay because the descriptions are frozen, and no tool answers it any more.
 const GET_STATS_DESCRIPTION = `Stats, as in the app's stats tab: for a habit, streak, best streak, completion % and counts this week, month, year and all time; recurring and one-off tasks have their own.
 - scope "item": one habit or task, by \`id\` or \`name\`. \`streakUnit\` says whether streaks count days, weeks or months.
 - scope "category": the items in \`category\` (its name), together.
 - scope "overall": everything, plus each category.
-\`type\` limits category or overall to one kind of item. If the status is "not_available", tell the user those stats aren't available yet.`;
+\`type\` limits category or overall to one kind of item.`;
 
 const RESET_STATS_DESCRIPTION = `Starts stats over, from today, for one item, a category or everything (\`type\` limits it to one kind of item). Nothing is erased: the history stays (the app's heatmap still shows it), only the counting restarts. Not for deleting an item (delete_items) or a single day's tick (set_done).
-It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. If the status is "not_available", tell the user resetting stats isn't available yet.`;
+It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. The best streak always stays from here; resetting it too is only in the app.
+\`undo: true\` (with the same scope) puts the counting back as it was before the last reset ("undo the reset of my gym stats"); it doesn't ask.`;
 
-
-const MORE_ACTIONS_DESCRIPTION = `Habit Assistant actions beyond the other tools, such as managing categories. Call it with no \`action\` to get the current list, with each action's description and arguments, then call it again with \`action\` and \`args\`. The list can grow, so check it whenever the user asks for something the other tools don't do, before saying it can't be done.`;
 
 const NEED_TIMEZONE = {
   status: "need_timezone",
-  message: "Ask the user which city or time zone they're in, then call set_time_zone and try again.",
+  message: "Ask the user which city or time zone they're in, save it with settings' timeZone, then try again.",
 };
 
 type Body = { status: string } & Record<string, unknown>;
@@ -222,7 +232,7 @@ const DATE = z.string().optional().describe("YYYY-MM-DD in the user's local cale
 const TIME_ZONE = z
   .string()
   .optional()
-  .describe('The user\'s IANA time zone for this call only, e.g. "Europe/Lisbon". To change it for good, use set_time_zone.');
+  .describe('The user\'s IANA time zone for this call only, e.g. "Europe/Lisbon". To change it for good, use settings.');
 
 function ambiguous(candidates: ReturnType<typeof candidate>[], pick: "ids" | "id" = "ids"): Body {
   return {
@@ -287,12 +297,36 @@ async function runPlan(
   };
 }
 
+/** §80: runs one of manageTools' handlers: a read comes back as is; a change waits for the user's zone, then saves. */
+async function runHandler(deps: McpDeps, name: string, args: Record<string, unknown>, timeZone: string | undefined): Promise<Body> {
+  const invalid = invalidInput(undefined, timeZone);
+  if (invalid) return invalid;
+  const loaded = await deps.store.load();
+  const today = userToday(loaded.data, timeZone);
+  const outcome = HANDLERS[name].run(loaded.data, args, today ?? localTodayISO());
+  if ("result" in outcome) return { status: "ok", ...outcome.result };
+  if (!today) return NEED_TIMEZONE;
+  return runPlan(deps.store, loaded, today, outcome);
+}
+
+// §75/§78/§80: choosing several items by the user's words, shared by set_done, schedule and update_items.
+const MANY = {
+  names: z.array(z.string()).optional().describe("Several items by the user's words, e.g. [\"floss\", \"water\"]."),
+  dayPart: DAY_PART.optional().describe("Several: every item in this part of the day."),
+  category: z.string().optional().describe("Several: every item in this category (its name)."),
+  all: z.boolean().optional().describe("Several: every item (narrowed by type, if given). Asks first."),
+  confirm: z.boolean().optional().describe("Only after the user said yes to a needs_confirm question."),
+};
+type ManyInput = { names?: string[]; dayPart?: string; category?: string; all?: boolean; type?: string };
+const isMany = (input: ManyInput) => !!(input.names?.length || input.dayPart || input.category || input.all);
+const manyArgs = (input: ManyInput) => ({ names: input.names, dayPart: input.dayPart, category: input.category, kind: input.type });
+
 const NOTE = z.string().optional().describe('A short note for that day, in the user\'s words, e.g. "5 km, legs tired". Only when they gave one.');
 const CHECKLIST_OP = z.enum(["add", "tick", "untick", "remove", "remove_all"]);
 
 export function buildServer(deps: McpDeps): McpServer {
   const server = new McpServer(
-    { name: "habit-assistant", version: "0.2.0" },
+    { name: "habit-assistant", version: "0.3.0" },
     { instructions: INSTRUCTIONS, jsonSchemaValidator: new CfWorkerJsonSchemaValidator() },
   );
 
@@ -357,14 +391,19 @@ export function buildServer(deps: McpDeps): McpServer {
         done: z.boolean().optional().describe("false marks it not done. Defaults to true."),
         moveToToday: z.boolean().optional().describe("Only after the user said yes to a needs_confirm question."),
         note: NOTE,
+        ...MANY,
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ ids, name, type, date, done = true, moveToToday = false, note, timeZone }) =>
+    ({ ids, name, type, date, done = true, moveToToday = false, note, names, dayPart, category, all, confirm, timeZone }) =>
       timed(deps, "set_done", async () => {
         const invalid = invalidInput(date, timeZone);
         if (invalid) return invalid;
+        // §75: several by the user's words or a filter.
+        if (isMany({ names, dayPart, category, all })) {
+          return runHandler(deps, "apply_to_many", { action: done ? "done" : "undone", ...manyArgs({ names, dayPart, category, type }), date, confirm }, timeZone);
+        }
         const loaded = await deps.store.load();
         const today = userToday(loaded.data, timeZone);
         if (!today) return NEED_TIMEZONE;
@@ -466,20 +505,30 @@ export function buildServer(deps: McpDeps): McpServer {
       title: "Pause, skip, resume or archive",
       description: SCHEDULE_DESCRIPTION,
       inputSchema: {
-        op: z.enum(["pause", "skip", "resume", "archive"]),
+        op: z.enum(["pause", "skip", "unskip", "resume", "archive", "unarchive"]),
         id: z.string().optional().describe("The item's id, from get_day or find_items."),
         name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
         from: z.string().optional().describe("pause: first paused day, YYYY-MM-DD. Defaults to today."),
         resumeOn: z.string().optional().describe("pause: first day back, YYYY-MM-DD. Omit for open-ended."),
-        date: z.string().optional().describe("skip: the day to skip, YYYY-MM-DD. Defaults to today."),
+        date: z.string().optional().describe("skip, unskip: the day, YYYY-MM-DD. Defaults to today."),
+        type: ITEM_TYPE.optional().describe("Several: only this kind of item."),
+        ...MANY,
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ op, id, name, from, resumeOn, date, timeZone }) =>
+    ({ op, id, name, from, resumeOn, date, type, names, dayPart, category, all, confirm, timeZone }) =>
       timed(deps, "schedule", async () => {
         const invalid = invalidInput(from, timeZone) ?? invalidInput(resumeOn, undefined) ?? invalidInput(date, undefined);
         if (invalid) return invalid;
+        if (isMany({ names, dayPart, category, all })) {
+          if (op !== "pause" && op !== "skip" && op !== "resume") {
+            return { status: "rejected", message: `"${op}" works on one item at a time; call it once per item.` };
+          }
+          return runHandler(deps, "apply_to_many", { action: op, ...manyArgs({ names, dayPart, category, type }), date, from, resumeOn, confirm }, timeZone);
+        }
+        if (op === "unskip") return runHandler(deps, "unskip", { id, name, date }, timeZone);
+        if (op === "unarchive") return runHandler(deps, "unarchive", { id, name }, timeZone);
         const loaded = await deps.store.load();
         const today = userToday(loaded.data, timeZone);
         if (!today) return NEED_TIMEZONE;
@@ -489,7 +538,7 @@ export function buildServer(deps: McpDeps): McpServer {
         if (resolved.status === "ambiguous") return ambiguous(resolved.candidates, "id");
         const item = resolved.items[0];
         if (item.kind === "singleTask") {
-          return { status: "rejected", message: `"${item.name}" is a one-off task, which can't be paused, skipped or archived. It can be moved to another day (update_item) or deleted.` };
+          return { status: "rejected", message: `"${item.name}" is a one-off task, which can't be paused, skipped or archived. It can be moved to another day (update_items) or deleted.` };
         }
         if (op === "skip") return runPlan(deps.store, loaded, today, planSkip(loaded.data, item, date ?? today, today));
         return runPlan(deps.store, loaded, today, planSchedule(item, op as ScheduleOp, { from, resumeOn }, today));
@@ -525,26 +574,31 @@ export function buildServer(deps: McpDeps): McpServer {
       }),
   );
 
-  // §66: in the frozen tool list from launch; not built yet.
   server.registerTool(
     "get_history",
     {
       title: "Get history",
       description: GET_HISTORY_DESCRIPTION,
       inputSchema: {
-        from: z.string().describe("First day, YYYY-MM-DD."),
-        to: z.string().describe("Last day, YYYY-MM-DD."),
+        from: z.string().optional().describe("First day, YYYY-MM-DD. Required except for view missed."),
+        to: z.string().optional().describe("Last day, YYYY-MM-DD. Required except for view missed."),
         id: z.string().optional().describe("Only this item, by id."),
         name: z.string().optional().describe("Only this item, in the user's words."),
         type: ITEM_TYPE.optional().describe("Only this kind of item."),
+        view: z.enum(["days", "missed"]).optional().describe('"missed": only the misses and carried-over tasks. Default "days".'),
+        format: z.enum(["json", "csv"]).optional().describe('"csv": the period as a spreadsheet file.'),
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ from, to, id, name, type, timeZone }) =>
+    ({ from, to, id, name, type, view, format, timeZone }) =>
       timed(deps, "get_history", async () => {
         const invalid = invalidInput(from, timeZone) ?? invalidInput(to, undefined);
         if (invalid) return invalid;
+        // §73 and §72, folded in by §80.
+        if (view === "missed") return runHandler(deps, "missed", { from, to }, timeZone);
+        if (format === "csv") return runHandler(deps, "export", { from, to }, timeZone);
+        if (!from || !to) return { status: "invalid_date", message: "Pass `from` and `to` (YYYY-MM-DD)." };
         if (to < from) return { status: "invalid_date", message: "`to` is before `from`." };
         if (historyRangeDays(from, to) > HISTORY_MAX_DAYS) {
           return { status: "rejected", message: `That's more than ${HISTORY_MAX_DAYS} days. Ask for a shorter period, or one item.` };
@@ -629,7 +683,6 @@ export function buildServer(deps: McpDeps): McpServer {
       }),
   );
 
-  // §64: in the tool list from launch, so the finished feature needs no reconnect.
   server.registerTool(
     "reset_stats",
     {
@@ -642,14 +695,16 @@ export function buildServer(deps: McpDeps): McpServer {
         category: z.string().optional().describe("scope category: the category's name."),
         type: ITEM_TYPE.optional().describe("scope category or all: only this kind of item."),
         confirm: z.boolean().optional().describe("Only after the user said yes to the needs_confirm question."),
+        undo: z.boolean().optional().describe("Put the counting back as before the last reset, same scope."),
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    ({ scope, id, name, category, type, confirm = false, timeZone }) =>
+    ({ scope, id, name, category, type, confirm = false, undo, timeZone }) =>
       timed(deps, "reset_stats", async () => {
         const invalid = invalidInput(undefined, timeZone);
         if (invalid) return invalid;
+        if (undo) return runHandler(deps, "undo_reset_stats", scope === "item" ? { id, name } : scope === "category" ? { category, type } : { type }, timeZone);
         const loaded = await deps.store.load();
         const today = userToday(loaded.data, timeZone);
         if (!today) return NEED_TIMEZONE;
@@ -686,65 +741,92 @@ export function buildServer(deps: McpDeps): McpServer {
   );
 
   server.registerTool(
-    "more_actions",
+    "set_note",
     {
-      title: "More actions",
-      description: MORE_ACTIONS_DESCRIPTION,
+      title: "Note on a day",
+      description: SET_NOTE_DESCRIPTION,
       inputSchema: {
-        action: z.string().optional().describe("The action to run. Omit to list them."),
-        args: z.record(z.string(), z.unknown()).optional().describe("The action's arguments, as its listing describes."),
+        id: z.string().optional().describe("The item's id, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
+        date: DATE,
+        note: z.string().describe('The note, in the user\'s words; "" removes it.'),
         timeZone: TIME_ZONE,
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    ({ action, args = {}, timeZone }) =>
-      timed(deps, "more_actions", async () => {
-        if (!action) return { status: "ok", actions: describeActions() };
-        const known = MORE_ACTIONS[action];
-        if (!known) return { status: "invalid_action", message: `There's no action "${action}".`, actions: describeActions() };
-        const invalid = invalidInput(undefined, timeZone);
-        if (invalid) return invalid;
-        const loaded = await deps.store.load();
-        const today = userToday(loaded.data, timeZone);
-        // A read-only action doesn't depend on the day; a change waits for the user's zone.
-        const outcome = known.run(loaded.data, args, today ?? localTodayISO());
-        if ("result" in outcome) return { status: "ok", ...outcome.result };
-        if (!today) return NEED_TIMEZONE;
-        return runPlan(deps.store, loaded, today, outcome);
-      }),
-  );
-
-  server.registerTool(
-    "set_time_zone",
-    {
-      title: "Set time zone",
-      description: SET_TIME_ZONE_DESCRIPTION,
-      inputSchema: { timeZone: z.string().describe('IANA time zone, e.g. "Asia/Tokyo".') },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ timeZone }) =>
-      timed(deps, "set_time_zone", async () => {
+    ({ id, name, date, note, timeZone }) =>
+      timed(deps, "set_note", async () => (invalidInput(date, undefined) ?? runHandler(deps, "set_note", { id, name, date, note }, timeZone))),
+  );
+
+  server.registerTool(
+    "categories",
+    {
+      title: "Categories",
+      description: CATEGORIES_DESCRIPTION,
+      inputSchema: {
+        op: z.enum(["list", "add"]),
+        name: z.string().optional().describe("add: the new category's name."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ op, name, timeZone }) =>
+      timed(deps, "categories", async () => runHandler(deps, op === "add" ? "add_category" : "list_categories", { name }, timeZone)),
+  );
+
+  server.registerTool(
+    "settings",
+    {
+      title: "Settings",
+      description: SETTINGS_DESCRIPTION,
+      inputSchema: {
+        weekStartsOn: z.enum(["sunday", "monday"]).optional(),
+        readAloud: z.boolean().optional(),
+        timeZone: z.string().optional().describe('Save this IANA time zone as the user\'s, e.g. "Asia/Tokyo".'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    ({ weekStartsOn, readAloud, timeZone }) =>
+      timed(deps, "settings", async () => {
         const invalid = invalidInput(undefined, timeZone);
         if (invalid) return invalid;
-        const loaded = await deps.store.load();
-        const today = todayIn(timeZone);
-        const changed = loaded.data.timeZone !== timeZone;
-        // The same §62 helper the app uses at sign-in and on returning to the foreground.
-        if (changed) await persist(deps.store, loaded, today, (data) => withTimeZone(data, timeZone));
-        return { status: "ok", timeZone, today, changed };
+        let zone: Body | undefined;
+        if (timeZone) {
+          const loaded = await deps.store.load();
+          const today = todayIn(timeZone);
+          const changed = loaded.data.timeZone !== timeZone;
+          // The same §62 helper the app uses at sign-in and on returning to the foreground.
+          if (changed) await persist(deps.store, loaded, today, (data) => withTimeZone(data, timeZone));
+          zone = { status: "ok", timeZone, today, changed };
+          if (weekStartsOn === undefined && readAloud === undefined) return zone;
+        }
+        const result = await runHandler(deps, "settings", { weekStartsOn, readAloud }, undefined);
+        return zone ? { ...result, timeZone, today: zone.today } : result;
       }),
   );
 
   server.registerTool(
-    "create_item",
+    "undo",
     {
-      title: "Create an item",
-      description: CREATE_ITEM_DESCRIPTION,
+      title: "Undo the last change",
+      description: UNDO_DESCRIPTION,
+      inputSchema: { timeZone: TIME_ZONE },
+      // §80: it can remove an item just created, so it asks for approval like a delete.
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    ({ timeZone }) => timed(deps, "undo", async () => runHandler(deps, "undo", {}, timeZone)),
+  );
+
+  server.registerTool(
+    "create_items",
+    {
+      title: "Create items",
+      description: CREATE_ITEMS_DESCRIPTION,
       inputSchema: {
-        type: ITEM_TYPE,
-        name: z.string(),
+        type: ITEM_TYPE.optional().describe("One item: its kind."),
+        name: z.string().optional().describe("One item: its name."),
         userMessage: z.string().describe("The user's message that asked for this, word for word."),
-        dayPart: DAY_PART.describe("Part of the day it belongs to. Always set; never ask."),
+        dayPart: DAY_PART.optional().describe("One item: the part of the day it belongs to. Always set; never ask."),
         category: z.string().optional().describe("Category name. Required for habits."),
         recurrence: z.string().optional().describe("How often it repeats (habits and recurring tasks). See the format in the description."),
         important: z.boolean().optional().describe("Only when the user calls it important or top priority."),
@@ -761,12 +843,48 @@ export function buildServer(deps: McpDeps): McpServer {
         checklistMode: CHECKLIST_MODE.optional().describe('Recurring tasks with a checklist: "carryOver" (unticked items move on, default) or "sameList" (a routine).'),
         carriesOver: z.boolean().optional().describe("One-off tasks: false to drop it at the end of its day if not done."),
         confirmDuplicate: z.boolean().optional().describe("Only after the user said yes to a needs_confirm question."),
+        items: z
+          .array(
+            z.object({
+              type: ITEM_TYPE,
+              name: z.string(),
+              dayPart: DAY_PART,
+              category: z.string().optional(),
+              recurrence: z.string().optional(),
+              description: z.string().optional(),
+              startDate: z.string().optional(),
+              completionType: COMPLETION_TYPE.optional(),
+              target: z.number().positive().optional(),
+              unit: z.string().optional(),
+              checklistItems: z.array(z.string()).optional(),
+            }),
+          )
+          .optional()
+          .describe("Several new items at once, each with the fields above."),
+        packName: z.string().optional().describe('Several: what the set is, e.g. "a morning routine".'),
+        confirm: z.boolean().optional().describe("Several: only after the user agreed to the list."),
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     (input) =>
-      timed(deps, "create_item", async () => {
+      timed(deps, "create_items", async () => {
+        // §76: several at once, previewed and confirmed.
+        if (input.items?.length) {
+          const startDates = [...new Set(input.items.map((item) => item.startDate).filter(Boolean))];
+          const invalidStart = startDates.map((date) => invalidInput(date, undefined)).find(Boolean);
+          if (invalidStart) return invalidStart;
+          const items = input.items.map(({ type, startDate: _start, ...rest }) => ({ kind: type, ...rest }));
+          return runHandler(
+            deps,
+            "add_pack",
+            { name: input.packName ?? "", items, startDate: startDates.length === 1 ? startDates[0] : undefined, confirm: input.confirm },
+            input.timeZone,
+          );
+        }
+        if (!input.type || !input.name || !input.dayPart) {
+          return { status: "need_info", message: "Pass `type`, `name` and `dayPart` for one item, or `items` for several." };
+        }
         const invalid =
           invalidInput(input.startDate, input.timeZone) ??
           (input.endDate !== undefined ? invalidInput(input.endDate, undefined) : undefined);
@@ -778,6 +896,7 @@ export function buildServer(deps: McpDeps): McpServer {
           loaded.data,
           {
             ...input,
+            name: input.name,
             type: input.type as ItemKind,
             dayPart: input.dayPart as AnyItem["dayPart"] & string,
             completionType: input.completionType as "yesno" | "value" | "timer" | "checklist" | undefined,
@@ -794,10 +913,10 @@ export function buildServer(deps: McpDeps): McpServer {
   );
 
   server.registerTool(
-    "update_item",
+    "update_items",
     {
-      title: "Change an item",
-      description: UPDATE_ITEM_DESCRIPTION,
+      title: "Change items",
+      description: UPDATE_ITEMS_DESCRIPTION,
       inputSchema: {
         id: z.string().optional().describe("The item's id, from get_day or find_items."),
         name: z.string().optional().describe("The item's name in the user's words, when there's no id."),
@@ -811,7 +930,7 @@ export function buildServer(deps: McpDeps): McpServer {
         newStartWeekday: z.number().int().min(0).max(6).optional().describe("A weekday the user named instead of a date, 0 = Sunday."),
         newStartWeekdayMode: START_WEEKDAY_MODE.optional(),
         newEndDate: z.string().optional().describe('YYYY-MM-DD; "" removes it.'),
-        newRecurrence: z.string().optional().describe("Habits and recurring tasks: the whole new rule, same format as create_item."),
+        newRecurrence: z.string().optional().describe("Habits and recurring tasks: the whole new rule, same format as create_items."),
         newCompletionType: COMPLETION_TYPE.optional().describe("Habits only."),
         newTarget: z.number().positive().optional().describe("Habits: goal for value/timer (timer: minutes)."),
         newUnit: z.string().optional().describe("Habits: unit for value."),
@@ -819,12 +938,22 @@ export function buildServer(deps: McpDeps): McpServer {
         newChecklistItemsFrom: z.string().optional().describe("Habits: YYYY-MM-DD, only when the user names an earlier day for new steps."),
         newChecklistMode: CHECKLIST_MODE.optional().describe("Recurring tasks with a checklist."),
         newCarriesOver: z.boolean().optional().describe("One-off tasks: whether it carries over to the next day if not done."),
+        ...MANY,
         timeZone: TIME_ZONE,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    ({ id, name, type, timeZone, ...fields }) =>
-      timed(deps, "update_item", async () => {
+    ({ id, name, type, timeZone, names, dayPart, category, all, confirm, ...fields }) =>
+      timed(deps, "update_items", async () => {
+        // §78: one change on several items; only these fields go in bulk.
+        if (isMany({ names, dayPart, category, all })) {
+          const { newDayPart, newImportant, newCategory, newRecurrence, ...others } = fields;
+          const extra = Object.entries(others).filter(([, value]) => value !== undefined).map(([key]) => key);
+          if (extra.length) {
+            return { status: "rejected", message: `Only newDayPart, newImportant, newCategory and newRecurrence change several items at once; change ${extra.join(", ")} one item at a time.` };
+          }
+          return runHandler(deps, "apply_to_many", { action: "edit", ...manyArgs({ names, dayPart, category, type }), newDayPart, newImportant, newCategory, newRecurrence, confirm }, timeZone);
+        }
         const dates = [fields.newStartDate, fields.newChecklistItemsFrom, fields.newEndDate || undefined];
         const invalid = invalidInput(undefined, timeZone) ?? dates.map((date) => invalidInput(date, undefined)).find(Boolean);
         if (invalid) return invalid;

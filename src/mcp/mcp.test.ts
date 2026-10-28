@@ -191,28 +191,30 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
 
 {
   const { result } = await rpc(deps, "tools/list");
+  // §80: one tool per intent; nothing hidden behind a listing step.
   assert.deepEqual(result.tools.map((t: { name: string }) => t.name).sort(), [
+    "categories",
     "checklist",
-    "create_item",
+    "create_items",
     "delete_items",
     "find_items",
     "get_day",
     "get_history",
     "get_stats",
     "log_progress",
-    "more_actions",
     "reset_stats",
     "schedule",
     "set_done",
-    "set_time_zone",
-    "update_item",
+    "set_note",
+    "settings",
+    "undo",
+    "update_items",
   ]);
-  // Only deletes are destructive; reads are marked read-only, so a client can treat them apart.
+  // Deletes, stats resets and undo ask for approval; reads are marked read-only.
   const hints = Object.fromEntries(result.tools.map((t: { name: string; annotations: Record<string, boolean> }) => [t.name, t.annotations]));
-  assert.equal(hints.delete_items.destructiveHint, true);
-  assert.equal(hints.reset_stats.destructiveHint, true);
+  for (const name of ["delete_items", "reset_stats", "undo"]) assert.equal(hints[name].destructiveHint, true, name);
   for (const name of ["get_day", "find_items", "get_history", "get_stats"]) assert.equal(hints[name].readOnlyHint, true, name);
-  for (const name of ["checklist", "schedule", "more_actions", "set_done", "create_item", "update_item"]) {
+  for (const name of ["checklist", "schedule", "set_done", "set_note", "create_items", "update_items", "categories", "settings", "log_progress"]) {
     assert.equal(hints[name].destructiveHint, false, name);
   }
   const tool = result.tools.find((t: { name: string }) => t.name === "get_day");

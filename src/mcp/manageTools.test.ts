@@ -1,12 +1,12 @@
-// MCP agent, Phase 4: checklist, schedule, delete_items, get_stats and more_actions, through
-// the MCP protocol against an in-memory file. The chat scenarios they share with the app
-// are in scenarios.test.ts; this covers the rest: refusals, stats, archive and the
-// growable more_actions tool. Run: npm run test:mcp
+// MCP agent, Phase 4 onwards: checklist, schedule, delete_items, get_stats and (§80) the tools
+// that took over more_actions' actions, through the MCP protocol against an in-memory file.
+// The chat scenarios they share with the app are in scenarios.test.ts; this covers the rest:
+// refusals, stats, archive, notes, undo, bulk, packs and settings. Run: npm run test:mcp
 import assert from "node:assert/strict";
 import { todayIn } from "../lib/today.ts";
 import { addDays, occursOn } from "../lib/recurrence.ts";
 import { computeHabitStats } from "../lib/habitStats.ts";
-import { callTool, memoryStore } from "./testing/fakes.ts";
+import { callTool, memoryStore, rpc } from "./testing/fakes.ts";
 import type { McpDeps } from "./server.ts";
 import { DEFAULT_CATEGORIES, type AppData, type Habit } from "../types/models.ts";
 
@@ -49,6 +49,38 @@ const fixture = (): AppData => ({
     { id: "l4", itemId: "Floss", date: addDays(TODAY, -1) },
   ],
 });
+
+/** §80: the actions that used to sit behind more_actions, each through the tool it belongs to now. */
+function act(call: (tool: string, args: Record<string, unknown>) => Promise<any>, action: string, args: Record<string, any> = {}) {
+  const many = (a: Record<string, any>) => ({ names: a.names, dayPart: a.dayPart, category: a.category, type: a.kind, all: !a.names && !a.dayPart && !a.category ? true : undefined, confirm: a.confirm });
+  switch (action) {
+    case "set_note":
+      return call("set_note", args);
+    case "unskip":
+      return call("schedule", { op: "unskip", ...args });
+    case "unarchive":
+      return call("schedule", { op: "unarchive", ...args });
+    case "undo":
+      return call("undo", {});
+    case "settings":
+      return call("settings", args);
+    case "missed":
+      return call("get_history", { view: "missed", ...args });
+    case "export":
+      return call("get_history", { format: "csv", ...args });
+    case "add_pack":
+      return call("create_items", { userMessage: "", packName: args.name, items: args.items?.map(({ kind, ...rest }: any) => ({ type: kind, ...rest })), confirm: args.confirm });
+    case "undo_reset_stats":
+      return call("reset_stats", { scope: args.id || args.name ? "item" : args.category ? "category" : "all", ...args, undo: true });
+    case "apply_to_many": {
+      const { action: what, date, from, resumeOn, newDayPart, newImportant, newCategory, newRecurrence } = args;
+      if (what === "done" || what === "undone") return call("set_done", { done: what === "done", date, ...many(args) });
+      if (what === "edit") return call("update_items", { newDayPart, newImportant, newCategory, newRecurrence, ...many(args) });
+      return call("schedule", { op: what, date, from, resumeOn, ...many(args) });
+    }
+  }
+  throw new Error(`no such action ${action}`);
+}
 
 const fresh = () => {
   const store = memoryStore(fixture());
@@ -187,32 +219,27 @@ const fresh = () => {
   await call("reset_stats", { scope: "category", category: "health", confirm: true });
   assert.deepEqual(store.file().habits.filter((h) => h.statsFrom === TODAY).map((h) => h.id).sort(), ["Floss", "Read", "Routine"]);
   // Undo puts back the dates from before the last reset.
-  const undone = await call("more_actions", { action: "undo_reset_stats", args: { name: "read" } });
+  const undone = await act(call, "undo_reset_stats", { name: "read" });
   assert.equal(undone.status, "ok");
   assert.equal((await call("get_stats", { scope: "item", name: "read" })).completionsAllTime, 3);
-  assert.equal((await call("more_actions", { action: "undo_reset_stats", args: { name: "read" } })).status, "rejected");
+  assert.equal((await act(call, "undo_reset_stats", { name: "read" })).status, "rejected");
 }
 
-// --- more_actions ------------------------------------------------------------------------
+// --- categories (§80) ----------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "add_pack", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo", "undo_reset_stats", "unskip"]);
-  const unknown = await call("more_actions", { action: "launch_rocket" });
-  assert.equal(unknown.status, "invalid_action");
-  assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
-  const added = await call("more_actions", { action: "add_category", args: { name: "Self-care" } });
+  const added = await call("categories", { op: "add", name: "Self-care" });
   assert.deepEqual([added.status, added.message], ["ok", 'Added the category "Self-care".']);
   assert.ok(store.file().categories.some((c) => c.name === "Self-care" && !c.isDefault && c.icon === "square"));
-  assert.equal((await call("more_actions", { action: "add_category", args: { name: "self care" } })).status, "rejected");
-  assert.equal((await call("more_actions", { action: "add_category", args: {} })).status, "need_info");
-  const categories = (await call("more_actions", { action: "list_categories" })).categories;
+  assert.equal((await call("categories", { op: "add", name: "self care" })).status, "rejected");
+  assert.equal((await call("categories", { op: "add" })).status, "need_info");
+  const categories = (await call("categories", { op: "list" })).categories;
   assert.deepEqual(categories.find((c: { name: string }) => c.name === "Health"), { name: "Health", custom: false, items: 2 });
   // Reading needs no time zone; a change does.
   const noZone = memoryStore({ ...fixture(), timeZone: undefined });
-  assert.equal((await callTool({ store: noZone }, "more_actions", { action: "list_categories" })).body.status, "ok");
-  assert.equal((await callTool({ store: noZone }, "more_actions", { action: "add_category", args: { name: "X" } })).body.status, "need_timezone");
+  assert.equal((await callTool({ store: noZone }, "categories", { op: "list" })).body.status, "ok");
+  assert.equal((await callTool({ store: noZone }, "categories", { op: "add", name: "X" })).body.status, "need_timezone");
 }
 
 // --- Notes (§67) ----------------------------------------------------------------------
@@ -235,16 +262,16 @@ const fresh = () => {
   assert.deepEqual(store.file().notes?.filter((n) => n.itemId === "Read").map((n) => n.text), ["three chapters"]);
   // A note on an already-done day still saves.
   assert.equal(store.file().completionLog.filter((e) => e.itemId === "Read" && e.date === TODAY).length, 1);
-  // On its own, through more_actions; on a missed day; removed with "".
+  // On its own, through set_note; on a missed day; removed with "".
   const yesterday = addDays(TODAY, -2);
-  const noted = await call("more_actions", { action: "set_note", args: { name: "floss", date: yesterday, note: "gums sore" } });
+  const noted = await act(call, "set_note", { name: "floss", date: yesterday, note: "gums sore" });
   assert.equal(noted.status, "ok");
   const history = await call("get_history", { from: yesterday, to: yesterday, name: "floss" });
   assert.deepEqual([history.days[0].items[0].status, history.days[0].items[0].note], ["missed", "gums sore"]);
-  assert.equal((await call("more_actions", { action: "set_note", args: { name: "floss", date: yesterday, note: "" } })).status, "ok");
+  assert.equal((await act(call, "set_note", { name: "floss", date: yesterday, note: "" })).status, "ok");
   assert.equal(store.file().notes?.some((n) => n.date === yesterday), false);
   // A future day can have one: a note isn't a tick.
-  assert.equal((await call("more_actions", { action: "set_note", args: { name: "floss", date: TOMORROW, note: "new brush" } })).status, "ok");
+  assert.equal((await act(call, "set_note", { name: "floss", date: TOMORROW, note: "new brush" })).status, "ok");
   // Deleting an item deletes its notes.
   await call("delete_items", { ids: ["Read"], confirm: true });
   assert.equal(store.file().notes?.some((n) => n.itemId === "Read"), false);
@@ -275,10 +302,10 @@ const fresh = () => {
   assert.deepEqual(store.file().recurringTasks[0].pauses, [{ from: TOMORROW, resumeOn: addDays(TODAY, 2), skip: true }]);
   // A skip isn't a pause: "resume" with only a skip says it isn't paused.
   assert.equal((await call("schedule", { op: "resume", name: "floss" })).status, "rejected");
-  // Undone through more_actions.
-  assert.equal((await call("more_actions", { action: "unskip", args: { name: "floss" } })).status, "ok");
+  // Undone through schedule's unskip.
+  assert.equal((await act(call, "unskip", { name: "floss" })).status, "ok");
   assert.deepEqual(floss().pauses, []);
-  assert.equal((await call("more_actions", { action: "unskip", args: { name: "floss" } })).status, "rejected");
+  assert.equal((await act(call, "unskip", { name: "floss" })).status, "rejected");
   assert.equal((await call("schedule", { op: "skip", name: "gym", date: "soon" })).status, "invalid_date");
 }
 
@@ -290,60 +317,60 @@ const fresh = () => {
   data.recurringTasks = data.recurringTasks.map((t) => ({ ...t, endDate: addDays(TODAY, -5) }));
   const store = memoryStore(data);
   const call = (tool: string, args: Record<string, unknown>) => callTool({ store }, tool, args).then((r) => r.body);
-  // more_actions' unarchive: the archived days become a finished pause, not misses.
-  const back = await call("more_actions", { action: "unarchive", args: { name: "floss" } });
+  // schedule's unarchive: the archived days become a finished pause, not misses.
+  const back = await act(call, "unarchive", { name: "floss" });
   assert.equal(back.status, "ok");
   assert.match(back.message, /^Brought back "Floss" — it's due again from today\. The days it was archived \(.+\) count as paused, not missed\./);
   const floss = store.file().habits.find((h) => h.id === "Floss")!;
   assert.deepEqual([floss.endDate, floss.pauses], [undefined, [{ from: addDays(TODAY, -9), resumeOn: TODAY }]]);
   assert.equal(occursOn(floss, TODAY), true);
   // Not archived any more, or never: refused. One-off tasks have no archive.
-  assert.equal((await call("more_actions", { action: "unarchive", args: { name: "floss" } })).status, "rejected");
-  assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /isn't archived/);
-  assert.equal((await call("more_actions", { action: "unarchive", args: { name: "buy milk" } })).status, "rejected");
+  assert.equal((await act(call, "unarchive", { name: "floss" })).status, "rejected");
+  assert.match((await act(call, "unarchive", { name: "read" })).message, /isn't archived/);
+  assert.equal((await act(call, "unarchive", { name: "buy milk" })).status, "rejected");
   // schedule's resume does the same.
   const resumed = await call("schedule", { op: "resume", name: "bins" });
   assert.match(resumed.message, /^Brought back "Bins"/);
   assert.deepEqual(store.file().recurringTasks[0].pauses, [{ from: addDays(TODAY, -4), resumeOn: TODAY }]);
   // An end date ahead isn't an archive: the message points to update_item.
-  await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
-  assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+  await call("update_items", { name: "read", newEndDate: addDays(TODAY, 30) });
+  assert.match((await act(call, "unarchive", { name: "read" })).message, /newEndDate ""/);
 }
 
 // --- Bulk edits (§78) -------------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  const moved = await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss", "read"], newDayPart: "evening", newCategory: "Sports" } });
+  const moved = await act(call, "apply_to_many", { action: "edit", names: ["floss", "read"], newDayPart: "evening", newCategory: "Sports" });
   assert.equal(moved.status, "ok");
   assert.equal(moved.message, "Moved to Evening, put in Sports: Floss, Read.");
   assert.deepEqual(store.file().habits.filter((h) => h.id === "Floss" || h.id === "Read").map((h) => [h.dayPart, h.categoryId]), [["evening", "sports"], ["evening", "sports"]]);
-  const weekly = await call("more_actions", { action: "apply_to_many", args: { action: "edit", category: "Sports", newRecurrence: "days:mon,wed,fri" } });
+  const weekly = await act(call, "apply_to_many", { action: "edit", category: "Sports", newRecurrence: "days:mon,wed,fri" });
   assert.match(weekly.message, /^Now every mon, wed, fri: /i);
-  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss"], newRecurrence: "sometimes" } })).status, "rejected");
-  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss"] } })).status, "rejected");
+  assert.equal((await act(call, "apply_to_many", { action: "edit", names: ["floss"], newRecurrence: "sometimes" })).status, "rejected");
+  assert.equal((await act(call, "apply_to_many", { action: "edit", names: ["floss"] })).status, "rejected");
   // Claude's undo takes the last one back.
-  assert.match((await call("more_actions", { action: "undo" })).message, /^Undone: I put /);
+  assert.match((await act(call, "undo")).message, /^Undone: I put /);
 }
 
 // --- Undo (§70) -----------------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  assert.equal((await call("more_actions", { action: "undo" })).status, "rejected"); // nothing yet
+  assert.equal((await act(call, "undo")).status, "rejected"); // nothing yet
   // A delete from Claude, then undone: back with its history.
   await call("delete_items", { name: "floss", confirm: true });
   assert.equal(store.file().habits.some((h) => h.id === "Floss"), false);
-  const back = await call("more_actions", { action: "undo" });
+  const back = await act(call, "undo");
   assert.equal(back.status, "ok");
   assert.equal(back.message, 'Undone: I brought back "Floss" with its history.');
   assert.ok(store.file().habits.some((h) => h.id === "Floss"));
   assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss"));
   // The undo isn't itself undoable; a time zone save doesn't count as a change.
-  assert.equal((await call("more_actions", { action: "undo" })).status, "rejected");
+  assert.equal((await act(call, "undo")).status, "rejected");
   await call("set_done", { name: "bins" });
-  await call("set_time_zone", { timeZone: "Europe/Paris" });
-  assert.match((await call("more_actions", { action: "undo" })).message, /^Undone: I put "Bins" back as it was\.$/);
+  await call("settings", { timeZone: "Europe/Paris" });
+  assert.match((await act(call, "undo")).message, /^Undone: I put "Bins" back as it was\.$/);
 }
 
 // --- Packs (§76) ---------------------------------------------------------------------------
@@ -357,31 +384,31 @@ const fresh = () => {
   ];
   // The first call only shows the list.
   const before = store.version();
-  const asked = await call("more_actions", { action: "add_pack", args: { name: "a fresh start", items } });
+  const asked = await act(call, "add_pack", { name: "a fresh start", items });
   assert.equal(asked.status, "needs_confirm");
   assert.match(asked.question, /^Here's a fresh start \(2 items\):\n1\. Drink water: habit, every day, Wake-up\n2\. Water the plants: recurring task, .*\nAlready have: Floss \(left out\)\./);
   assert.equal(store.version(), before);
   // With the yes, added; Claude drops what the user didn't want before calling.
-  const added = await call("more_actions", { action: "add_pack", args: { name: "a fresh start", items: items.slice(0, 1), confirm: true } });
+  const added = await act(call, "add_pack", { name: "a fresh start", items: items.slice(0, 1), confirm: true });
   assert.equal(added.status, "ok");
   assert.match(added.message, /^Added a fresh start: Drink water\./);
   assert.equal(store.file().habits.find((h) => h.name === "Drink water")?.categoryId, "nutrition");
-  assert.equal((await call("more_actions", { action: "add_pack", args: { name: "x", items: [{ kind: "habit", name: "A", dayPart: "morning", recurrence: "sometimes" }] } })).status, "rejected");
+  assert.equal((await act(call, "add_pack", { name: "x", items: [{ kind: "habit", name: "A", dayPart: "morning", recurrence: "sometimes" }] })).status, "rejected");
 }
 
 // --- Export (§72) ---------------------------------------------------------------------------
 
 {
   const { call } = fresh();
-  const asked = await call("more_actions", { action: "export" });
+  const asked = await act(call, "export");
   assert.equal(asked.status, "need_info");
-  const week = await call("more_actions", { action: "export", args: { from: addDays(TODAY, -6), to: TOMORROW } });
+  const week = await act(call, "export", { from: addDays(TODAY, -6), to: TOMORROW });
   assert.equal(week.status, "ok");
   assert.equal(week.to, TODAY); // never a day to come
   assert.match(week.csv, /^date,item,kind,category,part of day,status,value,goal,unit,checklist,note\r\n/);
   assert.equal(week.csv.trim().split("\r\n").length - 1, week.rows);
   assert.equal(week.filename, `habit-assistant-${addDays(TODAY, -6)}-to-${TODAY}.csv`);
-  assert.equal((await call("more_actions", { action: "export", args: { from: TOMORROW, to: TOMORROW } })).status, "rejected");
+  assert.equal((await act(call, "export", { from: TOMORROW, to: TOMORROW })).status, "rejected");
 }
 
 // --- Bulk actions (§75) --------------------------------------------------------------------
@@ -389,23 +416,22 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   // Named items: Read is already done today, so it's left out and named.
-  const named = await call("more_actions", { action: "apply_to_many", args: { action: "done", names: ["floss", "read"] } });
+  const named = await act(call, "apply_to_many", { action: "done", names: ["floss", "read"] });
   assert.equal(named.status, "ok");
   assert.equal(named.message, "Marked done today: Floss.\nLeft out: Read (already done today).");
   assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss" && e.date === TODAY));
   // A category, with a pause for a week.
-  const sports = await call("more_actions", { action: "apply_to_many", args: { action: "pause", category: "Sports", resumeOn: addDays(TODAY, 7) } });
+  const sports = await act(call, "apply_to_many", { action: "pause", category: "Sports", resumeOn: addDays(TODAY, 7) });
   assert.match(sports.message, /^Paused from today, back on .*: Gym\.$/);
   // Everything asks first, then goes with confirm.
-  const asked = await call("more_actions", { action: "apply_to_many", args: { action: "skip" } });
+  const asked = await act(call, "apply_to_many", { action: "skip" });
   assert.equal(asked.status, "needs_confirm");
   assert.match(asked.question, /^That's every item/);
-  const skipped = await call("more_actions", { action: "apply_to_many", args: { action: "skip", confirm: true } });
+  const skipped = await act(call, "apply_to_many", { action: "skip", confirm: true });
   assert.match(skipped.message, /^Skipped today/);
   // Refusals: no action, an unknown category, a future day to mark.
-  assert.equal((await call("more_actions", { action: "apply_to_many", args: {} })).status, "need_info");
-  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "done", category: "Piano" } })).status, "rejected");
-  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "done", kind: "habit", date: TOMORROW } })).status, "rejected");
+  assert.equal((await act(call, "apply_to_many", { action: "done", category: "Piano" })).status, "rejected");
+  assert.equal((await act(call, "apply_to_many", { action: "done", kind: "habit", date: TOMORROW })).status, "rejected");
 }
 
 // --- What did I miss (§73) -----------------------------------------------------------------
@@ -413,12 +439,12 @@ const fresh = () => {
 {
   const { call } = fresh();
   // No period named: this week up to yesterday (or last week), and `period` says so.
-  const week = await call("more_actions", { action: "missed" });
+  const week = await act(call, "missed");
   assert.equal(week.status, "ok");
   assert.match(week.period, /You didn't name a period/);
   assert.ok(week.to < TODAY);
   // Floss was done only yesterday; the 20 days before it are misses, with a suggestion.
-  const month = await call("more_actions", { action: "missed", args: { from: addDays(TODAY, -20), to: TODAY } });
+  const month = await act(call, "missed", { from: addDays(TODAY, -20), to: TODAY });
   assert.equal(month.to, addDays(TODAY, -1)); // today isn't over
   assert.equal(month.period.includes("You didn't"), false);
   const floss = month.items.find((item: { id: string }) => item.id === "Floss");
@@ -426,27 +452,29 @@ const fresh = () => {
   // Two suggestions at most, for the most missed (never done in 20 days).
   assert.equal(month.suggestions.length, 2);
   assert.match(month.suggestions[0], /was missed 20 of 20 times\. Want to change its days, or pause it for a while\?/);
-  assert.equal((await call("more_actions", { action: "missed", args: { from: TODAY } })).status, "rejected");
+  assert.equal((await act(call, "missed", { from: TODAY })).status, "rejected");
 }
 
 // --- Settings (§69) -----------------------------------------------------------------------
 
 {
   const { store, call } = fresh();
-  const shown = await call("more_actions", { action: "settings" });
+  const shown = await act(call, "settings");
   assert.deepEqual(shown, { status: "ok", firstDayOfWeek: "Sunday", readRepliesAloud: "off", note: "API keys, the chat provider and voice transcription are changed in Settings (⚙), not by chat." });
-  const monday = await call("more_actions", { action: "settings", args: { weekStartsOn: "monday" } });
+  const monday = await act(call, "settings", { weekStartsOn: "monday" });
   assert.equal(monday.status, "ok");
   assert.match(monday.message, /^Weeks now start on Monday\./);
   assert.equal(store.file().weekStartsOn, 1);
-  assert.equal((await call("more_actions", { action: "settings", args: { weekStartsOn: "friday" } })).status, "rejected");
+  // The tool's schema refuses any other day before it runs.
+  const { result: friday } = await rpc({ store }, "tools/call", { name: "settings", arguments: { weekStartsOn: "friday" } });
+  assert.equal(friday.isError, true);
 }
 {
   // Read-aloud: no device of its own, so every device, and any added later.
   const store = memoryStore({ ...fixture(), ttsEnabledByDevice: { phone: true, laptop: false } });
   const call = (tool: string, args: Record<string, unknown>) => callTool({ store }, tool, args).then((r) => r.body);
-  assert.equal((await call("more_actions", { action: "settings" })).readRepliesAloud, "on on some devices, off on others");
-  const off = await call("more_actions", { action: "settings", args: { readAloud: false } });
+  assert.equal((await act(call, "settings")).readRepliesAloud, "on on some devices, off on others");
+  const off = await act(call, "settings", { readAloud: false });
   assert.match(off.message, /^Read-aloud is now off in the Habit Assistant app on every device/);
   assert.deepEqual([store.file().ttsEnabledByDevice, store.file().ttsEnabledDefault], [{ phone: false, laptop: false }, false]);
 }
@@ -477,6 +505,25 @@ const fresh = () => {
   assert.equal((await call("get_history", { from: TODAY, to: addDays(TODAY, -1) })).status, "invalid_date");
   assert.equal((await call("get_history", { from: addDays(TODAY, -400), to: TODAY })).status, "rejected");
   assert.equal(store.version(), version); // read-only
+}
+
+// --- §80: the regrouped tools' own rules ------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  // Several at once only for what makes sense in bulk.
+  assert.match((await call("schedule", { op: "archive", names: ["floss", "read"] })).message, /one item at a time/);
+  assert.match((await call("update_items", { names: ["floss", "read"], newName: "x" })).message, /one item at a time/);
+  // create_items: one item needs its fields; several go through the list first.
+  assert.equal((await call("create_items", { userMessage: "add something" })).status, "need_info");
+  // settings: the time zone and a setting in one call.
+  const both = await call("settings", { timeZone: "Asia/Tokyo", weekStartsOn: "monday" });
+  assert.equal(both.status, "ok");
+  assert.equal(both.timeZone, "Asia/Tokyo");
+  assert.match(both.message, /^Weeks now start on Monday/);
+  assert.deepEqual([store.file().timeZone, store.file().weekStartsOn], ["Asia/Tokyo", 1]);
+  // get_history needs a period unless it's the missed view.
+  assert.equal((await call("get_history", {})).status, "invalid_date");
 }
 
 console.log("mcp manage tools: all assertions passed");
