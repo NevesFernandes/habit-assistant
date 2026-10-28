@@ -20,11 +20,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Later
 
-### §46 — Voice: on-device Whisper (trial on a branch)
-Transcribe in the browser (Whisper via WASM/WebGPU) instead of sending audio to Groq: better privacy, works offline, no STT key needed. Costs to measure: model download size (tens to hundreds of MB, precached by the service worker like `public/ort/`), transcription speed on a mid-range Android phone, battery, and accuracy versus Groq Whisper. The Silero VAD silence guard stays in front of it either way.
-
-**Trial first:** a spike on a branch, measured on the user's real phone; adopting it isn't decided. If it's adopted, it's probably a Settings toggle alongside the Groq path rather than a replacement.
-
 ### §79 — Export button in the app
 An Export button with a period picker (on the stats tab or in Settings), for users who'd rather tap than ask. §72 built the export by chat only ("export my October", with a Download button in the reply); this would reuse its file (`buildExportCsv` in `src/lib/exportCsv.ts`). A small form, which the app otherwise avoids, so only if people ask for it.
 

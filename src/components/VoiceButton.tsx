@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { transcribeAudio } from "../lib/transcribeClient";
 import { hasSpeech } from "../lib/voiceActivityDetection";
+import { activeOnDeviceSize, recordRun } from "../lib/onDeviceSttStore";
+import { NoSpeechError, transcribeOnDevice, warmUpWhisper } from "../lib/onDeviceWhisper";
 
 interface VoiceButtonProps {
   sttApiKey: string | null;
@@ -45,6 +47,9 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
   async function startRecording() {
     if (recorderRef.current) return; // already recording — avoid double-start from duplicate pointer/touch events
     setError(null);
+    // §46: load the on-device model from the cache while the user talks.
+    const onDeviceSize = activeOnDeviceSize();
+    if (onDeviceSize) warmUpWhisper(onDeviceSize);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -116,12 +121,31 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
         setError(NO_SPEECH_MESSAGE);
         return;
       }
-      const text = await transcribeAudio(blob, sttApiKey);
+      const text = await transcribe(blob, durationMs);
       if (text.trim()) onTranscribed(text.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transcription failed.");
     } finally {
       setTranscribing(false);
+    }
+  }
+
+  // §46: on the phone when switched on and downloaded; if that fails, Groq as before, so a
+  // message is never lost to the trial. Each run is kept for the numbers in Settings.
+  async function transcribe(blob: Blob, durationMs: number): Promise<string> {
+    const size = activeOnDeviceSize();
+    if (!size) return transcribeAudio(blob, sttApiKey);
+    const at = new Date().toISOString();
+    try {
+      const result = await transcribeOnDevice(blob, size);
+      recordRun({ at, size, backend: result.backend, audioSeconds: result.audioSeconds, ms: result.ms });
+      return result.text;
+    } catch (err) {
+      if (err instanceof NoSpeechError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("On-device transcription failed, using Groq:", err);
+      recordRun({ at, size, audioSeconds: durationMs / 1000, error: message });
+      return transcribeAudio(blob, sttApiKey);
     }
   }
 

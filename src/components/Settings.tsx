@@ -13,6 +13,7 @@ import {
 } from "../lib/settingsStore";
 import { getTtsEnabled, setTtsEnabled } from "../lib/ttsPreference";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
+import OnDeviceSttSettings from "./OnDeviceSttSettings";
 import type { DebugLogEntry } from "../lib/debugLogStore";
 import type { WeekStart } from "../types/models";
 
@@ -286,6 +287,7 @@ export default function Settings({
       {!hasGroqKey && !sttOwnKey && (
         <p className="mt-1 text-xs text-slate-500">Save a Groq key above first to enable this.</p>
       )}
+      <OnDeviceSttSettings />
 
       <hr className="my-4 border-slate-700" />
 

@@ -138,7 +138,7 @@
         <ul>
           <li>Your habits and tasks are stored in <strong>your own Google Drive</strong>, not on our servers.</li>
           <li>The app can only see the files it created, not the rest of your Drive.</li>
-          <li>Chat messages go to an AI provider to be understood. Voice clips go to Groq to be turned into text.</li>
+          <li>Chat messages go to an AI provider to be understood. Voice clips go to Groq to be turned into text, unless you switch on transcription on your device (<a href="#on-device-voice">section 4</a>).</li>
           <li>
             If you connect Habit Assistant to Claude, your items pass through our connector server on their way
             between Drive and Claude, which keeps your Google sign-in for it. See <a href="#claude">section 5</a>.
@@ -266,6 +266,15 @@
         When you hold the microphone button, the recording is first checked on your device for speech. If there's
         speech, the clip is sent through our server to Groq's speech-to-text service, and the text comes back as your
         message. We don't store or log the audio.
+      </p>
+      <p id="on-device-voice">
+        <strong>Transcription on your device (a trial, off unless you switch it on in Settings):</strong> the clip is
+        turned into text on your phone and never leaves it. To do that, the app downloads a speech model once from
+        <a href="https://huggingface.co/privacy">Hugging Face</a> (Whisper, about 40 or 80 MB) and the software that runs
+        it from <a href="https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net">jsDelivr</a> (about 27 MB). Like
+        any download, those services see your IP address; no audio or text is sent to them. The files stay in your
+        browser's storage until you tap "Delete downloaded models". If transcription on the device fails, that clip
+        goes to Groq as described above.
       </p>
       <p>
         If you turn on "read replies aloud", your browser's built-in voice reads them. Depending on your browser and

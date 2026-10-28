@@ -120,7 +120,27 @@ function loadDevVars(): AgentEnv & TranscribeEnv {
   return loadDevVarsFrom(rootDir);
 }
 
+// §46: onnxruntime-web (inside @huggingface/transformers, used by the on-device Whisper
+// worker) names its WASM runtime with `new URL(..., import.meta.url)` as a fallback, which
+// makes Vite emit the 27 MB file into dist/. That's over Cloudflare's 25 MiB per-file limit
+// (the deploy would fail), and it's never used: transformers.js always sets
+// `ort.env.wasm.wasmPaths` itself and fetches the runtime from jsDelivr, cached after the
+// first load. So the reference is turned into a plain string Vite leaves alone.
+function dropUnusedOrtWasmPlugin(): Plugin {
+  return {
+    name: "drop-unused-ort-wasm",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.includes("onnxruntime-web") || !code.includes("asyncify.wasm")) return null;
+      return code.replace(/new URL\(("ort-wasm-simd-threaded\.asyncify\.wasm"),\s*import\.meta\.url\)/g, "{href:$1}");
+    },
+  };
+}
+
 export default defineConfig({
+  worker: {
+    plugins: () => [dropUnusedOrtWasmPlugin()],
+  },
   plugins: [
     react(),
     tailwindcss(),
