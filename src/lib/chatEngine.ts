@@ -86,6 +86,7 @@ import {
 import { rolloverPersistentTasks } from "./dataStore";
 import { planBulk, type BulkRequest } from "./bulk";
 import { buildExportCsv, exportRefusal } from "./exportCsv";
+import { planUndo, withUndoRecord } from "./undo";
 import { applyPack, describePackAdded, describePackPreview, planPack, withoutItems, type PackItem, type PackPlan } from "./pack";
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
@@ -249,8 +250,19 @@ export class ChatSession {
   private readonly deps: ChatEngineDeps;
 
   constructor(deps: ChatEngineDeps) {
-    this.deps = deps;
+    // §70: every change made through the chat is recorded as the app's last one, for
+    // "undo that". The undo itself passes through untouched (it clears the record).
+    this.deps = {
+      ...deps,
+      persist: (mutate) =>
+        deps.persist((current) => {
+          const next = mutate(current);
+          return this.undoing ? next : withUndoRecord(current, next, "app", deps.todayISO());
+        }),
+    };
   }
+
+  private undoing = false;
 
   private get todayISO(): string {
     return this.deps.todayISO();
@@ -439,6 +451,8 @@ export class ChatSession {
       this.handleGetStats(toolCall.input, toolCall);
     } else if (toolCall.name === "resetStats") {
       await this.handleResetStats(toolCall.input, toolCall);
+    } else if (toolCall.name === "undoLastChange") {
+      await this.handleUndo(toolCall);
     } else if (toolCall.name === "createPack") {
       this.handleCreatePack(toolCall.input, toolCall);
     } else if (toolCall.name === "exportCsv") {
@@ -1416,6 +1430,24 @@ export class ChatSession {
 
   // §66: what was done, missed or is coming up over a period; reads only. The same
   // getHistory as the Claude connector's get_history, with the reply worded here.
+  // §70: puts back what the app's last chat change changed, if nothing changed it since, today.
+  private async handleUndo(toolCall: ToolCallRef) {
+    const data = this.deps.getData();
+    if (!data) return;
+    const plan = planUndo(data, "app", this.todayISO);
+    if (plan.status === "rejected") {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    this.undoing = true;
+    try {
+      const saved = await this.deps.persist(plan.apply);
+      if (saved) this.pushAssistantMessage(plan.message, toolCall);
+    } finally {
+      this.undoing = false;
+    }
+  }
+
   // §76: a set of new items made for the user; nothing is added before a yes.
   private handleCreatePack(input: { packName?: string; startDate?: string; items?: PackItem[] }, toolCall: ToolCallRef) {
     const data = this.deps.getData();

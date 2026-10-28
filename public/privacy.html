@@ -167,7 +167,9 @@
         one file, <code>habit-assistant-data.json</code>, in a visible <strong>Habit Assistant</strong> folder in
         your Google Drive. In the app it goes straight from your browser to Google Drive; it never passes through or
         is stored on our servers. The one exception is the Claude connector, if you choose to use it (section 5). You
-        can open, download, back up or delete the file whenever you like.
+        can open, download, back up or delete the file whenever you like. So that "undo that" works, the file also keeps
+        a copy of what your last change by chat changed, from the app and from Claude; when that change was a delete,
+        the deleted item and its history stay in the file until a change is made on a later day.
       </p>
 
       <h2>3. Chat messages and the AI provider</h2>

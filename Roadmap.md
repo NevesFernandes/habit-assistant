@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §70 — Undo the last change
-"Undo that" right after a change made by chat (app or Claude). Needs care: what counts as the last change when the app and the connector both write the same file, and how far back it goes. Probably not a general history (see the Completion log rule in CLAUDE.md). In the connector, a `more_actions` action.
-
 ### §78 — Bulk edits by chat
 "Move all my Sports habits to the evening", "make every morning habit important", "put all my chores in Home": one edit applied to every item a filter catches (part of the day, category, kind, a list of names), as §75 does for done, skip and pause. Left out of §75 on purpose: edits touch more fields and are harder to reverse in bulk. In the connector, the same as §75's `more_actions` action or an extension of it.
 

@@ -38,6 +38,7 @@ import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
 import { planBulk, type BulkAction } from "../lib/bulk.ts";
+import { planUndo } from "../lib/undo.ts";
 import { applyPack, describePackAdded, describePackPreview, PACK_MAX_ITEMS, planPack, type PackItem } from "../lib/pack.ts";
 import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
 import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
@@ -50,6 +51,8 @@ import { describeUndoReset, resetTargets, undoable, undoReset, type ResetScope }
 /** A change that's allowed: `apply` replays on a conflict (§21), `describe` reads the saved result. */
 export interface Change {
   status: "ok";
+  /** §70: false for the undo itself, which mustn't become the next thing to undo. */
+  recordUndo?: false;
   apply: (data: AppData) => AppData;
   describe: (saved: AppData) => { message: string; ownerId?: string; date?: string };
 }
@@ -379,7 +382,9 @@ export function planSkip(data: AppData, item: Habit | RecurringTask, dateISO: st
 // for users to refresh it short of reconnecting. So the tool list is fixed at launch, and
 // anything added later becomes an action here: Claude lists the actions (with their rules)
 // at run time and runs one. Never put a destructive action here; it would share this tool's
-// "always allow" with everything else (deletes stay in delete_items).
+// "always allow" with everything else (deletes stay in delete_items). The one considered
+// exception is `undo` (§70): it only restores the state from just before Claude's own last
+// change, and refuses when anything touched those items since.
 
 export interface MoreAction {
   description: string;
@@ -481,6 +486,19 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       const item = resolved.status === "ok" ? resolved.items[0] : undefined;
       if (!item || item.kind === "singleTask") return { status: "rejected", message: "Only habits and recurring tasks can be archived, so only they can come back." };
       return planUnarchive(item, todayISO);
+    },
+  },
+  // §70: Claude's own last change. It only puts back the state from just before that change,
+  // and refuses if anything touched those items since, so no data made afterwards is lost:
+  // not a destructive action, though undoing a create removes the item just created.
+  undo: {
+    description:
+      'Undoes the last change made through Habit Assistant from Claude, today: "undo that", "take that back". Any change, a delete included (the item comes back with its history). Refused if those items changed since (in the app or here), or if it was made on an earlier day. Changes made in the app can only be undone there. Tell the user what `message` says was put back.',
+    args: {},
+    run: (data, _args, todayISO) => {
+      const plan = planUndo(data, "claude", todayISO);
+      if (plan.status === "rejected") return plan;
+      return { status: "ok", recordUndo: false, apply: plan.apply, describe: () => ({ message: plan.message }) };
     },
   },
   // §76: no templates: Claude builds the set for this user, the app's rules check it.

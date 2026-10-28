@@ -129,6 +129,9 @@ const cases: Case[] = [
   ["unarchive gym", ["schedule"]],
   ["bring my reading habit back", ["schedule"]],
   ["restore the bins task", ["schedule"]],
+  // §70
+  ["undo that", ["undo"]],
+  ["take that back", ["undo"]],
   // §76
   ["set me up a morning routine", ["pack"]],
   ["help me get fit for a 10K", ["pack"]],

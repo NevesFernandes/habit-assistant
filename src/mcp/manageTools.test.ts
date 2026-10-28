@@ -198,7 +198,7 @@ const fresh = () => {
 {
   const { store, call } = fresh();
   const listing = await call("more_actions", {});
-  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "add_pack", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo_reset_stats", "unskip"]);
+  assert.deepEqual(listing.actions.map((a: { action: string }) => a.action).sort(), ["add_category", "add_pack", "apply_to_many", "export", "list_categories", "missed", "set_note", "settings", "unarchive", "undo", "undo_reset_stats", "unskip"]);
   const unknown = await call("more_actions", { action: "launch_rocket" });
   assert.equal(unknown.status, "invalid_action");
   assert.ok(Array.isArray(unknown.actions)); // the list comes back, so Claude can recover
@@ -308,6 +308,26 @@ const fresh = () => {
   // An end date ahead isn't an archive: the message points to update_item.
   await call("update_item", { name: "read", newEndDate: addDays(TODAY, 30) });
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
+}
+
+// --- Undo (§70) -----------------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  assert.equal((await call("more_actions", { action: "undo" })).status, "rejected"); // nothing yet
+  // A delete from Claude, then undone: back with its history.
+  await call("delete_items", { name: "floss", confirm: true });
+  assert.equal(store.file().habits.some((h) => h.id === "Floss"), false);
+  const back = await call("more_actions", { action: "undo" });
+  assert.equal(back.status, "ok");
+  assert.equal(back.message, 'Undone: I brought back "Floss" with its history.');
+  assert.ok(store.file().habits.some((h) => h.id === "Floss"));
+  assert.ok(store.file().completionLog.some((e) => e.itemId === "Floss"));
+  // The undo isn't itself undoable; a time zone save doesn't count as a change.
+  assert.equal((await call("more_actions", { action: "undo" })).status, "rejected");
+  await call("set_done", { name: "bins" });
+  await call("set_time_zone", { timeZone: "Europe/Paris" });
+  assert.match((await call("more_actions", { action: "undo" })).message, /^Undone: I put "Bins" back as it was\.$/);
 }
 
 // --- Packs (§76) ---------------------------------------------------------------------------

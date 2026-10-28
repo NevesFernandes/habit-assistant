@@ -192,6 +192,12 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §70: undo the app's last chat change.
+export interface UndoLastChangeToolCall {
+  name: "undoLastChange";
+  input: Record<string, never>;
+}
+
 // §76: a set of new items made for the user; recurrences arrive parsed (the server expands them).
 export interface CreatePackToolCall {
   name: "createPack";
@@ -267,7 +273,8 @@ export type AgentToolCall =
   | GetMissedToolCall
   | ApplyToManyToolCall
   | ExportCsvToolCall
-  | CreatePackToolCall;
+  | CreatePackToolCall
+  | UndoLastChangeToolCall;
 
 export interface AgentResponse {
   reply?: string;
