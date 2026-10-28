@@ -175,6 +175,32 @@ export interface AppData {
   // §70: the last change made by chat, per side (the app's chat, Claude), for "undo that".
   // Overwritten by the next change from that side, cleared by undoing it.
   undo?: UndoRecords;
+  // §71: goals and challenges, each on one habit or recurring task. Finished ones stay.
+  goals?: Goal[];
+}
+
+/**
+ * §71: a target with an end date on one habit or recurring task, measured on its log.
+ * "total": `target` done days ("days") or `target` of a number/timer habit's amount
+ * ("amount") from `from` to `to`. "challenge": done every due day from `from` to `to`
+ * (`target` days long). Progress and achieved/missed are worked out from the log
+ * (src/lib/goals.ts), never stored.
+ */
+export interface Goal {
+  id: string;
+  itemId: string;
+  kind: "total" | "challenge";
+  target: number;
+  measure: "days" | "amount";
+  /** What a done day stands for, for the replies ("books"); "days" goals only. */
+  unit?: string;
+  /** First day counted, YYYY-MM-DD. */
+  from: string;
+  /** Last day counted, YYYY-MM-DD. */
+  to: string;
+  createdOn: string;
+  /** The item was made for this challenge and ends with it: moving `to` moves its end date. */
+  endsItem?: boolean;
 }
 
 export interface DayNote {

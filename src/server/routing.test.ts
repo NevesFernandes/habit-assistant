@@ -182,4 +182,16 @@ async function run(text: string, steps: Step[], fallback?: Step[]) {
   assert.equal(plain.result.body.toolCall!.input.newRecurrence, undefined);
 }
 
+// §71: a goal goes to its own family; a new item's compact recurrence is expanded like a pack item's.
+{
+  const newItem = { kind: "habit", name: "No sugar", dayPart: "morning", recurrence: "daily" };
+  const { result, seen } = await run("start a 30-day no-sugar challenge", [call("setGoal", { kind: "challenge", target: 30, newItem })]);
+  assert.ok(seen[0].tools.includes("setGoal"));
+  assert.deepEqual((result.body.toolCall!.input as { newItem: { recurrence: unknown } }).newItem.recurrence, { type: "daily" });
+  const plain = await run("read 20 books by December", [call("setGoal", { name: "read", kind: "total", target: 20, by: "2026-12-31" })]);
+  assert.equal((plain.result.body.toolCall!.input as { newItem?: unknown }).newItem, undefined);
+  const bad = await run("start a 30-day no-sugar challenge", [call("setGoal", { kind: "challenge", target: 30, newItem: { ...newItem, recurrence: "sometimes" } })]);
+  assert.match((bad.result.body as { reply: string }).reply, /didn't catch how often/);
+}
+
 console.log("routing.test.ts: all passed");

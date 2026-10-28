@@ -12,6 +12,8 @@ import CategoryIcon from "./CategoryIcon";
 import StatTile from "./StatTile";
 import Meter from "./Meter";
 import HabitHeatmap from "./HabitHeatmap";
+import GoalCard from "./GoalCard";
+import type { GoalProgress } from "../lib/goals";
 
 // §17 in Roadmap.md: an overview of the numbers HabitsView/CategoriesView already compute
 // per-item, plus the one real chart (a calendar heatmap). §63 adds recurring and one-off
@@ -22,10 +24,13 @@ interface DashboardProps {
   singleTasks: SingleTask[];
   categories: Category[];
   completionLog: CompletionLogEntry[];
+  /** §71: the goals still running. */
+  goals: GoalProgress[];
+  onViewGoals: () => void;
   onViewCategories: () => void;
 }
 
-export default function Dashboard({ habits, recurringTasks, singleTasks, categories, completionLog, onViewCategories }: DashboardProps) {
+export default function Dashboard({ habits, recurringTasks, singleTasks, categories, completionLog, goals, onViewGoals, onViewCategories }: DashboardProps) {
   const today = todayISO();
   // The heatmap picks from habits and recurring tasks; a recurring task is drawn as a yes/no habit.
   const tracked = [...habits.slice().sort(compareForDay), ...recurringTasks.slice().sort(compareForDay).map(asTrackable)];
@@ -76,6 +81,20 @@ export default function Dashboard({ habits, recurringTasks, singleTasks, categor
             <StatTile value={overall.completionsThisYear} label="This year" />
             <StatTile value={overall.completionsAllTime} label="All-time" />
           </div>
+        </div>
+      )}
+
+      {goals.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-md bg-slate-800 px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Goals</div>
+            <button onClick={onViewGoals} className="text-xs text-violet-400 hover:text-violet-300">
+              All goals
+            </button>
+          </div>
+          {goals.map((progress) => (
+            <GoalCard key={progress.goal.id} progress={progress} showName />
+          ))}
         </div>
       )}
 

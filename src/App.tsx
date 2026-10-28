@@ -12,6 +12,8 @@ import HabitsView from "./components/HabitsView";
 import SingleTasksView from "./components/SingleTasksView";
 import RecurringTasksView from "./components/RecurringTasksView";
 import Dashboard from "./components/Dashboard";
+import GoalsView from "./components/GoalsView";
+import { goalsOverview } from "./lib/goals";
 import TimerView from "./components/TimerView";
 import { useTimerSession } from "./lib/useTimerSession";
 import {
@@ -89,7 +91,7 @@ import { WeekStartContext } from "./lib/weekStartContext";
 import { emptyAppData, weekStartOf, type AppData } from "./types/models";
 
 type Tab = "chat" | "today" | "categories" | "view" | "stats" | "timer";
-type ViewSubTab = "habits" | "single tasks" | "recurring tasks";
+type ViewSubTab = "habits" | "single tasks" | "recurring tasks" | "goals";
 
 const TAB_ICONS: Record<Tab, typeof MessageCircle> = {
   chat: MessageCircle,
@@ -666,6 +668,10 @@ export default function App() {
     return true;
   }
 
+  // §71: worked out from the log each render, like every other number on screen.
+  const goals = data ? goalsOverview(data, todayISO()) : { active: [], finished: [] };
+  const allGoals = [...goals.active, ...goals.finished];
+
   if (!session || !data) {
     return <SignIn onClick={handleSignIn} loading={signingIn} error={authError} />;
   }
@@ -831,7 +837,7 @@ export default function App() {
           {activeTab === "view" && (
             <div className="flex flex-col gap-4">
               <div className="flex gap-4 border-b border-slate-700">
-                {(["habits", "single tasks", "recurring tasks"] as const).map((tab) => (
+                {(["habits", "single tasks", "recurring tasks", "goals"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setViewSubTab(tab)}
@@ -849,6 +855,7 @@ export default function App() {
               {viewSubTab === "habits" && (
                 <HabitsView
                   habits={data.habits}
+                  goals={allGoals}
                   categories={data.categories}
                   onPlace={(id, patch) => handlePlaceItem("habit", id, patch)}
                   onUnarchive={(id) => handleUnarchive("habit", id)}
@@ -871,6 +878,7 @@ export default function App() {
               {viewSubTab === "recurring tasks" && (
                 <RecurringTasksView
                   recurringTasks={data.recurringTasks}
+                  goals={allGoals}
                   categories={data.categories}
                   completionLog={data.completionLog}
                   onPlace={(id, patch) => handlePlaceItem("recurringTask", id, patch)}
@@ -880,6 +888,8 @@ export default function App() {
                   onRemoveChecklistItem={(taskId, itemId) => handleRecurringTaskChecklistRemove(taskId, itemId, todayISO())}
                 />
               )}
+
+              {viewSubTab === "goals" && <GoalsView active={goals.active} finished={goals.finished} />}
             </div>
           )}
 
@@ -890,6 +900,11 @@ export default function App() {
               singleTasks={data.singleTasks}
               categories={data.categories}
               completionLog={data.completionLog}
+              goals={goals.active}
+              onViewGoals={() => {
+                setActiveTab("view");
+                setViewSubTab("goals");
+              }}
               onViewCategories={() => setActiveTab("categories")}
             />
           )}

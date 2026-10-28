@@ -253,6 +253,38 @@ export interface SettingsToolCall {
   input: { weekStartsOn?: "sunday" | "monday"; readAloud?: boolean };
 }
 
+// §71: goals and challenges, each on one habit or recurring task. setGoal's newItem
+// arrives with its recurrence parsed, as a pack item's.
+export interface SetGoalToolCall {
+  name: "setGoal";
+  input: {
+    name?: string;
+    categoryId?: string;
+    newItem?: PackItem;
+    kind: "total" | "challenge";
+    target?: number;
+    measure?: "days" | "amount";
+    unit?: string;
+    by?: string;
+    from?: string;
+  };
+}
+
+export interface ChangeGoalToolCall {
+  name: "changeGoal";
+  input: { name: string; categoryId?: string; newTarget?: number; newBy?: string; newDays?: number };
+}
+
+export interface RemoveGoalToolCall {
+  name: "removeGoal";
+  input: { name: string; categoryId?: string };
+}
+
+export interface GetGoalsToolCall {
+  name: "getGoals";
+  input: { name?: string };
+}
+
 export type AgentToolCall =
   | CreateSingleTaskToolCall
   | CreateHabitToolCall
@@ -270,6 +302,10 @@ export type AgentToolCall =
   | ResumeHabitToolCall
   | ResumeRecurringTaskToolCall
   | ConfirmPendingActionToolCall
+  | SetGoalToolCall
+  | ChangeGoalToolCall
+  | RemoveGoalToolCall
+  | GetGoalsToolCall
   | LogHabitProgressToolCall
   | AddRecurringTaskChecklistItemToolCall
   | AddSingleTaskChecklistItemToolCall

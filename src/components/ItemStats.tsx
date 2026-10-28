@@ -6,16 +6,27 @@ import { todayISO } from "../lib/recurrence";
 import { useWeekStart } from "../lib/weekStartContext";
 import StatTile from "./StatTile";
 import HabitHeatmap from "./HabitHeatmap";
+import GoalCard from "./GoalCard";
+import type { GoalProgress } from "../lib/goals";
 
 // The "Statistics" block of an item's own page: a habit's, and since §63 a recurring task's
 // too (passed in as asTrackable(task)), so the two pages can't drift apart.
-export default function ItemStats({ item, completionLog }: { item: Habit; completionLog: CompletionLogEntry[] }) {
+// §71: with the item's goal (the running one, else the last finished one) above the stats.
+export default function ItemStats({ item, completionLog, goal }: { item: Habit; completionLog: CompletionLogEntry[]; goal?: GoalProgress }) {
   const weekStartsOn = useWeekStart();
   const stats = computeHabitStats(item, completionLog, todayISO(), weekStartsOn);
   const streakUnit = item.recurrence.type === "timesPerPeriod" ? "time" : "day";
   const formatStreak = (n: number) => `${n} ${streakUnit}${n === 1 ? "" : "s"}`;
   return (
     <>
+      {goal && (
+        <>
+          <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {goal.goal.kind === "challenge" ? "Challenge" : "Goal"}
+          </div>
+          <GoalCard progress={goal} />
+        </>
+      )}
       <div className="mt-1 border-t border-slate-700 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Statistics
       </div>

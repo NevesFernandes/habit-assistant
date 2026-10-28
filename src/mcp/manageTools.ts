@@ -43,6 +43,7 @@ import { applyPack, describePackAdded, describePackPreview, planPack, type PackI
 import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
 import { buildExportCsv, EXPORT_COLUMNS, exportRefusal } from "../lib/exportCsv.ts";
 import { isDayPart } from "../lib/dayParts.ts";
+import { activeGoalOf, goalProgress, goalsOverview, goalView, planChangeGoal, planGoalWithNewItem, planRemoveGoal, planSetGoal, type GoalInput, type GoalPlan } from "../lib/goals.ts";
 import { defaultMissedPeriod, describeMissedPeriod, describeNudge, getMissed } from "../lib/missed.ts";
 import { HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
 import { NOT_BY_CHAT, describeReadAloudEverywhere, describeWeekStart, readAloudEverywhere, withReadAloudEverywhere, withWeekStart } from "../lib/settingsByChat.ts";
@@ -325,11 +326,18 @@ export function habitStats(data: AppData, habit: Habit, todayISO: string) {
 }
 
 /** §63: a recurring task's stats are a yes/no habit's; a one-off task has its own few facts. */
+/** §71: the item's running goal, as the app shows it, if any. */
+function goalOf(data: AppData, item: Habit | RecurringTask, todayISO: string) {
+  const goal = activeGoalOf(data, item.id, todayISO);
+  const progress = goal && goalProgress(data, goal, todayISO);
+  return progress ? { goal: goalView(progress, todayISO) } : {};
+}
+
 export function itemStats(data: AppData, item: AnyItem, todayISO: string) {
-  if (item.kind === "habit") return { kind: item.kind, ...habitStats(data, item, todayISO) };
+  if (item.kind === "habit") return { kind: item.kind, ...habitStats(data, item, todayISO), ...goalOf(data, item, todayISO) };
   if (item.kind === "recurringTask") {
     const streakUnit = item.recurrence.type === "timesPerPeriod" ? item.recurrence.period : "day";
-    return { kind: item.kind, id: item.id, name: item.name, streakUnit, ...computeRecurringTaskStats(item, data.completionLog, todayISO, weekStartOf(data)) };
+    return { kind: item.kind, id: item.id, name: item.name, streakUnit, ...computeRecurringTaskStats(item, data.completionLog, todayISO, weekStartOf(data)), ...goalOf(data, item, todayISO) };
   }
   const first = item.originalStartDate ?? item.startDate;
   return {
@@ -357,8 +365,11 @@ export function categoryStats(data: AppData, categoryId: string | undefined, tod
 }
 
 export function overallStats(data: AppData, todayISO: string) {
+  const { active } = goalsOverview(data, todayISO);
   return {
     overall: categoryStats(data, undefined, todayISO),
+    // §71: the goals still running; the goals tool lists finished ones too.
+    ...(active.length ? { goals: active.map((p) => goalView(p, todayISO)) } : {}),
     categories: data.categories
       .map((category) => ({ category: category.name, ...categoryStats(data, category.id, todayISO) }))
       .filter((row) => row.habitCount > 0)
@@ -382,6 +393,37 @@ export function planSkip(data: AppData, item: Habit | RecurringTask, dateISO: st
 // did I miss, export, packs, bulk, undo, undoing a stats reset). Until §80 Claude reached them
 // through one `more_actions` tool; now the tool each belongs to calls it (server.ts's
 // runHandler): a result to return as is, a refusal, or a change to save.
+
+/** One item as create_items' `items` describe it (also §71's `newItem`), its recurrence parsed. */
+function packItemFrom(item: Record<string, unknown>): PackItem | Refusal {
+  const kind = item.kind === "habit" || item.kind === "recurringTask" || item.kind === "singleTask" ? item.kind : "habit";
+  let recurrence;
+  if (kind !== "singleTask" && item.recurrence !== undefined) {
+    const parsed = parseCompactRecurrence(typeof item.recurrence === "string" ? item.recurrence : undefined);
+    if (!parsed.ok) return { status: "rejected", message: `"${String(item.name)}": ${parsed.error}. Use create_items' recurrence format.` };
+    recurrence = parsed.rule;
+  }
+  const text = (key: string) => (typeof item[key] === "string" ? (item[key] as string) : undefined);
+  return {
+    kind,
+    name: text("name") ?? "",
+    description: text("description"),
+    categoryId: text("category"),
+    dayPart: isDayPart(item.dayPart) ? item.dayPart : undefined,
+    recurrence,
+    completionType: ["yesno", "value", "timer", "checklist"].includes(String(item.completionType)) ? (item.completionType as PackItem["completionType"]) : undefined,
+    target: typeof item.target === "number" ? item.target : undefined,
+    unit: text("unit"),
+    checklistItems: Array.isArray(item.checklistItems) ? item.checklistItems.filter((step): step is string => typeof step === "string") : undefined,
+  };
+}
+
+/** §71: a goal's plan as a handler's outcome. */
+function goalOutcome(plan: GoalPlan, ownerId?: string): Refusal | Change | { result: Record<string, unknown> } {
+  if (plan.status === "rejected") return plan;
+  if (plan.status === "needs_confirm") return { result: { status: "needs_confirm", question: plan.question } };
+  return { status: "ok", apply: plan.apply, describe: (saved) => ({ message: plan.message(saved), ownerId }) };
+}
 
 export interface Handler {
   run: (data: AppData, args: Record<string, unknown>, todayISO: string) => { result: Record<string, unknown> } | Refusal | Change;
@@ -483,26 +525,9 @@ export const HANDLERS: Record<string, Handler> = {
       if (raw.length === 0) return { status: "need_info", message: "Pass the items of the set in `items`." };
       const items: PackItem[] = [];
       for (const item of raw) {
-        const kind = item.kind === "habit" || item.kind === "recurringTask" || item.kind === "singleTask" ? item.kind : "habit";
-        let recurrence;
-        if (kind !== "singleTask" && item.recurrence !== undefined) {
-          const parsed = parseCompactRecurrence(typeof item.recurrence === "string" ? item.recurrence : undefined);
-          if (!parsed.ok) return { status: "rejected", message: `"${String(item.name)}": ${parsed.error}. Use create_items' recurrence format.` };
-          recurrence = parsed.rule;
-        }
-        const text = (key: string) => (typeof item[key] === "string" ? (item[key] as string) : undefined);
-        items.push({
-          kind,
-          name: text("name") ?? "",
-          description: text("description"),
-          categoryId: text("category"),
-          dayPart: isDayPart(item.dayPart) ? item.dayPart : undefined,
-          recurrence,
-          completionType: ["yesno", "value", "timer", "checklist"].includes(String(item.completionType)) ? (item.completionType as PackItem["completionType"]) : undefined,
-          target: typeof item.target === "number" ? item.target : undefined,
-          unit: text("unit"),
-          checklistItems: Array.isArray(item.checklistItems) ? item.checklistItems.filter((step): step is string => typeof step === "string") : undefined,
-        });
+        const parsed = packItemFrom(item);
+        if ("status" in parsed) return parsed;
+        items.push(parsed);
       }
       const startDate = typeof args.startDate === "string" && isISODate(args.startDate) ? args.startDate : undefined;
       const plan = planPack(data, typeof args.name === "string" ? args.name : "", items, todayISO, startDate);
@@ -510,6 +535,50 @@ export const HANDLERS: Record<string, Handler> = {
         return { result: { status: plan.items.length ? "needs_confirm" : "rejected", question: describePackPreview(plan, todayISO) } };
       }
       return { status: "ok", apply: (d) => applyPack(d, plan, todayISO), describe: () => ({ message: describePackAdded(plan, todayISO) }) };
+    },
+  },
+  // §71: the goals tool.
+  goals: {
+    run: (data, args, todayISO) => {
+      const op = args.op;
+      const id = typeof args.id === "string" ? args.id : undefined;
+      const name = typeof args.name === "string" ? args.name : undefined;
+      const num = (key: string) => (typeof args[key] === "number" ? (args[key] as number) : undefined);
+      const date = (key: string) => (typeof args[key] === "string" && isISODate(args[key] as string) ? (args[key] as string) : undefined);
+      if (op === "list") {
+        const { active, finished } = goalsOverview(rolloverPersistentTasks(data, todayISO), todayISO);
+        return { result: { today: todayISO, active: active.map((p) => goalView(p, todayISO)), finished: finished.map((p) => goalView(p, todayISO)) } };
+      }
+      const input: GoalInput = {
+        kind: args.kind === "challenge" ? "challenge" : "total",
+        target: num("target") ?? num("days"),
+        measure: args.measure === "days" || args.measure === "amount" ? args.measure : undefined,
+        unit: typeof args.unit === "string" ? args.unit : undefined,
+        by: date("by"),
+        from: date("from"),
+      };
+      if (op === "create" && args.newItem && typeof args.newItem === "object" && !id && !name) {
+        const raw = args.newItem as Record<string, unknown>;
+        const item = packItemFrom({ ...raw, kind: raw.type ?? raw.kind });
+        if ("status" in item) return item;
+        return goalOutcome(planGoalWithNewItem(data, item, input, todayISO, args.confirm === true));
+      }
+      if (!id && !name) return { status: "need_info", message: "Pass the item with `id` or `name`, or `newItem` for an item the user doesn't have yet." };
+      const resolved = resolveTargets(data, { ids: id ? [id] : undefined, name });
+      if (resolved.status === "not_found") {
+        return { status: "rejected", message: `${resolved.message} For a new item, call again with \`newItem\` instead of \`name\`.` };
+      }
+      if (resolved.status === "ambiguous") {
+        const list = resolved.candidates.map((c) => `${c.name} (${c.type}, id ${c.id})`).join("; ");
+        return { status: "need_info", message: `Several items match: ${list}. Ask which one, then call again with its id.` };
+      }
+      if (resolved.status !== "ok") return { status: "rejected", message: "That item can't have a goal." };
+      const item = resolved.items[0];
+      if (item.kind === "singleTask") return { status: "rejected", message: `"${item.name}" is a one-off task. A goal goes on a habit or a recurring task.` };
+      if (op === "create") return goalOutcome(planSetGoal(data, item, input, todayISO, args.confirm === true), item.id);
+      if (op === "update") return goalOutcome(planChangeGoal(data, item, { target: num("target"), by: date("by"), days: num("days"), unit: input.unit }, todayISO), item.id);
+      if (op === "remove") return goalOutcome(planRemoveGoal(data, item, todayISO), item.id);
+      return { status: "rejected", message: 'op is one of "list", "create", "update", "remove".' };
     },
   },
   // §72: get_history with format csv, as text for Claude to save. Capped: a tool result has to stay small.

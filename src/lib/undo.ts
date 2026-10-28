@@ -6,7 +6,7 @@
 // only if those records still match "after", so a later change from another device or from
 // Claude is never overwritten; and only the same day, since the app looks forward. Undoing a
 // delete brings the item back with its history. Pure: no Drive, no clock.
-import type { AppData, Category, CompletionLogEntry, DayNote, Habit, RecurringTask, SingleTask, WeekStart } from "../types/models.ts";
+import type { AppData, Category, CompletionLogEntry, DayNote, Goal, Habit, RecurringTask, SingleTask, WeekStart } from "../types/models.ts";
 import { rolloverPersistentTasks } from "./dataStore.ts";
 
 export type UndoSide = "app" | "claude";
@@ -18,6 +18,8 @@ export interface UndoSnapshot {
   log: Record<string, CompletionLogEntry | null>;
   notes: Record<string, DayNote | null>;
   categories: Record<string, Category | null>;
+  /** §71. Absent in records made before goals existed. */
+  goals?: Record<string, Goal | null>;
   /** Present only when the change moved it; `value` absent = the default (Sunday). */
   weekStartsOn?: { value?: WeekStart };
 }
@@ -67,12 +69,13 @@ export function diffChange(before: AppData, after: AppData): { before: UndoSnaps
   const log = diffById(before.completionLog, after.completionLog);
   const notes = diffById(before.notes, after.notes);
   const categories = diffById(before.categories, after.categories);
+  const goals = diffById(before.goals, after.goals);
   const weekMoved = (before.weekStartsOn ?? 0) !== (after.weekStartsOn ?? 0);
-  const touched = [items.was, log.was, notes.was, categories.was].some((part) => Object.keys(part).length > 0) || weekMoved;
+  const touched = [items.was, log.was, notes.was, categories.was, goals.was].some((part) => Object.keys(part).length > 0) || weekMoved;
   if (!touched) return undefined;
   return {
-    before: { items: items.was, log: log.was, notes: notes.was, categories: categories.was, ...(weekMoved ? { weekStartsOn: { value: before.weekStartsOn } } : {}) },
-    after: { items: items.now, log: log.now, notes: notes.now, categories: categories.now, ...(weekMoved ? { weekStartsOn: { value: after.weekStartsOn } } : {}) },
+    before: { items: items.was, log: log.was, notes: notes.was, categories: categories.was, goals: goals.was, ...(weekMoved ? { weekStartsOn: { value: before.weekStartsOn } } : {}) },
+    after: { items: items.now, log: log.now, notes: notes.now, categories: categories.now, goals: goals.now, ...(weekMoved ? { weekStartsOn: { value: after.weekStartsOn } } : {}) },
   };
 }
 
@@ -106,7 +109,7 @@ function namesIn(record: UndoRecord, data: AppData): string[] {
     if (name) names.set(id, name);
   }
   for (const snapshot of [record.before, record.after]) {
-    for (const entry of [...Object.values(snapshot.log), ...Object.values(snapshot.notes)]) {
+    for (const entry of [...Object.values(snapshot.log), ...Object.values(snapshot.notes), ...Object.values(snapshot.goals ?? {})]) {
       const name = entry && !names.has(entry.itemId) ? nameOf(entry.itemId) : undefined;
       if (entry && name) names.set(entry.itemId, name);
     }
@@ -139,6 +142,7 @@ function changedSince(data: AppData, record: UndoRecord): { ids: Set<string>; we
   for (const [id, item] of Object.entries(record.after.items)) if (stable(current(all, id)) !== stable(item)) ids.add(id);
   for (const [id, entry] of Object.entries(record.after.log)) if (stable(current(data.completionLog, id)) !== stable(entry)) ids.add((entry ?? record.before.log[id])!.itemId);
   for (const [id, note] of Object.entries(record.after.notes)) if (stable(current(data.notes, id)) !== stable(note)) ids.add((note ?? record.before.notes[id])!.itemId);
+  for (const [id, goal] of Object.entries(record.after.goals ?? {})) if (stable(current(data.goals, id)) !== stable(goal)) ids.add((goal ?? record.before.goals![id])!.itemId);
   const category = Object.entries(record.after.categories).some(([id, value]) => stable(current(data.categories, id)) !== stable(value));
   const week = !!record.after.weekStartsOn && (data.weekStartsOn ?? 0) !== (record.after.weekStartsOn.value ?? 0);
   return { ids, week, category };
@@ -169,7 +173,9 @@ export function planUndo(stored: AppData, side: UndoSide, today: string): UndoPl
   if (changed.length) parts.push(`put ${quoted(changed)} back as ${changed.length === 1 ? "it was" : "they were"}`);
   if (record.before.weekStartsOn) parts.push(`set the week back to start on ${record.before.weekStartsOn.value === 1 ? "Monday" : "Sunday"}`);
   if (!parts.length && Object.keys(record.before.categories).length) parts.push("put the categories back as they were");
-  const message = `Undone: I ${parts.join(", ")}.`;
+  // §71: a change to a goal only.
+  const goalsOnly = Object.keys(record.before.goals ?? {}).length > 0 && !Object.keys(record.before.items).length && !Object.keys(record.before.log).length && !Object.keys(record.before.notes).length;
+  const message = goalsOnly ? `Undone: I put the goal on ${quoted(changed)} back as it was.` : `Undone: I ${parts.join(", ")}.`;
 
   return {
     status: "ok",
@@ -191,6 +197,11 @@ export function planUndo(stored: AppData, side: UndoSide, today: string): UndoPl
         categories: restore(fresh.categories, record.before.categories),
         undo: otherSides,
       };
+      if (record.before.goals && Object.keys(record.before.goals).length) {
+        const goals = restore(fresh.goals ?? [], record.before.goals);
+        if (goals.length) next.goals = goals;
+        else delete next.goals;
+      }
       if (record.before.weekStartsOn) {
         if (record.before.weekStartsOn.value === undefined) delete next.weekStartsOn;
         else next.weekStartsOn = record.before.weekStartsOn.value;

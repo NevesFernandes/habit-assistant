@@ -201,6 +201,7 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
     "get_day",
     "get_history",
     "get_stats",
+    "goals",
     "log_progress",
     "reset_stats",
     "schedule",
@@ -214,7 +215,7 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
   const hints = Object.fromEntries(result.tools.map((t: { name: string; annotations: Record<string, boolean> }) => [t.name, t.annotations]));
   for (const name of ["delete_items", "reset_stats", "undo"]) assert.equal(hints[name].destructiveHint, true, name);
   for (const name of ["get_day", "find_items", "get_history", "get_stats"]) assert.equal(hints[name].readOnlyHint, true, name);
-  for (const name of ["checklist", "schedule", "set_done", "set_note", "create_items", "update_items", "categories", "settings", "log_progress"]) {
+  for (const name of ["checklist", "schedule", "set_done", "set_note", "create_items", "update_items", "categories", "settings", "log_progress", "goals"]) {
     assert.equal(hints[name].destructiveHint, false, name);
   }
   const tool = result.tools.find((t: { name: string }) => t.name === "get_day");

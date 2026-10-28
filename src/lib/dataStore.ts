@@ -18,6 +18,11 @@ import type {
 } from "../types/models";
 import { archiveGap, resolveWeekdayDate } from "./recurrence";
 import { withoutNotesOf } from "./dayNotes";
+
+/** §71: deleting an item deletes its goals, as it deletes its history. */
+function withoutGoalsOf(data: AppData, ids: Set<string>): AppData {
+  return data.goals ? { ...data, goals: data.goals.filter((goal) => !ids.has(goal.itemId)) } : data;
+}
 import {
   isRecurringTaskChecklistItemChecked,
   withChecklistMode,
@@ -389,21 +394,21 @@ export function deleteSingleTasks(data: AppData, ids: string[]): AppData {
 /** Cascade-deletes matching CompletionLogEntry rows too — the "tracked history" the confirmation warns about. */
 export function deleteHabits(data: AppData, ids: string[]): AppData {
   const idSet = new Set(ids);
-  return withoutNotesOf({
+  return withoutGoalsOf(withoutNotesOf({
     ...data,
     habits: data.habits.filter((habit) => !idSet.has(habit.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
-  }, idSet);
+  }, idSet), idSet);
 }
 
 /** Cascade-deletes matching CompletionLogEntry rows too, mirroring deleteHabits. */
 export function deleteRecurringTasks(data: AppData, ids: string[]): AppData {
   const idSet = new Set(ids);
-  return withoutNotesOf({
+  return withoutGoalsOf(withoutNotesOf({
     ...data,
     recurringTasks: data.recurringTasks.filter((task) => !idSet.has(task.id)),
     completionLog: data.completionLog.filter((entry) => !idSet.has(entry.itemId)),
-  }, idSet);
+  }, idSet), idSet);
 }
 
 // All fields optional; a field is only changed when its key is present with

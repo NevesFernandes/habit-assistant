@@ -151,6 +151,13 @@ It asks first (status "needs_confirm"): ask the user the question word for word,
 \`undo: true\` (with the same scope) puts the counting back as it was before the last reset ("undo the reset of my gym stats"); it doesn't ask.`;
 
 
+const GOALS_DESCRIPTION = `Goals and challenges, each on one habit or recurring task, counted on what's logged there (§71).
+- op "list": every goal with its progress, pace and a one-line \`summary\` in the app's words ("how are my goals?"); running ones in \`active\`, finished ones in \`finished\`.
+- op "create": a total ("read 20 books by December", "run 100 km by the end of the year": \`kind: "total"\`, \`target\`, \`by\` as YYYY-MM-DD, the last day) or a challenge ("a 30-day no-sugar challenge": \`kind: "challenge"\`, \`target\` = days). A total counts done days (\`measure: "days"\`, default for yes/no items; \`unit\` names what one stands for, e.g. "books") or a number/timer habit's amount (\`measure: "amount"\`, their default). It counts from today; pass \`from\` only when the user names another first day ("this year" = Jan 1). Name the item with \`id\` or \`name\`; when the user doesn't have it (status "rejected" saying nothing is called that), call again with \`newItem\` (as one of create_items' items): it's created with the goal, and a challenge's item ends with it. An item has one running goal: "needs_confirm" asks to replace it; only after a yes call again with \`confirm: true\`. A missed challenge day doesn't end it; it's achieved only with no misses.
+- op "update": change the running goal's \`target\`, \`by\`, or a challenge's \`days\`.
+- op "remove": remove the running goal; the item and its history stay.
+Not for a habit's per-day goal ("8 glasses a day"): that's update_items' newTarget. Reply with \`message\` (or the summaries); "undo" takes a change back.`;
+
 const NEED_TIMEZONE = {
   status: "need_timezone",
   message: "Ask the user which city or time zone they're in, save it with settings' timeZone, then try again.",
@@ -326,7 +333,7 @@ const CHECKLIST_OP = z.enum(["add", "tick", "untick", "remove", "remove_all"]);
 
 export function buildServer(deps: McpDeps): McpServer {
   const server = new McpServer(
-    { name: "habit-assistant", version: "0.3.0" },
+    { name: "habit-assistant", version: "0.4.0" },
     { instructions: INSTRUCTIONS, jsonSchemaValidator: new CfWorkerJsonSchemaValidator() },
   );
 
@@ -802,6 +809,48 @@ export function buildServer(deps: McpDeps): McpServer {
         }
         const result = await runHandler(deps, "settings", { weekStartsOn, readAloud }, undefined);
         return zone ? { ...result, timeZone, today: zone.today } : result;
+      }),
+  );
+
+  server.registerTool(
+    "goals",
+    {
+      title: "Goals and challenges",
+      description: GOALS_DESCRIPTION,
+      inputSchema: {
+        op: z.enum(["list", "create", "update", "remove"]),
+        id: z.string().optional().describe("The item's id, from get_day or find_items."),
+        name: z.string().optional().describe("The item's name in the user's words."),
+        kind: z.enum(["total", "challenge"]).optional().describe("create: a total by an end date, or a challenge of N days."),
+        target: z.number().positive().optional().describe("create/update: a total's target, or a challenge's days."),
+        measure: z.enum(["days", "amount"]).optional().describe("create, total: done days, or a number/timer habit's amount."),
+        unit: z.string().optional().describe('create, total in days: what one done day stands for, e.g. "books".'),
+        by: z.string().optional().describe("create/update, total: the last day, YYYY-MM-DD."),
+        days: z.number().int().positive().optional().describe("update, challenge: its new length in days."),
+        from: z.string().optional().describe("create: the first day counted, YYYY-MM-DD, only when the user named one."),
+        newItem: z
+          .object({
+            type: z.enum(["habit", "recurringTask"]),
+            name: z.string(),
+            dayPart: DAY_PART,
+            category: z.string().optional(),
+            recurrence: z.string(),
+            completionType: z.enum(["yesno", "value", "timer"]).optional(),
+            target: z.number().positive().optional().describe("value/timer: the amount per day."),
+            unit: z.string().optional(),
+          })
+          .optional()
+          .describe("create: an item the user doesn't have yet, made with the goal."),
+        confirm: z.boolean().optional().describe("create: only after the user said yes to replacing the running goal."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    ({ timeZone, ...args }) =>
+      timed(deps, "goals", async () => {
+        const invalid = invalidInput(args.by, undefined) ?? invalidInput(args.from, undefined);
+        if (invalid) return invalid;
+        return runHandler(deps, "goals", args, timeZone);
       }),
   );
 

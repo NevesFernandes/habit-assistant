@@ -14,7 +14,8 @@
 // §66: "history" reads what was done, missed or is coming up over a period; it changes nothing.
 // §69: "settings" shows or changes the first day of the week and reading replies aloud.
 // §76: "pack" sets up several new items at once, made for the user. §70: "undo" the last change.
-export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings" | "pack" | "undo";
+// §71: "goals" sets, changes, removes or shows goals and challenges.
+export type IntentBucket = "create" | "delete" | "edit" | "progress" | "schedule" | "checklist" | "history" | "settings" | "pack" | "undo" | "goals";
 
 export type ClassifyIntentResult = { kind: "buckets"; buckets: IntentBucket[] } | { kind: "fallback" };
 
@@ -157,6 +158,13 @@ const PACK_PATTERNS = [
   /\bhelp me (?:to )?(?:start|build|get|become|sleep|eat|be|stop)\b/, /\bsuggest\b[\s\S]{0,30}\bhabits?\b/,
 ];
 
+// §71: a goal with an end date, or a challenge. "goal" alone may mean a habit's per-day
+// target (an edit), which still classifies as edit too.
+const GOALS_PATTERNS = [
+  /\bgoals?\b/, /\bchallenges?\b/, /\bon track\b/,
+  /\b\d+[\s\S]{0,30}\bby (?:the end of |end of |next |mid-?)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|christmas|summer|spring|autumn|fall|winter|the end|year|month|\d)/,
+];
+
 export function classifyIntent(rawText: string): ClassifyIntentResult {
   const text = rawText.toLowerCase();
 
@@ -238,6 +246,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   if (asksHistory) buckets.add("history");
   if (SETTINGS_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("settings");
   if (PACK_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("pack");
+  if (GOALS_PATTERNS.some((pattern) => pattern.test(text))) buckets.add("goals");
   // "undo the reset" / "undo the skip" have their own undo, in their own families.
   if (UNDO_PATTERNS.some((pattern) => pattern.test(text)) && !/\b(?:reset|skip|skipped)\b/.test(text)) buckets.add("undo");
 

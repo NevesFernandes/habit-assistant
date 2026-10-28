@@ -45,8 +45,8 @@ function steps(texts: string[] | undefined): string[] {
   return (texts ?? []).map((text) => text.trim()).filter((text) => text.length > 0);
 }
 
-/** Why an item can't be added as given, or undefined; the rules of a single create (§31). */
-function invalidReason(item: PackItem): string | undefined {
+/** Why an item can't be added as given, or undefined; the rules of a single create (§31). Also §71's new item for a goal. */
+export function invalidReason(item: PackItem): string | undefined {
   if (!item.name?.trim()) return "no name";
   if (item.kind !== "singleTask" && !item.recurrence) return "no schedule";
   if (item.kind === "habit") {
@@ -119,30 +119,33 @@ export function withoutItems(plan: PackPlan, leaveOut: string[] | undefined): Pa
   return { ...plan, items: plan.items.filter((_, index) => !out.has(index)) };
 }
 
+/** Adds one checked item (also §71's item made for a goal). */
+export function addPackItem(data: AppData, item: PackItem, today: string, startDate?: string, endDate?: string): AppData {
+  const base = { name: item.name.trim(), description: item.description?.trim() || undefined, dayPart: isDayPart(item.dayPart) ? item.dayPart : undefined, startDate, endDate };
+  if (item.kind === "habit") {
+    return addHabit(
+      data,
+      {
+        ...base,
+        categoryId: resolveCategoryId(data, item.categoryId) ?? "other",
+        recurrence: item.recurrence!,
+        completionType: item.completionType,
+        target: item.target,
+        unit: item.unit,
+        checklistItems: item.completionType === "checklist" ? steps(item.checklistItems) : undefined,
+      },
+      today,
+    );
+  }
+  if (item.kind === "recurringTask") {
+    return addRecurringTask(data, { ...base, categoryId: resolveCategoryId(data, item.categoryId), recurrence: item.recurrence! }, today);
+  }
+  return addSingleTask(data, { ...base, categoryId: resolveCategoryId(data, item.categoryId) }, today);
+}
+
 /** Adds every item of the plan, in order. */
 export function applyPack(data: AppData, plan: PackPlan, today: string): AppData {
-  return plan.items.reduce((next, item) => {
-    const base = { name: item.name, description: item.description?.trim() || undefined, dayPart: item.dayPart, startDate: plan.startDate };
-    if (item.kind === "habit") {
-      return addHabit(
-        next,
-        {
-          ...base,
-          categoryId: resolveCategoryId(next, item.categoryId) ?? "other",
-          recurrence: item.recurrence!,
-          completionType: item.completionType,
-          target: item.target,
-          unit: item.unit,
-          checklistItems: item.completionType === "checklist" ? steps(item.checklistItems) : undefined,
-        },
-        today,
-      );
-    }
-    if (item.kind === "recurringTask") {
-      return addRecurringTask(next, { ...base, categoryId: resolveCategoryId(next, item.categoryId), recurrence: item.recurrence! }, today);
-    }
-    return addSingleTask(next, { ...base, categoryId: resolveCategoryId(next, item.categoryId) }, today);
-  }, data);
+  return plan.items.reduce((next, item) => addPackItem(next, item, today, plan.startDate), data);
 }
 
 /** The reply once added. */

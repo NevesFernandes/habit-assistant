@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { Category, CompletionLogEntry, RecurringTask } from "../types/models";
 import { asTrackable } from "../lib/taskStats";
 import ItemStats from "./ItemStats";
+import type { GoalProgress } from "../lib/goals";
 import { currentPause, describeRecurrence, isArchived, todayISO, upcomingPause } from "../lib/recurrence";
 import { checklistModeOf, recurringTaskChecklistOn } from "../lib/recurringChecklist";
 import CategoryIcon from "./CategoryIcon";
@@ -11,6 +12,8 @@ import Checklist from "./Checklist";
 import ArchiveRow from "./ArchiveRow";
 
 interface RecurringTasksViewProps {
+  /** §71: running goals, then finished ones; an item page shows the first that is its own. */
+  goals: GoalProgress[];
   recurringTasks: RecurringTask[];
   categories: Category[];
   completionLog: CompletionLogEntry[];
@@ -21,7 +24,7 @@ interface RecurringTasksViewProps {
   onRemoveChecklistItem: (taskId: string, itemId: string) => void;
 }
 
-export default function RecurringTasksView({
+export default function RecurringTasksView({ goals,
   recurringTasks,
   categories,
   completionLog,
@@ -38,6 +41,7 @@ export default function RecurringTasksView({
   if (selectedTask) {
     return (
       <RecurringTaskDetail
+        goal={goals.find((g) => g.goal.itemId === selectedTask.id)}
         task={selectedTask}
         categories={categories}
         completionLog={completionLog}
@@ -92,6 +96,7 @@ export default function RecurringTasksView({
 
 function RecurringTaskDetail({
   task,
+  goal,
   categories,
   completionLog,
   onPlace,
@@ -102,6 +107,7 @@ function RecurringTaskDetail({
   onBack,
 }: {
   task: RecurringTask;
+  goal?: GoalProgress;
   categories: Category[];
   completionLog: CompletionLogEntry[];
   onPlace: (id: string, patch: PlacementPatch) => void;
@@ -182,7 +188,7 @@ function RecurringTaskDetail({
         </DetailRow>
 
         {/* §63: a recurring task's stats are a yes/no habit's. */}
-        <ItemStats item={asTrackable(task)} completionLog={completionLog} />
+        <ItemStats item={asTrackable(task)} completionLog={completionLog} goal={goal} />
       </div>
     </div>
   );
