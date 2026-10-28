@@ -18,9 +18,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Next
 
-### §74 — Calendar sync
-"Put today's tasks in my calendar." In Claude this already works with no code: Claude combines this connector with a calendar connector. An app-side version would need a Google Calendar scope on top of `drive.file`, which widens what the app asks for at sign-in; weigh that before building. `help.html` already mentions the Claude combination ("what's on today, habits and calendar?").
-
 ## Later
 
 ### §79 — Export button in the app
