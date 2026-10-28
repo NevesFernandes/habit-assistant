@@ -66,7 +66,7 @@ npm run typecheck
 npm run build
 ```
 
-**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`, `test:history`, `test:dayNotes`, `test:skip`, `test:taskStats`, `test:statsReset`, `test:historySummary`, `test:unarchive`, `test:settingsByChat`, `test:missed`, `test:bulk`, `test:exportCsv`, `test:pack`, `test:undo`, `test:mcp`. Run them with, for example, `npm run test:pause`. `test:mcp` also replays the chat scenarios the Claude connector covers as tool calls (`src/mcp/scenarios.test.ts`): same fixtures and data checks, no model. When a connector tool gains a behaviour that has a chat scenario, port the scenario there too.
+**Unit tests** are plain scripts, one per area: `test:classify`, `test:payloadSize`, `test:routing`, `test:recurrenceSpec`, `test:confirmations`, `test:itemSelection`, `test:futureCompletion`, `test:pause`, `test:heatmap`, `test:markDone`, `test:recurringChecklist`, `test:checklistRemoval`, `test:deviceOnlyKeys`, `test:dayParts`, `test:driveToken`, `test:weekStart`, `test:history`, `test:dayNotes`, `test:skip`, `test:taskStats`, `test:statsReset`, `test:historySummary`, `test:unarchive`, `test:settingsByChat`, `test:missed`, `test:bulk`, `test:exportCsv`, `test:pack`, `test:undo`, `test:goals`, `test:mcp`. Run them with, for example, `npm run test:pause`. `test:mcp` also replays the chat scenarios the Claude connector covers as tool calls (`src/mcp/scenarios.test.ts`): same fixtures and data checks, no model. When a connector tool gains a behaviour that has a chat scenario, port the scenario there too.
 
 **Chat scenario tests** play scripted conversations against a *real* model with no browser and no Google login. They drive the same chat engine the app uses (`src/lib/chatEngine.ts`), with fixture data from `tests/chat/fixtures/*.json`.
 
@@ -117,6 +117,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 | `src/lib/skip.ts` | §68: skip one day (today or later), stored as a flagged one-day pause |
 | `src/lib/undo.ts` | §70: the last chat change per side, recorded by diffing the file, and undoing it safely |
 | `src/lib/pack.ts` | §76: several new items made for the user, checked, previewed and added after a yes |
+| `src/lib/goals.ts` | §71: goals and challenges on a habit or recurring task: progress, pace, achieved or not, and setting, changing and removing them |
 | `src/lib/exportCsv.ts` | §72: a period's history as a CSV, one row per item per day |
 | `src/lib/bulk.ts` | §75: one action (done, skip, pause, resume) on several items, by names or filters; §78: one edit on several items |
 | `src/lib/missed.ts` | §73: what did I miss: a period's misses, carried-over tasks, and forward nudges |

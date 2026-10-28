@@ -313,6 +313,10 @@
           <td><span class="say">export my October</span>, <span class="say">give me last month as a spreadsheet</span></td>
         </tr>
         <tr>
+          <td id="goals-say">Goals and challenges</td>
+          <td><span class="say">read 20 books by December</span>, <span class="say">run 100 km by the end of the year</span>, <span class="say">start a 30-day no-sugar challenge</span>, <span class="say">how are my goals?</span>, <span class="say">make my reading goal 25 books</span>, <span class="say">drop my reading goal</span></td>
+        </tr>
+        <tr>
           <td>Look back or ahead</td>
           <td><span class="say">how did my week go?</span>, <span class="say">what did I miss?</span>, <span class="say">when did I last go to the dentist?</span>, <span class="say">what's on next week?</span></td>
         </tr>
@@ -360,6 +364,24 @@
         category, part of the day, status, the amount and goal for a number or timer habit, checklist progress and the
         note. Days still to come are left out. If you don't say which period, the assistant asks. Up to a year per file.
         Everything is also in your own Drive file, as JSON, if you ever want the raw data.
+      </p>
+      <p id="goals">
+        <strong>Goals and challenges.</strong> A goal sits on one habit or recurring task and counts what you log
+        there, so there's nothing extra to tick. A <em>total</em> has an end date: a number of done days
+        (<span class="say">gym 40 times by March</span>; for <span class="say">read 20 books by December</span> each day
+        "Finish a book" is done counts as one book, and the reply says so) or, for a Number or Timer habit, an amount
+        added up over the days, partial days included (<span class="say">run 100 km by the end of the year</span>). A
+        <em>challenge</em> lasts a number of days and asks for every due day (<span class="say">start a 30-day no-sugar
+        challenge</span>). A missed day doesn't end it: it keeps counting (<em>26 of 30, 2 missed</em>) and is
+        achieved only with no misses. Paused and skipped days don't count against it. A challenge can't go on a habit
+        set to a number of times a week or month, since no single day is missed there; set a total instead.
+        Counting starts the day you set the goal, unless you name another day (<span class="say">20 books this year</span>
+        counts from 1 January). If you don't have the item yet, the assistant adds it with the goal; one added for a
+        challenge ends with it. An item has one goal at a time: a new one asks before replacing it. A total is
+        achieved as soon as you reach it; when the end date passes, the goal is marked achieved or not and stays in
+        the finished list. Goals show on the item's page (with the pace: on track, or how much a week is needed), in
+        the <strong>Goals</strong> tab of View, on the stats tab, and in the chat. Change or remove one by chat;
+        removing a goal leaves the item and its history as they are.
       </p>
       <p id="notes">
         <strong>Notes on a day.</strong> Each habit or task can have one short note per day, like a journal line. It
@@ -562,8 +584,8 @@
         <li><strong>Chat</strong> (speech bubble): talk to the assistant.</li>
         <li><strong>Today</strong> (calendar): what's due on a day, grouped by <a href="#dayparts">part of the day</a>, with checkboxes. Pick another day from the strip of days (or its arrows); <strong>Today</strong> jumps back.</li>
         <li><strong>Categories</strong> (tag): add, rename or remove categories, and see stats per category. Every habit has a category (Other if nothing fits); tasks don't need one.</li>
-        <li><strong>View</strong> (list): all habits, recurring tasks and tasks. Tap a habit for its details, stats and history, or any item to change its part of the day.</li>
-        <li><strong>Stats</strong> (bar chart): overall progress, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
+        <li><strong>View</strong> (list): all habits, recurring tasks and tasks, and your <a href="#goals">goals</a>. Tap a habit for its details, goal, stats and history, or any item to change its part of the day.</li>
+        <li><strong>Stats</strong> (bar chart): overall progress, the goals still running, totals, a breakdown by category, and a heatmap you can switch between habits.</li>
         <li><strong>Timer</strong> (stopwatch): a stopwatch or countdown you can save to a Timer habit.</li>
       </ul>
       <p>Next to the title, the <strong>?</strong> button opens this page (also linked from the sign-in screen) and the <strong>⚙</strong> button opens Settings: your own AI key, voice options, spoken replies, and the first day of the week. The first day of the week and spoken replies can also be changed by chat (<a href="#settings-by-chat">see above</a>). Keys can't: never paste a key into the chat, because the message goes to the AI provider.</p>
@@ -662,7 +684,7 @@
       <p>
         You can also add Habit Assistant to <a href="https://claude.ai">Claude</a> as a connector. Claude then works
         on the same habits and tasks as the app, in the same Google Drive file: ask it what's left today, mark things
-        done, add or change items, pause a habit, or look at your stats. Anything you change in Claude shows up in the
+        done, add or change items, pause a habit, set a goal, or look at your stats. Anything you change in Claude shows up in the
         app the next time you open it, and the other way round.
       </p>
 
@@ -692,7 +714,7 @@
         in the chat and asks you to approve that one use, approve it always, or not approve it.
       </p>
       <ul>
-        <li>Reading your day, finding items, stats and everyday changes (marking done, adding, editing) are safe to <strong>Always allow</strong>; that's what keeps it quick.</li>
+        <li>Reading your day, finding items, stats and everyday changes (marking done, adding, editing, goals) are safe to <strong>Always allow</strong>; that's what keeps it quick.</li>
         <li>
           Deleting items and resetting stats are up to you. Both already ask you in the chat before they change
           anything, so <strong>Needs approval</strong> on top is a second check.

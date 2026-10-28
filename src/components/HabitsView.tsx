@@ -9,8 +9,11 @@ import { compareForDay, isImportant } from "../lib/dayParts";
 import Checklist from "./Checklist";
 import ArchiveRow from "./ArchiveRow";
 import ItemStats from "./ItemStats";
+import type { GoalProgress } from "../lib/goals";
 
 interface HabitsViewProps {
+  /** §71: running goals, then finished ones; an item page shows the first that is its own. */
+  goals: GoalProgress[];
   habits: Habit[];
   categories: Category[];
   onPlace: (id: string, patch: PlacementPatch) => void;
@@ -26,7 +29,7 @@ const COMPLETION_TYPE_LABELS: Record<Habit["completionType"], string> = {
   checklist: "Checklist",
 };
 
-export default function HabitsView({ habits, categories, onPlace, onUnarchive, completionLog, onToggleChecklistItem }: HabitsViewProps) {
+export default function HabitsView({ goals, habits, categories, onPlace, onUnarchive, completionLog, onToggleChecklistItem }: HabitsViewProps) {
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const selectedHabit = selectedHabitId ? habits.find((habit) => habit.id === selectedHabitId) : undefined;
@@ -34,6 +37,7 @@ export default function HabitsView({ habits, categories, onPlace, onUnarchive, c
   if (selectedHabit) {
     return (
       <HabitDetail
+        goal={goals.find((g) => g.goal.itemId === selectedHabit.id)}
         habit={selectedHabit}
         categories={categories}
         onPlace={onPlace}
@@ -86,6 +90,7 @@ export default function HabitsView({ habits, categories, onPlace, onUnarchive, c
 
 function HabitDetail({
   habit,
+  goal,
   categories,
   onPlace,
   onUnarchive,
@@ -94,6 +99,7 @@ function HabitDetail({
   onBack,
 }: {
   habit: Habit;
+  goal?: GoalProgress;
   categories: Category[];
   onPlace: (id: string, patch: PlacementPatch) => void;
   onUnarchive: (id: string) => void;
@@ -179,7 +185,7 @@ function HabitDetail({
           </DetailRow>
         )}
 
-        <ItemStats item={habit} completionLog={completionLog} />
+        <ItemStats item={habit} completionLog={completionLog} goal={goal} />
       </div>
     </div>
   );

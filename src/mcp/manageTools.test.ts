@@ -526,4 +526,51 @@ const fresh = () => {
   assert.equal((await call("get_history", {})).status, "invalid_date");
 }
 
+// --- §71: goals ----------------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const by = addDays(TODAY, 30);
+  // A total on an existing habit: counted from today, so today's tick counts and earlier ones don't.
+  const set = await call("goals", { op: "create", name: "read", kind: "total", target: 20, unit: "books", by });
+  assert.equal(set.status, "ok");
+  assert.match(set.message, /^Goal set for "Read": 20 books by .*1 of 20 books/);
+  // One running goal per item: replacing asks first, then confirm replaces.
+  const again = await call("goals", { op: "create", name: "read", kind: "challenge", target: 10 });
+  assert.equal(again.status, "needs_confirm");
+  assert.match(again.question, /already has a goal/);
+  assert.equal((await call("goals", { op: "create", name: "read", kind: "challenge", target: 10, confirm: true })).status, "ok");
+  assert.equal(store.file().goals!.length, 1);
+  // An unknown name points to newItem; newItem makes the item, which ends with its challenge.
+  const unknown = await call("goals", { op: "create", name: "no sugar", kind: "challenge", target: 30 });
+  assert.equal(unknown.status, "rejected");
+  assert.match(unknown.message, /newItem/);
+  const made = await call("goals", { op: "create", kind: "challenge", target: 30, newItem: { type: "habit", name: "No sugar", dayPart: "morning", category: "Nutrition", recurrence: "daily" } });
+  assert.equal(made.status, "ok");
+  const sugar = store.file().habits.find((h) => h.name === "No sugar")!;
+  assert.equal(sugar.categoryId, "nutrition");
+  assert.equal(sugar.endDate, addDays(TODAY, 29));
+  // No goal on a one-off task; no amount on a yes/no habit.
+  assert.match((await call("goals", { op: "create", name: "buy milk", kind: "total", target: 2, by })).message, /one-off task/);
+  assert.match((await call("goals", { op: "create", name: "floss", kind: "total", target: 2, measure: "amount", by })).message, /no amount to add up/);
+  // Update, list (also in get_stats), remove.
+  const longer = await call("goals", { op: "update", name: "no sugar", days: 40 });
+  assert.match(longer.message, /a 40-day challenge/);
+  assert.equal(store.file().habits.find((h) => h.name === "No sugar")!.endDate, addDays(TODAY, 39));
+  const list = await call("goals", { op: "list" });
+  assert.deepEqual(list.active.map((g: { item: string; kind: string }) => [g.item, g.kind]), [["No sugar", "challenge"], ["Read", "challenge"]]);
+  assert.equal(list.active[1].done, 1);
+  assert.match(list.active[1].summary, /^1 of 1 due days done so far; 10 days left\.$/);
+  const stats = await call("get_stats", { scope: "item", name: "read" });
+  assert.equal(stats.goal.kind, "challenge");
+  assert.equal((await call("get_stats", { scope: "overall" })).goals.length, 2);
+  const removed = await call("goals", { op: "remove", name: "read" });
+  assert.match(removed.message, /^Removed the goal on "Read"/);
+  assert.equal((await call("goals", { op: "remove", name: "read" })).status, "rejected");
+  // Undo puts the removed goal back.
+  assert.match((await call("undo", {})).message, /put the goal on "Read" back/);
+  assert.equal(store.file().goals!.length, 2);
+  assert.equal((await call("goals", { op: "create", kind: "total", target: 3, by: "soon", name: "read" })).status, "invalid_date");
+}
+
 console.log("mcp manage tools: all assertions passed");

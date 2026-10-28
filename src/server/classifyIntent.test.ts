@@ -36,7 +36,7 @@ const cases: Case[] = [
   ["scrap my meeting task", ["delete"]],
   ["shift my dentist appointment to next week", ["edit"]],
   ["swap my gym habit's category to health", ["edit"]],
-  ["tweak my water goal", ["edit"]],
+  ["tweak my water goal", ["edit", "goals"]], // §71: a per-day target or a goal; both families go
   ["revise my task description", ["edit"]],
   ["move my task to tomorrow", ["edit"]],
   ["schedule a task to call the dentist", ["create"]],
@@ -93,7 +93,7 @@ const cases: Case[] = [
   ["delete my old tasks and pause gym", ["delete", "schedule"]],
   // An amount with a change verb may be a log; naming the goal makes it an edit only.
   ["increase my water by 2 glasses", ["edit", "progress"]],
-  ["increase my water goal to 10 glasses", ["edit"]],
+  ["increase my water goal to 10 glasses", ["edit", "goals"]],
   ["mark gym done", ["progress"]],
   // §42's checklist mode is a field of the recurring task, so the edit tools come along.
   ["make the cleaning checklist reset every time", ["checklist", "edit"]],
@@ -153,6 +153,12 @@ const cases: Case[] = [
   ["read your replies aloud", ["settings"]],
   ["stop reading out loud", ["settings"]],
   ["what are my settings?", ["settings"]],
+  // §71
+  ["read 20 books by December", ["goals"]],
+  ["start a 30-day no-sugar challenge", ["goals"]],
+  ["how are my goals going?", ["goals"]],
+  ["am I on track for my reading?", ["goals"]],
+  ["run 100 km by the end of the year", ["goals"]],
 ];
 
 let failures = 0;

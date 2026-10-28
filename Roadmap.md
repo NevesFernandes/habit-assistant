@@ -16,17 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §71 — Goals and challenges
-A target with a deadline and visible progress: "read 20 books by December", "a 30-day no-sugar challenge". Builds on the stats (§63) and history (§66). Decided with the owner:
-- **A goal hangs on one habit or recurring task** and is measured on its log; no second way to log. A missing item is created in the same step, and the confirmation says how the goal is counted (e.g. "books" as a number habit).
-- **Two kinds:** a total by an end date (done days, or the sum of a number/timer habit) and a challenge (done every due day for N days).
-- **A missed challenge day doesn't end it:** it shows "26/30, 2 missed" and is achieved only with no misses; paused and skipped days don't count against it (`occursOn`).
-- **Counting starts the day the goal is made** (or a later day named); earlier days count only when the user names an earlier start ("20 books this year").
-- **When the end date passes** the goal is marked achieved or not and kept in a finished list; the item isn't touched, except one created for a challenge, which ends with it.
-- **Shown** on the item's page (progress, pace, days left), in a Goals section on the stats tab, in a Goals sub tab of the View tab (beside Habits, Recurring Tasks and Single Tasks), in chat answers and the connector's `get_stats`.
-- **One active goal per item**; a new one asks before replacing it.
-- **Tools:** a "goals" family in the app's chat; a new connector tool `goals` (`list`/`create`/`update`/`remove`), not marked destructive since undo (§70) brings a removed goal back.
-
 ## Next
 
 ### §44 — Research: reminders / push notifications

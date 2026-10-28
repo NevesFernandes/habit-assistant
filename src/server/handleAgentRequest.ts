@@ -126,6 +126,10 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "undoLastChange", buckets: ["undo"], listBlurb: "undo the last change made in this chat today (anything, a delete included), if nothing changed it since." },
   { name: "createPack", buckets: ["pack"], listBlurb: "set up several new items at once, made for this user (a routine, a plan, a fresh start); the app shows the list and asks before adding." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
+  { name: "setGoal", buckets: ["goals"], listBlurb: "set a goal with an end date (a total like \"20 books by December\") or a challenge (\"30 days without sugar\") on a habit or recurring task." },
+  { name: "changeGoal", buckets: ["goals"], listBlurb: "change a running goal's target, end date or a challenge's length." },
+  { name: "removeGoal", buckets: ["goals"], listBlurb: "remove a running goal; the item stays." },
+  { name: "getGoals", buckets: ["goals"], listBlurb: "show how the goals and challenges are going; changes nothing." },
 ];
 
 function activeManifestEntries(activeBuckets: IntentBucket[] | "all"): ToolManifestEntry[] {
@@ -254,6 +258,10 @@ For both task tools: a task can carry a checklist inside it (e.g. a shopping lis
 const PACK_PROSE = `For createPack: the user wants several new items set up at once ("set me up a morning routine", "help me get fit for a 10K", "a study plan for my exams"). Build the set for this user from what they told you: their goals, schedule, level and limits. If the request is broad and they said nothing about themselves, you may first ask ONE short question (for example what time their day starts, or what they want from it); otherwise call createPack straight away. Usually 3 to 8 items, never more than 10, realistic for a beginner unless they say otherwise. Per item: kind "habit" for something to build and track, "recurringTask" for a chore, "singleTask" for a one-off step ("buy running shoes"); a short name; a dayPart; for habits and recurring tasks a recurrence in the compact format below; for habits a categoryId, and a target for "value" or "timer" tracking. startDate only when the user named one. The app shows the user the list and asks before adding anything, so never ask for confirmation yourself.
 recurrence: ${RECURRENCE_SPEC_GRAMMAR}`;
 
+// §71
+const GOALS_PROSE = `For goals: a goal hangs on one habit or recurring task and counts what is logged there. A total: target is how many done days (measure "days", the default for yes/no items; set unit to what each one stands for, e.g. "books" for "read 20 books" on a "finish a book" habit) or how much of a number or timer habit (measure "amount", its default for those), and by is the last day: resolve "by December" to that month's last day, "by the end of the year" to 31 December. A challenge: target is its length in days ("a 30-day no-sugar challenge"), counted from today. from only when the user names another first day ("this year" = 1 January). Pass name for an item the user has; when they have none for it (the app tells you), call setGoal again with newItem instead: kind, a short name, dayPart, a compact recurrence (below), for habits a categoryId and, for amounts, completionType "value" or "timer" with a per-day target. A habit's per-day target ("change my water goal to 10 glasses") is updateHabit, not a goal. The app asks before replacing a running goal; never ask yourself.
+recurrence: ${RECURRENCE_SPEC_GRAMMAR}`;
+
 const HISTORY_PROSE = `For getHistory: the app looks up what was due, done, missed or paused, and what's coming up, and shows it to the user itself; you only pick the period and, if the user named one, the item. Use it for "how did my week go?", "when did I last go to the dentist?", "how many times did I run in October?", "what's on next week?". from and to are ISO dates, both included: resolve "this week", "last month", "yesterday" yourself. For "when did I last…" use the last 30 days; the app adds the last time even if it was earlier. Leave name out for everything. For "what did I miss?" (only the misses) use getMissed. For streaks, completion %, or counts like "this month" overall, use getStats instead (name for one item, categoryId for one category, neither for everything). Never answer such a question from memory: you can't see the user's data.`;
 
 // activeBuckets narrows both the tool schemas (buildTools, below) and this
@@ -290,6 +298,7 @@ export function buildSystemPrompt(
   if (has("create") || has("edit")) chunks.push(DAY_PART_PROSE);
   if (has("history")) chunks.push(HISTORY_PROSE);
   if (has("pack")) chunks.push(PACK_PROSE);
+  if (has("goals")) chunks.push(GOALS_PROSE);
 
   chunks.push(
     "Keep replies brief and conversational, in plain text — no markdown (no **bold**, no bullet lists); the chat shows it literally. Prefer acting with sensible defaults over asking. When you genuinely must ask a clarifying question, ask just one and briefly mention the main options so the user learns what's possible (e.g. for a vague frequency: every day, specific weekdays, every N days, or N times a week).",
@@ -1178,6 +1187,72 @@ export function buildTools(
       },
     },
     {
+      name: "setGoal",
+      description:
+        "Set a goal on a habit or recurring task: a total by an end date ('read 20 books by December', 'run 100 km by the end of the year', 'gym 40 times by March') or a challenge ('a 30-day no-sugar challenge'). Progress counts from today. For an item the user doesn't have yet, pass newItem instead of name.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment of the item's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          kind: { type: "string", enum: ["total", "challenge"] },
+          target: { type: "number", description: "total: how many or how much; challenge: days." },
+          measure: { type: "string", enum: ["days", "amount"], description: "total: days done, or the amount logged." },
+          unit: { type: "string", description: "measure days: what one done day stands for, e.g. books." },
+          by: { type: "string", description: "total: the last day, ISO date." },
+          from: { type: "string", description: "Only when the user named another first day, ISO date." },
+          newItem: {
+            type: "object",
+            description: "Only for an item the user doesn't have yet.",
+            properties: {
+              kind: { type: "string", enum: ["habit", "recurringTask"] },
+              name: { type: "string" },
+              categoryId: { type: "string", enum: categories.map((category) => category.id) },
+              dayPart: { type: "string", enum: DAY_PART_IDS },
+              recurrence: { type: "string" },
+              completionType: { type: "string", enum: ["yesno", "value", "timer"] },
+              target: { type: "number", description: "value/timer: the amount per day." },
+              unit: { type: "string" },
+            },
+            required: ["kind", "name", "dayPart", "recurrence"],
+          },
+        },
+        required: ["kind"],
+      },
+    },
+    {
+      name: "changeGoal",
+      description: "Change the running goal of an item: 'make my reading goal 25 books', 'extend it to January', 'make the challenge 40 days'. Set only what changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Fragment of the item's name." },
+          categoryId: CATEGORY_SELECTOR_FIELD,
+          newTarget: { type: "number", description: "A total's new target." },
+          newBy: { type: "string", description: "A total's new last day, ISO date." },
+          newDays: { type: "number", description: "A challenge's new length in days." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "removeGoal",
+      description: "Remove the running goal of an item ('drop my reading goal', 'stop the no-sugar challenge'). The item and its history stay.",
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string", description: "Fragment of the item's name." }, categoryId: CATEGORY_SELECTOR_FIELD },
+        required: ["name"],
+      },
+    },
+    {
+      name: "getGoals",
+      description: "Show how the goals and challenges are going: 'how are my goals?', 'am I on track for 20 books?'. Reads only; the app words the answer.",
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string", description: "Optional. Fragment of one item's name." } },
+      },
+    },
+    {
       name: "exportCsv",
       description:
         "Export a period as a spreadsheet (CSV), one row per item per day, which the user downloads from the reply: 'export my October', 'give me last month as a spreadsheet', 'download this year'. Pass from and to only when the user named a period; if they didn't, leave both out and the app asks which period.",
@@ -1260,7 +1335,7 @@ export function buildTools(
   return options.escapeHatch ? [...narrowed, ESCAPE_TOOL] : narrowed;
 }
 
-export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings", "pack", "undo"];
+export const FAMILIES: IntentBucket[] = ["create", "edit", "progress", "schedule", "delete", "checklist", "history", "settings", "pack", "undo", "goals"];
 
 const FAMILY_BLURBS: Record<IntentBucket, string> = {
   create: "add a new habit or task",
@@ -1273,6 +1348,7 @@ const FAMILY_BLURBS: Record<IntentBucket, string> = {
   settings: "show or change settings: the first day of the week, reading replies aloud",
   pack: "set up several new items at once, made for the user (a routine, a plan)",
   undo: "undo the last change made in this chat",
+  goals: "set, change, remove or check a goal with an end date or a challenge",
 };
 
 const FAMILY_LINES = FAMILIES.map((family) => `- ${family}: ${FAMILY_BLURBS[family]}`).join("\n");
@@ -1480,9 +1556,23 @@ function resolvePackRecurrences(result: ProviderResult): ProviderResult {
   return { ...result, toolCall: { ...toolCall, input: { ...toolCall.input, items: parsedItems } } };
 }
 
+// §71: a goal's new item carries its own compact recurrence, as a pack item does.
+function resolveGoalItemRecurrence(result: ProviderResult): ProviderResult {
+  const toolCall = result.toolCall!;
+  const newItem = toolCall.input.newItem as Record<string, unknown> | undefined;
+  if (!newItem || typeof newItem !== "object") return result;
+  const parsed = parseCompactRecurrence(typeof newItem.recurrence === "string" ? newItem.recurrence : undefined);
+  if (!parsed.ok) {
+    console.error(`[recurrenceSpec] setGoal.newItem: ${parsed.error}`);
+    return { reply: RECURRENCE_PARSE_FAILURE_REPLY };
+  }
+  return { ...result, toolCall: { ...toolCall, input: { ...toolCall.input, newItem: { ...newItem, recurrence: parsed.rule } } } };
+}
+
 function resolveRecurrenceToolCall(result: ProviderResult): ProviderResult {
   const toolCall = result.toolCall;
   if (toolCall?.name === "createPack") return resolvePackRecurrences(result);
+  if (toolCall?.name === "setGoal") return resolveGoalItemRecurrence(result);
   const field = toolCall && RECURRENCE_TOOL_FIELDS[toolCall.name];
   if (!toolCall || !field) return result;
 

@@ -91,11 +91,14 @@ import { applyPack, describePackAdded, describePackPreview, planPack, withoutIte
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
 import { describeReadAloudHere, describeSettings, describeWeekStart, withReadAloudHere, withWeekStart } from "./settingsByChat";
 import { isISODate } from "./today";
+import { describeGoals, planChangeGoal, planGoalWithNewItem, planRemoveGoal, planSetGoal, type GoalInput, type GoalItem, type GoalPlan } from "./goals";
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "./dayNotes";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "./skip";
 import { weekStartOf, type AppData, type WeekStart, type Category, type ChecklistItem, type Habit, type RecurringTask, type SingleTask } from "../types/models";
 
 export type ItemKind = "singleTask" | "habit" | "recurringTask";
+
+type SetGoalInput = Extract<AgentToolCall, { name: "setGoal" }>["input"];
 
 interface ItemOfKind {
   habit: Habit;
@@ -149,7 +152,9 @@ export type PendingConfirmation =
   // §78: one edit on every item, asked first for the same reason.
   | { type: "bulkEdit"; filter: BulkFilter; edit: BulkEdit }
   // §76: a set of new items, shown before anything is added.
-  | { type: "pack"; plan: PackPlan };
+  | { type: "pack"; plan: PackPlan }
+  // §71: a new goal on an item that already has one running; a yes replaces it.
+  | { type: "replaceGoal"; itemId: string; newItem?: PackItem; input: GoalInput };
 
 // `input` is `unknown` here (not Record<string, unknown>) because callers
 // pass a tool call whose `input` is one of AgentToolCall's concrete per-tool
@@ -469,7 +474,97 @@ export class ChatSession {
       this.handleGetMissed(toolCall.input, toolCall);
     } else if (toolCall.name === "settings") {
       await this.handleSettings(toolCall.input, toolCall);
+    } else if (toolCall.name === "setGoal") {
+      await this.handleSetGoal(toolCall.input, toolCall);
+    } else if (toolCall.name === "changeGoal") {
+      const { newTarget, newBy, newDays } = toolCall.input;
+      const item = this.pickGoalItem(toolCall.input, toolCall);
+      const data = this.deps.getData();
+      if (item && data) await this.runGoalPlan(planChangeGoal(data, item, { target: newTarget, by: newBy, days: newDays }, this.todayISO), toolCall);
+    } else if (toolCall.name === "removeGoal") {
+      const item = this.pickGoalItem(toolCall.input, toolCall);
+      const data = this.deps.getData();
+      if (item && data) await this.runGoalPlan(planRemoveGoal(data, item, this.todayISO), toolCall);
+    } else if (toolCall.name === "getGoals") {
+      this.handleGetGoals(toolCall.input, toolCall);
     }
+  }
+
+  // §71: the habit or recurring task a goal is about. A one-off task can't have one.
+  private pickGoalItem(selector: ItemSelector, toolCall: ToolCallRef): GoalItem | null {
+    const kind = this.resolveKind("habit", ["recurringTask", "singleTask"], selector);
+    if (kind === "singleTask") {
+      const task = this.pickItem("singleTask", selector, toolCall);
+      if (task) this.pushAssistantMessage(`"${task.name}" is a one-off task. A goal goes on a habit or a recurring task.`, toolCall);
+      return null;
+    }
+    return kind === "habit" ? this.pickItem("habit", selector, toolCall) : this.pickItem("recurringTask", selector, toolCall);
+  }
+
+  private async runGoalPlan(plan: GoalPlan, toolCall: ToolCallRef | undefined) {
+    if (plan.status === "rejected") {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    if (plan.status === "needs_confirm") {
+      this.pushAssistantMessage(plan.question, toolCall);
+      return;
+    }
+    const saved = await this.deps.persist(plan.apply);
+    const data = this.deps.getData();
+    if (saved && data) this.pushAssistantMessage(plan.message(data), toolCall);
+  }
+
+  // §71: a goal on an item the user has (by name) or on a new one made in the same step.
+  private async handleSetGoal(input: SetGoalInput, toolCall: ToolCallRef) {
+    const data = this.deps.getData();
+    if (!data) return;
+    const today = this.todayISO;
+    const goal: GoalInput = {
+      kind: input.kind === "challenge" ? "challenge" : "total",
+      target: input.target,
+      measure: input.measure === "amount" || input.measure === "days" ? input.measure : undefined,
+      unit: input.unit,
+      by: input.by && isISODate(input.by) ? input.by : undefined,
+      from: input.from && isISODate(input.from) ? input.from : undefined,
+    };
+    let plan: GoalPlan;
+    let itemId: string | undefined;
+    if (input.newItem && !this.forcedPick) {
+      plan = planGoalWithNewItem(data, input.newItem, goal, today);
+    } else {
+      if (!input.name?.trim()) {
+        this.pushAssistantMessage("Which habit or recurring task is the goal for?", toolCall);
+        return;
+      }
+      const selector = { name: input.name, categoryId: input.categoryId };
+      const found = (["habit", "recurringTask", "singleTask"] as const).some((kind) => selectOne(itemsOf(data, kind), selector).kind !== "none");
+      if (!found && !this.forcedPick) {
+        this.pushAssistantMessage(`You don't have anything called "${input.name}" yet. Say "add it" and I'll make it a new habit with this goal.`, toolCall);
+        return;
+      }
+      const item = this.pickGoalItem(selector, toolCall);
+      if (!item) return;
+      itemId = item.id;
+      plan = planSetGoal(data, item, goal, today);
+    }
+    if (plan.status === "needs_confirm") {
+      const current = this.deps.getData()!;
+      const match = itemId ?? [...current.habits, ...current.recurringTasks].find((i) => i.name.trim().toLowerCase() === input.newItem?.name.trim().toLowerCase())?.id;
+      if (match) this.pendingConfirmation = { type: "replaceGoal", itemId: match, input: goal };
+    }
+    await this.runGoalPlan(plan, toolCall);
+  }
+
+  private handleGetGoals(input: { name?: string }, toolCall: ToolCallRef) {
+    const data = this.deps.getData();
+    if (!data) return;
+    if (!input.name?.trim()) {
+      this.pushAssistantMessage(describeGoals(data, this.todayISO), toolCall);
+      return;
+    }
+    const item = this.pickGoalItem({ name: input.name }, toolCall);
+    if (item) this.pushAssistantMessage(describeGoals(data, this.todayISO, item.id), toolCall);
   }
 
   private async handleDeleteRequest(kind: ItemKind, criteria: DeleteCriteria, toolCall: ToolCallRef) {
@@ -529,6 +624,21 @@ export class ChatSession {
         updateSingleTask(current, pending.taskId, { ...pending.patch, newStartDate: today }),
       );
       if (saved) this.pushAssistantMessage(`Marked "${pending.name}" done and moved it to today.`, toolCall);
+      return;
+    }
+
+    if (pending.type === "replaceGoal") {
+      if (!confirmed) {
+        this.pushAssistantMessage("Okay, the goal stays as it was.", toolCall);
+        return;
+      }
+      const data = this.deps.getData();
+      const item = data && [...data.habits, ...data.recurringTasks].find((i) => i.id === pending.itemId);
+      if (!data || !item) {
+        this.pushAssistantMessage("That item doesn't seem to exist anymore.", toolCall);
+        return;
+      }
+      await this.runGoalPlan(planSetGoal(data, item, pending.input, this.todayISO, true), toolCall);
       return;
     }
 
