@@ -21,7 +21,7 @@ If it needs more information to act, it asks one short question. It doesn't gues
 ## What it does
 
 - **Talk, don't tap.** Everything can be created, changed, completed, paused, archived or deleted from the chat.
-- **Voice input.** Hold the mic button, speak, let go. What you said is transcribed and sent right away.
+- **Voice input.** Hold the mic button, speak, let go. What you said is transcribed and sent right away. For a longer message, slide up to lock and talk hands-free.
 - **Habits, measured your way.** Yes/no, a number ("8 glasses of water"), a timer ("meditate 10 min"), or a checklist ("morning routine").
 - **Tasks too.** One-off to-dos, and recurring tasks with a running checklist, like a weekly shopping list that fills up during the week.
 - **Schedules that fit real life.** Every day, certain weekdays, every N days, N times a week or month, "the third Monday of the month," yearly dates like birthdays, or on/off cycles like "5 days on, 2 off."
