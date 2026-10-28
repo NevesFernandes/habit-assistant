@@ -174,4 +174,12 @@ async function run(text: string, steps: Step[], fallback?: Step[]) {
   assert.match((bad.result.body as { reply: string }).reply, /didn't catch how often/);
 }
 
+// §78: editMany's newRecurrence is expanded like updateHabit's; it's optional.
+{
+  const { result } = await run("make all my gym habits mon wed fri", [call("editMany", { names: ["gym"], newRecurrence: "days:mon,wed,fri" })]);
+  assert.deepEqual(result.body.toolCall!.input.newRecurrence, { type: "daysOfWeek", days: [1, 3, 5] });
+  const plain = await run("move all my sports habits to the evening", [call("editMany", { categoryId: "sports", newDayPart: "evening" })]);
+  assert.equal(plain.result.body.toolCall!.input.newRecurrence, undefined);
+}
+
 console.log("routing.test.ts: all passed");

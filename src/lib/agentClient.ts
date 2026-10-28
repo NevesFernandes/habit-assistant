@@ -3,7 +3,7 @@
 // per-request and never stored server-side). See CLAUDE.md's "Cost model /
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
-import type { Category, DayPart, WeekStart } from "../types/models";
+import type { Category, DayPart, RecurrenceRule, WeekStart } from "../types/models";
 import type { PackItem } from "./pack";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
 import { fetchJson, type JsonResponse } from "./fetchJson";
@@ -192,6 +192,22 @@ export interface ResetStatsToolCall {
   input: { name?: string; categoryId?: string; kind?: "habit" | "recurringTask" | "singleTask"; includeBestStreak?: boolean; undo?: boolean };
 }
 
+// §78: one edit on the items named, or on every item the filters catch. newRecurrence
+// arrives parsed (the server expands the compact form).
+export interface EditManyToolCall {
+  name: "editMany";
+  input: {
+    names?: string[];
+    dayPart?: DayPart;
+    categoryId?: string;
+    kind?: "habit" | "recurringTask" | "singleTask";
+    newDayPart?: DayPart;
+    newImportant?: boolean;
+    newCategoryId?: string;
+    newRecurrence?: RecurrenceRule;
+  };
+}
+
 // §70: undo the app's last chat change.
 export interface UndoLastChangeToolCall {
   name: "undoLastChange";
@@ -274,7 +290,8 @@ export type AgentToolCall =
   | ApplyToManyToolCall
   | ExportCsvToolCall
   | CreatePackToolCall
-  | UndoLastChangeToolCall;
+  | UndoLastChangeToolCall
+  | EditManyToolCall;
 
 export interface AgentResponse {
   reply?: string;

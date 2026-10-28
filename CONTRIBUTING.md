@@ -118,7 +118,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 | `src/lib/undo.ts` | §70: the last chat change per side, recorded by diffing the file, and undoing it safely |
 | `src/lib/pack.ts` | §76: several new items made for the user, checked, previewed and added after a yes |
 | `src/lib/exportCsv.ts` | §72: a period's history as a CSV, one row per item per day |
-| `src/lib/bulk.ts` | §75: one action (done, skip, pause, resume) on several items, by names or filters |
+| `src/lib/bulk.ts` | §75: one action (done, skip, pause, resume) on several items, by names or filters; §78: one edit on several items |
 | `src/lib/missed.ts` | §73: what did I miss: a period's misses, carried-over tasks, and forward nudges |
 | `src/lib/settingsByChat.ts` | §69: the settings a chat can show and change (first day of the week, read-aloud) |
 | `src/lib/historySummary.ts` | §65: a period's done rate vs the one before, weekly totals and highlights |

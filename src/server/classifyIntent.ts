@@ -100,6 +100,8 @@ const MARK_DONE_PATTERN = /\bmark\b[\s\S]*\b(done|not done)\b/;
 // "shift" are already edit verbs) or flagging it ("gym is a top priority").
 const PLACE_IN_DAY_PATTERN =
   /\b(?:put|place)\b[\s\S]*\b(?:morning|afternoon|evening|bedtime|bed|wake-?up|work ?day|first thing|part of (?:the|my) day)\b/;
+// §78: "put all my chores in the Home category", one item or several.
+const PUT_IN_CATEGORY_PATTERN = /\b(?:put|place)\b[\s\S]{0,60}\bcategory\b/;
 const IMPORTANCE_WORDS = ["important", "top priority", "high priority", "must-do", "priority"];
 
 const CHECKLIST_MODE_PATTERN = /\b(?:reset|resets|carry over|carries over|same list|same checklist|every time|each time|start fresh)\b/;
@@ -190,7 +192,7 @@ export function classifyIntent(rawText: string): ClassifyIntentResult {
   // a plainly adding verb, where it's just a field of the new item and doesn't need the
   // edit tools ("add an important task to call the bank").
   const addsNewItem = matchesAny(text, ["add", "create", "new", "schedule", "start", "begin"]) && (hasCreateNoun || hasRecurrence);
-  const placesItem = PLACE_IN_DAY_PATTERN.test(text) || (matchesAny(text, IMPORTANCE_WORDS) && !addsNewItem);
+  const placesItem = PLACE_IN_DAY_PATTERN.test(text) || PUT_IN_CATEGORY_PATTERN.test(text) || (matchesAny(text, IMPORTANCE_WORDS) && !addsNewItem);
   const hasEditVerb = matchesAny(text, MODIFY_VERBS) || placesItem;
   const marksDone = MARK_DONE_PATTERN.test(text);
   const hasLogVerb = matchesAny(text, LOG_VERBS);
