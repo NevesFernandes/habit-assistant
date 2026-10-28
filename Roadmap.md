@@ -16,9 +16,6 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
-### §78 — Bulk edits by chat
-"Move all my Sports habits to the evening", "make every morning habit important", "put all my chores in Home": one edit applied to every item a filter catches (part of the day, category, kind, a list of names), as §75 does for done, skip and pause. Left out of §75 on purpose: edits touch more fields and are harder to reverse in bulk. In the connector, the same as §75's `more_actions` action or an extension of it.
-
 ## Next
 
 ### §71 — Goals and challenges

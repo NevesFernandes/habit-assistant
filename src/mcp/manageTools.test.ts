@@ -310,6 +310,22 @@ const fresh = () => {
   assert.match((await call("more_actions", { action: "unarchive", args: { name: "read" } })).message, /newEndDate ""/);
 }
 
+// --- Bulk edits (§78) -------------------------------------------------------------------------
+
+{
+  const { store, call } = fresh();
+  const moved = await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss", "read"], newDayPart: "evening", newCategory: "Sports" } });
+  assert.equal(moved.status, "ok");
+  assert.equal(moved.message, "Moved to Evening, put in Sports: Floss, Read.");
+  assert.deepEqual(store.file().habits.filter((h) => h.id === "Floss" || h.id === "Read").map((h) => [h.dayPart, h.categoryId]), [["evening", "sports"], ["evening", "sports"]]);
+  const weekly = await call("more_actions", { action: "apply_to_many", args: { action: "edit", category: "Sports", newRecurrence: "days:mon,wed,fri" } });
+  assert.match(weekly.message, /^Now every mon, wed, fri: /i);
+  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss"], newRecurrence: "sometimes" } })).status, "rejected");
+  assert.equal((await call("more_actions", { action: "apply_to_many", args: { action: "edit", names: ["floss"] } })).status, "rejected");
+  // Claude's undo takes the last one back.
+  assert.match((await call("more_actions", { action: "undo" })).message, /^Undone: I put /);
+}
+
 // --- Undo (§70) -----------------------------------------------------------------------------
 
 {

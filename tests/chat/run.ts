@@ -56,10 +56,11 @@ import { scenarios as s75 } from "./scenarios/s75-bulk.ts";
 import { scenarios as s72 } from "./scenarios/s72-export.ts";
 import { scenarios as s76 } from "./scenarios/s76-pack.ts";
 import { scenarios as s70 } from "./scenarios/s70-undo.ts";
+import { scenarios as s78 } from "./scenarios/s78-bulk-edit.ts";
 import { scenarios as s63 } from "./scenarios/s63-stats.ts";
 import { scenarios as s64 } from "./scenarios/s64-reset-stats.ts";
 
-const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58, ...s66, ...s67, ...s68, ...s63, ...s64, ...s77, ...s69, ...s73, ...s75, ...s72, ...s76, ...s70];
+const ALL_SCENARIOS: Scenario[] = [...s28, ...s29, ...s31, ...s32, ...s34, ...s35, ...s39, ...checklistAdd, ...s41, ...s42, ...s43, ...s50, ...s51, ...s53, ...s54, ...s55, ...s56, ...s57, ...s58, ...s66, ...s67, ...s68, ...s63, ...s64, ...s77, ...s69, ...s73, ...s75, ...s72, ...s76, ...s70, ...s78];
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

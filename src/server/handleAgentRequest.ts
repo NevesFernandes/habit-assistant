@@ -122,6 +122,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
   { name: "exportCsv", buckets: ["history"], listBlurb: "export a period as a spreadsheet (CSV) the user can download; changes nothing." },
   { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
+  { name: "editMany", buckets: ["edit"], listBlurb: "change the part of the day, importance, category or repeat rule of several items at once." },
   { name: "undoLastChange", buckets: ["undo"], listBlurb: "undo the last change made in this chat today (anything, a delete included), if nothing changed it since." },
   { name: "createPack", buckets: ["pack"], listBlurb: "set up several new items at once, made for this user (a routine, a plan, a fresh start); the app shows the list and asks before adding." },
   { name: "settings", buckets: ["settings"], listBlurb: "show the settings, or change the first day of the week or reading replies aloud on this device." },
@@ -1121,6 +1122,24 @@ export function buildTools(
       },
     },
     {
+      name: "editMany",
+      description:
+        "One edit on several items: 'move all my Sports habits to the evening', 'put floss and water in Health', 'make my gym habits Mon, Wed, Fri'. For two or more items or all/every; one item uses the update tools. Pick items by names or filters, not both; set only what changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          names: { type: "array", items: { type: "string" }, description: "Items the user named." },
+          dayPart: { type: "string", enum: DAY_PART_IDS, description: "Filter: current part of the day." },
+          categoryId: { type: "string", description: "Filter: current category id." },
+          kind: { type: "string", enum: ["habit", "recurringTask", "singleTask"] },
+          newDayPart: { type: "string", enum: DAY_PART_IDS },
+          newImportant: { type: "boolean" },
+          newCategoryId: { type: "string", description: "A category id, as for updateHabit." },
+          newRecurrence: { type: "string", description: "As updateHabit's newRecurrence." },
+        },
+      },
+    },
+    {
       name: "undoLastChange",
       description:
         "Undo the last change the user made by chat in this app: 'undo that', 'undo', 'take that back', 'I didn't mean that, revert it'. Works for any change (added, edited, marked done, paused, a set of items, a delete) made today, and only if nothing changed those items since; the app says what it put back. For undoing one specific thing that isn't the last change (a skip, a stats reset), use that tool's own undo instead.",
@@ -1435,6 +1454,7 @@ const RECURRENCE_TOOL_FIELDS: Record<string, "recurrence" | "newRecurrence"> = {
   createRecurringTask: "recurrence",
   updateHabit: "newRecurrence",
   updateRecurringTask: "newRecurrence",
+  editMany: "newRecurrence", // §78
 };
 
 const RECURRENCE_PARSE_FAILURE_REPLY =

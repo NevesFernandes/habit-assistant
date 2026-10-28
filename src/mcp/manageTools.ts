@@ -37,7 +37,7 @@ import { itemsOf, resolveTargets, type AnyItem, type ItemKind, type Refusal } fr
 import { NOTE_MAX_LENGTH, noteOn, setDayNote } from "../lib/dayNotes.ts";
 import { isISODate } from "../lib/today.ts";
 import { describeSkip, describeUnskip, skipDay, skipOn, skipRefusal, unskipDay } from "../lib/skip.ts";
-import { planBulk, type BulkAction } from "../lib/bulk.ts";
+import { planBulk, planBulkEdit, type BulkAction, type BulkFilter } from "../lib/bulk.ts";
 import { planUndo } from "../lib/undo.ts";
 import { applyPack, describePackAdded, describePackPreview, PACK_MAX_ITEMS, planPack, type PackItem } from "../lib/pack.ts";
 import { parseCompactRecurrence } from "../server/recurrenceSpec.ts";
@@ -568,9 +568,13 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
   // Never a delete: this action shares more_actions' "always allow".
   apply_to_many: {
     description:
-      'One action on several items at once: "mark all my morning habits done", "skip everything in Sports today", "pause my Work tasks for a week", "mark floss and water done". action: done, undone, skip, pause or resume. Give names (each as the user said it) or filters (dayPart, category, kind). Items the action doesn\'t fit are left out and named in the message. With no names and no filter it means every item, and asks first: status "needs_confirm"; put the question to the user word for word, and only after a yes call again with confirm: true.',
+      'One action on several items at once: "mark all my morning habits done", "skip everything in Sports today", "pause my Work tasks for a week", "mark floss and water done", and (action "edit") one change to all of them: "move all my Sports habits to the evening", "make my gym habits Mon, Wed, Fri". action: done, undone, skip, pause, resume or edit; edit takes newDayPart, newImportant, newCategory and/or newRecurrence. Give names (each as the user said it) or filters (dayPart, category, kind). Items the action doesn\'t fit are left out and named in the message. With no names and no filter it means every item, and asks first: status "needs_confirm"; put the question to the user word for word, and only after a yes call again with confirm: true.',
     args: {
-      action: '"done", "undone", "skip", "pause" or "resume", required',
+      action: '"done", "undone", "skip", "pause", "resume" or "edit", required',
+      newDayPart: "edit: the part of the day to move them to",
+      newImportant: "edit: boolean, mark them important or not",
+      newCategory: "edit: a category's name to put them in",
+      newRecurrence: "edit: how often they repeat from now on, in create_item's recurrence format",
       names: "string[], items named by the user",
       dayPart: '"wakeUp", "morning", "workDay", "afternoon", "evening" or "bedtime"',
       category: "string, a category's name",
@@ -582,8 +586,8 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
     },
     run: (data, args, todayISO) => {
       const actions: BulkAction[] = ["done", "undone", "skip", "pause", "resume"];
-      const action = actions.find((a) => a === args.action);
-      if (!action) return { status: "need_info", message: 'Pass action: "done", "undone", "skip", "pause" or "resume".' };
+      const action = args.action === "edit" ? "edit" : actions.find((a) => a === args.action);
+      if (!action) return { status: "need_info", message: 'Pass action: "done", "undone", "skip", "pause", "resume" or "edit".' };
       const date = (key: string) => (typeof args[key] === "string" && args[key] ? (args[key] as string) : undefined);
       for (const key of ["date", "from", "resumeOn"]) {
         const value = date(key);
@@ -597,12 +601,37 @@ export const MORE_ACTIONS: Record<string, MoreAction> = {
       if (args.dayPart !== undefined && !isDayPart(args.dayPart)) return { status: "rejected", message: "dayPart must be one of the six parts of the day." };
       const kind = args.kind === "habit" || args.kind === "recurringTask" || args.kind === "singleTask" ? args.kind : undefined;
       const names = Array.isArray(args.names) ? args.names.filter((name): name is string => typeof name === "string" && name.trim() !== "") : undefined;
-      const plan = planBulk(
-        rolloverPersistentTasks(data, todayISO),
-        { action, filter: { names, dayPart: isDayPart(args.dayPart) ? args.dayPart : undefined, categoryId, kind }, date: date("date"), from: date("from"), resumeOn: date("resumeOn") },
-        todayISO,
-        args.confirm === true,
-      );
+      const filter: BulkFilter = { names, dayPart: isDayPart(args.dayPart) ? args.dayPart : undefined, categoryId, kind };
+      let plan;
+      if (action === "edit") {
+        // §78: one edit on all of them.
+        let recurrence;
+        if (args.newRecurrence !== undefined) {
+          const parsed = parseCompactRecurrence(typeof args.newRecurrence === "string" ? args.newRecurrence : undefined);
+          if (!parsed.ok) return { status: "rejected", message: `${parsed.error}. Use create_item's recurrence format.` };
+          recurrence = parsed.rule;
+        }
+        let newCategoryId: string | undefined;
+        if (typeof args.newCategory === "string" && args.newCategory) {
+          newCategoryId = resolveCategoryId(data, args.newCategory);
+          if (!newCategoryId) return { status: "rejected", message: `There's no category called "${args.newCategory}".` };
+        }
+        if (args.newDayPart !== undefined && !isDayPart(args.newDayPart)) return { status: "rejected", message: "newDayPart must be one of the six parts of the day." };
+        const edit = {
+          dayPart: isDayPart(args.newDayPart) ? args.newDayPart : undefined,
+          important: typeof args.newImportant === "boolean" ? args.newImportant : undefined,
+          categoryId: newCategoryId,
+          recurrence,
+        };
+        plan = planBulkEdit(rolloverPersistentTasks(data, todayISO), filter, edit, todayISO, args.confirm === true);
+      } else {
+        plan = planBulk(
+          rolloverPersistentTasks(data, todayISO),
+          { action, filter, date: date("date"), from: date("from"), resumeOn: date("resumeOn") },
+          todayISO,
+          args.confirm === true,
+        );
+      }
       if (plan.status === "rejected") return plan;
       if (plan.status === "ambiguous") {
         const list = plan.candidates.map((c) => `${c.name} (${c.kind}, id ${c.id})`).join("; ");

@@ -84,7 +84,7 @@ import {
   type ResetScope,
 } from "./statsReset";
 import { rolloverPersistentTasks } from "./dataStore";
-import { planBulk, type BulkRequest } from "./bulk";
+import { planBulk, planBulkEdit, type BulkEdit, type BulkFilter, type BulkRequest } from "./bulk";
 import { buildExportCsv, exportRefusal } from "./exportCsv";
 import { planUndo, withUndoRecord } from "./undo";
 import { applyPack, describePackAdded, describePackPreview, planPack, withoutItems, type PackItem, type PackPlan } from "./pack";
@@ -146,6 +146,8 @@ export type PendingConfirmation =
   | { type: "resetStats"; ids: string[]; scope: ResetScope; includeBestStreak: boolean }
   // §75: one action on every item, asked first since nothing narrowed it.
   | { type: "bulk"; request: BulkRequest }
+  // §78: one edit on every item, asked first for the same reason.
+  | { type: "bulkEdit"; filter: BulkFilter; edit: BulkEdit }
   // §76: a set of new items, shown before anything is added.
   | { type: "pack"; plan: PackPlan };
 
@@ -457,6 +459,9 @@ export class ChatSession {
       this.handleCreatePack(toolCall.input, toolCall);
     } else if (toolCall.name === "exportCsv") {
       this.handleExportCsv(toolCall.input, toolCall);
+    } else if (toolCall.name === "editMany") {
+      const { names, dayPart, categoryId, kind, newDayPart, newImportant, newCategoryId, newRecurrence } = toolCall.input;
+      await this.runBulkEdit({ names, dayPart, categoryId, kind }, { dayPart: newDayPart, important: newImportant, categoryId: newCategoryId, recurrence: newRecurrence }, toolCall, false);
     } else if (toolCall.name === "applyToMany") {
       const { action, names, dayPart, categoryId, kind, date, from, resumeOn } = toolCall.input;
       await this.runBulk({ action, filter: { names, dayPart, categoryId, kind }, date, from, resumeOn }, toolCall, false);
@@ -541,6 +546,15 @@ export class ChatSession {
       }
       const saved = await this.deps.persist((current) => applyPack(current, plan, today));
       if (saved) this.pushAssistantMessage(describePackAdded(plan, today), toolCall);
+      return;
+    }
+
+    if (pending.type === "bulkEdit") {
+      if (!confirmed) {
+        this.pushAssistantMessage("Okay, I left them as they are.", toolCall);
+        return;
+      }
+      await this.runBulkEdit(pending.filter, pending.edit, toolCall, true);
       return;
     }
 
@@ -1510,6 +1524,34 @@ export class ChatSession {
     }
     if (plan.status === "needs_confirm") {
       this.pendingConfirmation = { type: "bulk", request };
+      this.pushAssistantMessage(plan.question, toolCall);
+      return;
+    }
+    if (plan.targets.length === 0) {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    const saved = await this.deps.persist((current) => plan.apply(rolloverPersistentTasks(current, today)));
+    if (saved) this.pushAssistantMessage(plan.message, toolCall);
+  }
+
+  // §78: one edit on several items, the same way as runBulk.
+  private async runBulkEdit(filter: BulkFilter, edit: BulkEdit, toolCall: ToolCallRef | undefined, confirmed: boolean) {
+    const stored = this.deps.getData();
+    if (!stored) return;
+    const today = this.todayISO;
+    const plan = planBulkEdit(rolloverPersistentTasks(stored, today), filter, edit, today, confirmed);
+    if (plan.status === "rejected") {
+      this.pushAssistantMessage(plan.message, toolCall);
+      return;
+    }
+    if (plan.status === "ambiguous") {
+      const list = plan.candidates.map((item) => `"${item.name}"`).join(", ");
+      this.pushAssistantMessage(`"${plan.name}" matches ${list}. Which one did you mean? Say the whole thing again with its full name.`, toolCall);
+      return;
+    }
+    if (plan.status === "needs_confirm") {
+      this.pendingConfirmation = { type: "bulkEdit", filter, edit };
       this.pushAssistantMessage(plan.question, toolCall);
       return;
     }
