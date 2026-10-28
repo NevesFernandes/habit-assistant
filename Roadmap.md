@@ -16,6 +16,16 @@ A living, prioritized backlog for Habit Assistant. This is not a spec — it's a
 
 ## Now
 
+### §81 — Goals across a category
+A goal over a whole category rather than one item: "work out 50 times this quarter" across Sports. Decided with the owner:
+- **What counts:** every completion across the category's items by default ("50 times", "20 tasks"); days with at least one done when the user says days ("50 days of exercise").
+- **Amounts** only from items with the same unit: timer minutes always add up ("60 hours of study"); items with another unit are left out and named.
+- **Membership is live:** whatever is in the category now counts, its done days in the window included; an item moved out leaves with its days.
+- **Totals only**, no challenges on a category.
+- **Habits, recurring tasks and one-off tasks** (counted by the day they were marked done); "habits" or "tasks" in the request narrows it to one kind.
+- **One running goal per category**, independent of item goals: an item can have its own and still count toward its category's.
+- **Shown** in the Goals tab, the stats tab and the category's page; app chat `setGoal` (and the other goal tools) take a category; the connector's `goals` takes `category` (one more reconnect).
+
 ## Next
 
 ## Later
@@ -35,8 +45,5 @@ An Export button with a period picker (on the stats tab or in Settings), for use
 
 ### §60 — Drag to order today (parked)
 Parked by the owner (2026-10-28): after a month of real use the parts of the day and the ★ are enough. If users ask for it, the shape is settled: on the Today tab, drag items into the order you'll do them **that day** (within each part), saved for that date only and gone the next day, so it never goes stale. No chat or connector tool to set it (the UI-first exception in CLAUDE.md): the app's lists and `get_day` just follow it, and in Claude the user can simply ask to see the day in another order, which the model does itself. Touch drag-and-drop with no library is the main work, and it has to feel good on Android.
-
-### §81 — Goals across a category
-A goal over a whole category rather than one item: "work out 50 times this quarter" across Sports. §71 hangs every goal on one habit or recurring task; this would count the done days (or amounts, where units agree) of every item in the category. Open questions: what counts when items have different units, and whether items added to the category later join the goal.
 
 New items go in on request, at whichever position and tier they deserve, taking the next free ID above.
