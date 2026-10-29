@@ -55,6 +55,7 @@
   "dependencies": {
     "@cfworker/json-schema": "4.1.1",
     "@cloudflare/workers-oauth-provider": "1.2.3",
+    "@huggingface/transformers": "^4.3.2",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@ricky0123/vad-web": "^0.0.30",
     "lucide-react": "^1.33.0",

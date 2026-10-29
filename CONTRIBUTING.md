@@ -125,6 +125,7 @@ A second Worker, `habit-assistant-mcp` (`wrangler.mcp.jsonc`, code in `src/mcp/`
 | `src/lib/historySummary.ts` | §65: a period's done rate vs the one before, weekly totals and highlights |
 | `src/lib/statsReset.ts` | §64: start the stats over (a count-from date, history kept), and undo it |
 | `src/lib/taskStats.ts`, `statsReply.ts` | §63: recurring tasks' stats (as yes/no habits) and one-off tasks' counts; the app chat's stats replies |
+| `src/lib/onDeviceWhisper.ts`, `whisperWorker.ts`, `onDeviceSttStore.ts` | §46: transcription on the phone (trial): Whisper in a Web Worker, its per-device settings and run timings |
 | `src/server/handleAgentRequest.ts` | Tool schemas, system prompt, provider failover chain |
 | `src/server/classifyIntent.ts` | Narrows which tool families are sent to the model, per message (sizes: `npm run measure:payload`) |
 | `src/server/providers/` | One adapter per LLM provider |
