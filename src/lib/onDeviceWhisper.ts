@@ -20,7 +20,10 @@ let worker: Worker | null = null;
 let loading: { size: WhisperSize; promise: Promise<DownloadedModel> } | null = null;
 let ready: { size: WhisperSize; backend: WhisperBackend } | null = null;
 const progressListeners = new Set<ProgressListener>();
-const pendingTranscriptions = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void }>();
+const pendingTranscriptions = new Map<
+  number,
+  { resolve: (result: { text: string; reloaded: boolean }) => void; reject: (err: Error) => void }
+>();
 let nextId = 1;
 let settleLoad: { resolve: (model: DownloadedModel) => void; reject: (err: Error) => void } | null = null;
 
@@ -44,7 +47,7 @@ function getWorker(): Worker {
         settleLoad?.reject(new Error(message.message));
         break;
       case "result":
-        pendingTranscriptions.get(message.id)?.resolve(message.text);
+        pendingTranscriptions.get(message.id)?.resolve({ text: message.text, reloaded: message.reloaded });
         pendingTranscriptions.delete(message.id);
         break;
       case "transcribeError":
@@ -108,6 +111,7 @@ export interface OnDeviceResult {
   backend: WhisperBackend;
   audioSeconds: number;
   ms: number;
+  reloaded: boolean; // the GPU had been lost and the model was loaded again first
 }
 
 /** Throws on failure, so the caller can send the clip to Groq instead. */
@@ -116,15 +120,15 @@ export async function transcribeOnDevice(blob: Blob, size: WhisperSize): Promise
   const audio = await decodeToMono16k(blob);
   const audioSeconds = audio.length / SAMPLE_RATE;
   await loadWhisper(size);
-  const backend = ready?.backend ?? "wasm";
-
   const id = nextId++;
-  const text = await new Promise<string>((resolve, reject) => {
+  const { text, reloaded } = await new Promise<{ text: string; reloaded: boolean }>((resolve, reject) => {
     pendingTranscriptions.set(id, { resolve, reject });
     post({ type: "transcribe", id, audio }, [audio.buffer]);
   });
   if (looksLikeHallucination(text)) throw new NoSpeechError();
-  return { text, backend, audioSeconds, ms: Math.round(performance.now() - started) };
+  // Read after the run: a reload can land on another backend.
+  const backend = ready?.backend ?? "wasm";
+  return { text, backend, audioSeconds, ms: Math.round(performance.now() - started), reloaded };
 }
 
 /** Whisper heard nothing: not a failure to hand to Groq, just nothing to send. */

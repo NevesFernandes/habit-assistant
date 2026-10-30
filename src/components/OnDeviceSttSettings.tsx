@@ -11,9 +11,13 @@ import { deleteWhisperDownloads, loadWhisper } from "../lib/onDeviceWhisper";
 // §46: on-device transcription, a trial switched on per device. The numbers below
 // (download size, load time, time to text per message) are what decides whether it stays.
 
+// Download sizes with WebGPU, where the encoder stays full precision and the 4-bit decoder
+// keeps its vocabulary table unquantized (Base measured at 209 MB, Tiny estimated). Without
+// WebGPU the 8-bit CPU models are smaller (roughly 40 and 80 MB). Once downloaded, the
+// measured size is shown instead.
 const SIZES: { id: WhisperSize; label: string; approx: string }[] = [
-  { id: "tiny", label: "Tiny", approx: "about 40 MB" },
-  { id: "base", label: "Base", approx: "about 80 MB" },
+  { id: "tiny", label: "Tiny", approx: "about 120 MB" },
+  { id: "base", label: "Base", approx: "about 210 MB" },
 ];
 
 const BACKEND_LABEL = { webgpu: "WebGPU", wasm: "CPU" } as const;
@@ -31,7 +35,8 @@ function describeRun(run: OnDeviceRun): string {
   const audio = `${run.audioSeconds.toFixed(1)} s of speech`;
   if (run.error) return `${time} · ${run.size} · ${audio}: failed, sent to Groq (${run.error})`;
   const backend = run.backend ? BACKEND_LABEL[run.backend] : "";
-  return `${time} · ${run.size} · ${backend} · ${audio} → text in ${seconds(run.ms ?? 0)}`;
+  const reloaded = run.reloaded ? " (GPU was lost, model reloaded first)" : "";
+  return `${time} · ${run.size} · ${backend} · ${audio} → text in ${seconds(run.ms ?? 0)}${reloaded}`;
 }
 
 export default function OnDeviceSttSettings() {

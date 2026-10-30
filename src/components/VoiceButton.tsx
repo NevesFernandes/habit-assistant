@@ -138,7 +138,14 @@ export default function VoiceButton({ sttApiKey, disabled, onTranscribed }: Voic
     const at = new Date().toISOString();
     try {
       const result = await transcribeOnDevice(blob, size);
-      recordRun({ at, size, backend: result.backend, audioSeconds: result.audioSeconds, ms: result.ms });
+      recordRun({
+        at,
+        size,
+        backend: result.backend,
+        audioSeconds: result.audioSeconds,
+        ms: result.ms,
+        ...(result.reloaded && { reloaded: true }),
+      });
       return result.text;
     } catch (err) {
       if (err instanceof NoSpeechError) throw err;
