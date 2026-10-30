@@ -67,7 +67,11 @@ export default function SignIn({ onClick, loading, error }: SignInProps) {
     <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-10">
       <header className="flex flex-col items-center gap-3 text-center">
         <img src="/icon.svg" alt="" className="h-16 w-16" />
-        <h1 className="text-2xl font-semibold">Habit Assistant</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Habit Assistant</h1>
+          {/* The version, also shown here so a deploy can be checked before signing in. */}
+          <p className="text-xs text-slate-500">v{__APP_VERSION__}</p>
+        </div>
         <p className="text-slate-400">Track your habits and tasks by just saying what you did.</p>
         <button
           onClick={onClick}
