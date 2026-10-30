@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,7 +138,30 @@ function dropUnusedOrtWasmPlugin(): Plugin {
   };
 }
 
+// The version and build stamp shown under the title and in Settings, so the owner can
+// tell whether the phone runs the latest deploy. Cloudflare's builder names the commit in
+// WORKERS_CI_COMMIT_SHA; elsewhere git is asked, and a checkout without git says "dev".
+function buildCommit(): string {
+  const fromCi = process.env.WORKERS_CI_COMMIT_SHA;
+  if (fromCi) return fromCi.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short=7 HEAD", { cwd: rootDir, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "dev";
+  }
+}
+
+const packageVersion = (JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")) as { version: string })
+  .version;
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(packageVersion),
+    __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   worker: {
     plugins: () => [dropUnusedOrtWasmPlugin()],
   },

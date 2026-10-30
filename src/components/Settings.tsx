@@ -377,6 +377,12 @@ export default function Settings({
           )}
         </>
       )}
+
+      <hr className="my-4 border-slate-700" />
+      {/* Which build this is: the commit matches the one named when it was pushed. */}
+      <p className="text-xs text-slate-500">
+        Version {__APP_VERSION__} · {__BUILD_COMMIT__} · built {new Date(__BUILD_TIME__).toLocaleString()}
+      </p>
     </div>
   );
 }
