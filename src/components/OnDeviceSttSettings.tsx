@@ -35,7 +35,8 @@ function describeRun(run: OnDeviceRun): string {
   const audio = `${run.audioSeconds.toFixed(1)} s of speech`;
   if (run.error) return `${time} · ${run.size} · ${audio}: failed, sent to Groq (${run.error})`;
   const backend = run.backend ? BACKEND_LABEL[run.backend] : "";
-  return `${time} · ${run.size} · ${backend} · ${audio} → text in ${seconds(run.ms ?? 0)}`;
+  const reloaded = run.reloaded ? " (GPU was lost, model reloaded first)" : "";
+  return `${time} · ${run.size} · ${backend} · ${audio} → text in ${seconds(run.ms ?? 0)}${reloaded}`;
 }
 
 export default function OnDeviceSttSettings() {

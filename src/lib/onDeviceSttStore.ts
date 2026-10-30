@@ -18,6 +18,7 @@ export interface OnDeviceRun {
   backend?: WhisperBackend;
   audioSeconds: number;
   ms?: number; // time to text, decoding included
+  reloaded?: boolean; // the GPU had been lost, so the model was loaded again first (included in ms)
   error?: string; // set when it failed and the message went to Groq instead
 }
 

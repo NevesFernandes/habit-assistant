@@ -11,7 +11,7 @@ export type WorkerResponse =
   | { type: "progress"; loaded: number; total: number }
   | { type: "ready"; size: WhisperSize; backend: WhisperBackend; bytes: number; loadMs: number }
   | { type: "loadError"; size: WhisperSize; message: string }
-  | { type: "result"; id: number; text: string }
+  | { type: "result"; id: number; text: string; reloaded: boolean }
   | { type: "transcribeError"; id: number; message: string };
 
 // English-only models, by the owner's choice: more accurate for English than the
@@ -27,7 +27,7 @@ const scope = self as unknown as {
   onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
 };
 
-let loaded: { size: WhisperSize; asr: AutomaticSpeechRecognitionPipeline } | null = null;
+let loaded: { size: WhisperSize; backend: WhisperBackend; asr: AutomaticSpeechRecognitionPipeline } | null = null;
 
 async function hasWebGpu(): Promise<boolean> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
@@ -72,7 +72,7 @@ async function load(size: WhisperSize) {
     files.clear();
     asr = await createPipeline(size, backend, progress_callback);
   }
-  loaded = { size, asr };
+  loaded = { size, backend, asr };
 
   let bytes = 0;
   for (const file of files.values()) bytes += file.total;
@@ -103,12 +103,33 @@ scope.onmessage = async (event) => {
   }
   try {
     if (!loaded) throw new Error("No model loaded.");
-    // Whisper reads 30 seconds at a time; a locked recording (§45) can run longer.
-    const long = request.audio.length > 30 * 16000;
-    const output = await loaded.asr(request.audio, long ? { chunk_length_s: 30, stride_length_s: 5 } : {});
-    const text = Array.isArray(output) ? output.map((part) => part.text).join(" ") : output.text;
-    scope.postMessage({ type: "result", id: request.id, text: text.trim() });
+    let reloaded = false;
+    let text: string;
+    try {
+      text = await run(loaded.asr, request.audio);
+    } catch (err) {
+      // Android takes the GPU away from a page (backgrounded, screen off), which leaves a
+      // WebGPU model dead: "A valid external Instance reference no longer exists". Load it
+      // again from the cache and try once more; the caller falls back to Groq if this fails.
+      if (loaded.backend !== "webgpu") throw err;
+      console.warn("Whisper on WebGPU failed, reloading the model:", err);
+      const { size } = loaded;
+      await loaded.asr.dispose().catch(() => undefined);
+      loaded = null;
+      await load(size);
+      reloaded = true;
+      text = await run(loaded!.asr, request.audio);
+    }
+    scope.postMessage({ type: "result", id: request.id, text, reloaded });
   } catch (err) {
     scope.postMessage({ type: "transcribeError", id: request.id, message: err instanceof Error ? err.message : String(err) });
   }
 };
+
+async function run(asr: AutomaticSpeechRecognitionPipeline, audio: Float32Array): Promise<string> {
+  // Whisper reads 30 seconds at a time; a locked recording (§45) can run longer.
+  const long = audio.length > 30 * 16000;
+  const output = await asr(audio, long ? { chunk_length_s: 30, stride_length_s: 5 } : {});
+  const text = Array.isArray(output) ? output.map((part) => part.text).join(" ") : output.text;
+  return text.trim();
+}
