@@ -34,6 +34,17 @@ import { RECURRENCE_SPEC_GRAMMAR } from "../server/recurrenceSpec.ts";
 import { resolveCategoryId, rolloverPersistentTasks, withTimeZone } from "../lib/dataStore.ts";
 import { describeReset, describeResetQuestion, resetRefusal, resetStats, resetTargets, type ResetScope } from "../lib/statsReset.ts";
 import { getHistory, HISTORY_MAX_DAYS, historyRangeDays } from "../lib/history.ts";
+import {
+  applyBackup,
+  BACKUP_SECTIONS,
+  backupFilename,
+  buildBackup,
+  changedAnything,
+  describeBackupContents,
+  describeImport,
+  parseBackup,
+  sectionsInFile,
+} from "../lib/backupJson.ts";
 import { summarizeHistory } from "../lib/historySummary.ts";
 import { NOTE_MAX_LENGTH, setDayNote } from "../lib/dayNotes.ts";
 import {
@@ -56,6 +67,9 @@ import {
   type ScheduleOp,
 } from "./manageTools.ts";
 import { DAY_PARTS } from "../lib/dayParts.ts";
+
+/** §82: about 50,000 tokens; a bigger backup goes through the app's Settings instead. */
+export const BACKUP_MAX_CHARS = 200_000;
 
 export interface McpDeps {
   store: FileStore;
@@ -146,6 +160,12 @@ const GET_STATS_DESCRIPTION = `Stats, as in the app's stats tab: for a habit, st
 - scope "category": the items in \`category\` (its name), together.
 - scope "overall": everything, plus each category.
 \`type\` limits category or overall to one kind of item.`;
+
+const EXPORT_BACKUP_DESCRIPTION = `A backup of the parts of the user's data they name, as one JSON file to keep or bring into another account: "back up everything", "export my habits without history". Returns \`backup\` (the file's text) and \`filename\`: save it as a file for the user with that name, unchanged; tell them what's in it from \`contents\`. Never holds API keys. Not for a spreadsheet of a period (get_history with format "csv").
+Parts (\`sections\`): habits, recurringTasks, singleTasksOpen (the items as planned); habitHistory, recurringTaskHistory, singleTasksDone (what was done, with day notes); categories (the user's own), goals, weekStart. History without its items can only go into an account that has those items.`;
+
+const IMPORT_BACKUP_DESCRIPTION = `Brings a Habit Assistant backup file (made by export_backup or the app's Settings → Backup) into the user's data. Pass the file's full text as \`backup\`; \`sections\` picks parts of it.
+Always ask the user Merge or Replace, never assume it: without \`mode\` it answers "need_info" with the question. Merge adds what's new and updates what the user already has; Replace clears each picked part first. Then "needs_confirm" with a preview of the changes: show it word for word, and only after a yes call again with the same arguments and \`confirm: true\`. The undo tool takes it back the same day.`;
 
 const RESET_STATS_DESCRIPTION = `Starts stats over, from today, for one item, a category or everything (\`type\` limits it to one kind of item). Nothing is erased: the history stays (the app's heatmap still shows it), only the counting restarts. Not for deleting an item (delete_items) or a single day's tick (set_done).
 It asks first (status "needs_confirm"): ask the user the question word for word, and only after a yes call again with the same arguments and \`confirm: true\`. The best streak always stays from here; resetting it too is only in the app.
@@ -766,6 +786,86 @@ export function buildServer(deps: McpDeps): McpServer {
     },
     ({ id, name, date, note, timeZone }) =>
       timed(deps, "set_note", async () => (invalidInput(date, undefined) ?? runHandler(deps, "set_note", { id, name, date, note }, timeZone))),
+  );
+
+  server.registerTool(
+    "export_backup",
+    {
+      title: "Export a backup",
+      description: EXPORT_BACKUP_DESCRIPTION,
+      inputSchema: {
+        sections: z.array(z.enum(BACKUP_SECTIONS)).optional().describe("Only these parts; leave out for everything."),
+        includeArchived: z.boolean().optional().describe("false to leave archived habits and recurring tasks out."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ sections, includeArchived, timeZone }) =>
+      timed(deps, "export_backup", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const picked = sections?.length ? sections : [...BACKUP_SECTIONS];
+        const file = buildBackup(rolloverPersistentTasks(loaded.data, today), picked, today, { includeArchived: includeArchived !== false });
+        const text = JSON.stringify(file);
+        if (text.length > BACKUP_MAX_CHARS) {
+          return {
+            status: "rejected",
+            message: `That backup is too big to pass through the chat (${Math.round(text.length / 1000)} kB). Export fewer parts at a time (history is the largest), or use Settings → Backup in the Habit Assistant app, which has no limit.`,
+          };
+        }
+        return { status: "ok", filename: backupFilename(today), contents: describeBackupContents(file), backup: text };
+      }),
+  );
+
+  server.registerTool(
+    "import_backup",
+    {
+      title: "Import a backup",
+      description: IMPORT_BACKUP_DESCRIPTION,
+      inputSchema: {
+        backup: z.string().describe("The backup file's full text, exactly as it is."),
+        sections: z.array(z.enum(BACKUP_SECTIONS)).optional().describe("Only these parts of the file; leave out for all it holds."),
+        mode: z.enum(["merge", "replace"]).optional().describe("Only the user's own choice; never assumed."),
+        confirm: z.boolean().optional().describe("Only after the user said yes to the needs_confirm question."),
+        timeZone: TIME_ZONE,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    ({ backup, sections, mode, confirm = false, timeZone }) =>
+      timed(deps, "import_backup", async () => {
+        const invalid = invalidInput(undefined, timeZone);
+        if (invalid) return invalid;
+        const parsed = parseBackup(backup);
+        if ("error" in parsed) return { status: "rejected", message: parsed.error };
+        const file = parsed.file;
+        const picked = sections?.length ? sections.filter((s) => file.sections[s] !== undefined) : sectionsInFile(file);
+        if (!picked.length) return { status: "rejected", message: `That backup holds none of those parts. It has: ${describeBackupContents(file)}.` };
+        if (!mode) {
+          return {
+            status: "need_info",
+            message: `This backup has: ${describeBackupContents(file)}. Merge (add what's new and update what you already have, nothing else touched) or Replace (clear each of those parts first, then put the backup's in)?`,
+          };
+        }
+        const loaded = await deps.store.load();
+        const today = userToday(loaded.data, timeZone);
+        if (!today) return NEED_TIMEZONE;
+        const preview = applyBackup(rolloverPersistentTasks(loaded.data, today), file, picked, mode, today).summary;
+        if (!changedAnything(preview)) return { status: "ok", message: describeImport(preview, true) };
+        if (!confirm) {
+          return { status: "needs_confirm", question: `${describeImport(preview, true)}\nGo ahead?` };
+        }
+        let summary = preview;
+        // Recorded like any change from Claude (§70), so "undo that" takes it back the same day.
+        await persist(deps.store, loaded, today, (data) => {
+          const result = applyBackup(data, file, picked, mode, today);
+          summary = result.summary;
+          return result.data;
+        });
+        return { status: "ok", today, message: describeImport(summary, false) };
+      }),
   );
 
   server.registerTool(

@@ -28,7 +28,7 @@ export interface HistoryAssistantMessage {
 
 export interface ChatDownload {
   filename: string;
-  /** The file's text; a CSV for now. */
+  /** The file's text: a CSV (§72) or a JSON backup (§82), told apart by the filename. */
   text: string;
 }
 

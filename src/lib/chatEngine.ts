@@ -87,6 +87,7 @@ import {
 import { rolloverPersistentTasks } from "./dataStore";
 import { planBulk, planBulkEdit, type BulkEdit, type BulkFilter, type BulkRequest } from "./bulk";
 import { buildExportCsv, exportRefusal } from "./exportCsv";
+import { BACKUP_SECTIONS, backupFilename, backupText, buildBackup, describeBackupContents, type BackupSection } from "./backupJson";
 import { planUndo, withUndoRecord } from "./undo";
 import { applyPack, describePackAdded, describePackPreview, planPack, withoutItems, type PackItem, type PackPlan } from "./pack";
 import { defaultMissedPeriod, describeMissed, getMissed } from "./missed";
@@ -477,6 +478,8 @@ export class ChatSession {
       this.handleCreatePack(toolCall.input, toolCall);
     } else if (toolCall.name === "exportCsv") {
       this.handleExportCsv(toolCall.input, toolCall);
+    } else if (toolCall.name === "backupData") {
+      this.handleBackupData(toolCall.input, toolCall);
     } else if (toolCall.name === "editMany") {
       const { names, dayPart, categoryId, kind, newDayPart, newImportant, newCategoryId, newRecurrence } = toolCall.input;
       await this.runBulkEdit({ names, dayPart, categoryId, kind }, { dayPart: newDayPart, important: newImportant, categoryId: newCategoryId, recurrence: newRecurrence }, toolCall, false);
@@ -1672,6 +1675,30 @@ export class ChatSession {
       `Your spreadsheet for ${range}${cut}: ${file.rows} ${file.rows === 1 ? "row" : "rows"}, one per item per day. Tap Download to save it.`,
       toolCall,
       { filename: file.filename, text: file.csv },
+    );
+  }
+
+  // §82: a JSON backup of the parts named, as a Download on the reply. Importing needs a
+  // file, which the chat can't take, so it points to Settings, where the preview is.
+  private handleBackupData(input: { action: "export" | "import"; sections?: string[]; includeArchived?: boolean }, toolCall: ToolCallRef) {
+    if (input.action === "import") {
+      this.pushAssistantMessage(
+        "To import a backup, open Settings (the gear at the top), go to Backup and pick the file under \"Import a backup\". It shows what will change before anything is saved, and you choose Merge or Replace.",
+        toolCall,
+      );
+      return;
+    }
+    const stored = this.deps.getData();
+    if (!stored) return;
+    const today = this.todayISO;
+    const known = (input.sections ?? []).filter((s): s is BackupSection => (BACKUP_SECTIONS as readonly string[]).includes(s));
+    const sections = known.length ? known : [...BACKUP_SECTIONS];
+    const file = buildBackup(rolloverPersistentTasks(stored, today), sections, today, { includeArchived: input.includeArchived !== false });
+    const archived = file.archivedLeftOut ? " Archived items are left out." : "";
+    this.pushAssistantMessage(
+      `Your backup: ${describeBackupContents(file)}.${archived} Tap Download to save it. It never holds API keys; to bring it into an account, use Settings → Backup.`,
+      toolCall,
+      { filename: backupFilename(today), text: backupText(file) },
     );
   }
 

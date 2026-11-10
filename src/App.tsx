@@ -1,4 +1,5 @@
 import { unskipDay } from "./lib/skip";
+import { applyBackup } from "./lib/backupJson";
 import { useEffect, useRef, useState } from "react";
 import { Settings as SettingsIcon, CircleHelp, MessageCircle, Calendar, Tags, List, ChartColumn, Timer as TimerIcon } from "lucide-react";
 import SignIn from "./components/SignIn";
@@ -756,6 +757,10 @@ export default function App() {
             onClose={() => setSettingsOpen(false)}
             weekStartsOn={weekStartOf(data)}
             onChangeWeekStart={(weekStartsOn) => void persist((current) => ({ ...current, weekStartsOn }))}
+            data={data}
+            onImportBackup={(file, sections, mode) =>
+              persist((current) => applyBackup(current, file, sections, mode, todayISO()).data)
+            }
             debugLogEnabled={debugLogEnabled}
             debugLog={debugLog}
             onClearDebugLog={handleClearDebugLog}

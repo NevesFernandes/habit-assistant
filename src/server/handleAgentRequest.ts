@@ -8,6 +8,7 @@
 // strategy"): a BYOK request uses the caller's own provider/key; otherwise
 // it falls back to the shared free trial configured via env vars.
 import { resolveProvider, type ProviderAdapter } from "./providers/index.ts";
+import { BACKUP_SECTIONS } from "../lib/backupSections.ts";
 import { ProviderRequestError, type ProviderResult, type ToolDefinition } from "./providers/types.ts";
 import type { AgentHistoryMessage } from "./agentHistory.ts";
 import { DEFAULT_CATEGORIES, type Category, type WeekStart } from "../types/models.ts";
@@ -121,6 +122,7 @@ const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "getHistory", buckets: ["history"], listBlurb: "show what was done, missed or paused over a period, or what's coming up; changes nothing." },
   { name: "getMissed", buckets: ["history"], listBlurb: "show only what was missed over a period, and tasks still carried over; changes nothing." },
   { name: "exportCsv", buckets: ["history"], listBlurb: "export a period as a spreadsheet (CSV) the user can download; changes nothing." },
+  { name: "backupData", buckets: ["history"], listBlurb: "make a backup file of chosen parts (habits, tasks, history, goals…) to download, or say how to import one; changes nothing." },
   { name: "applyToMany", buckets: ["progress", "schedule"], listBlurb: "mark done or not done, skip, pause or resume several items at once: named ones, or all in a part of the day, a category or a kind." },
   { name: "editMany", buckets: ["edit"], listBlurb: "change the part of the day, importance, category or repeat rule of several items at once." },
   { name: "undoLastChange", buckets: ["undo"], listBlurb: "undo the last change made in this chat today (anything, a delete included), if nothing changed it since." },
@@ -1264,13 +1266,31 @@ export function buildTools(
     {
       name: "exportCsv",
       description:
-        "Export a period as a spreadsheet (CSV), one row per item per day, which the user downloads from the reply: 'export my October', 'give me last month as a spreadsheet', 'download this year'. Pass from and to only when the user named a period; if they didn't, leave both out and the app asks which period.",
+        "Export a period as a spreadsheet (CSV), one row per item per day, which the user downloads from the reply: 'export my October', 'give me last month as a spreadsheet', 'download this year'. Pass from and to only when the user named a period; if they didn't, leave both out and the app asks which period. A backup of items or settings rather than a period is backupData.",
       parameters: {
         type: "object",
         properties: {
           from: { type: "string", description: "First day, ISO date (YYYY-MM-DD)." },
           to: { type: "string", description: "Last day, ISO date (YYYY-MM-DD)." },
         },
+      },
+    },
+    {
+      name: "backupData",
+      description:
+        "A backup file (JSON) of the parts of the data the user names, to keep or bring into another account, downloaded from the reply: 'back up everything', 'export my habits', 'export my habits without the history', 'save my goals and categories to a file'. Leave sections out for everything. action import: the user wants to load or restore a backup; the app points to Settings.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["export", "import"] },
+          sections: {
+            type: "array",
+            items: { type: "string", enum: [...BACKUP_SECTIONS] },
+            description: "Only these. habits/recurringTasks/singleTasksOpen = the items as planned; habitHistory/recurringTaskHistory/singleTasksDone = what was done, with notes; categories = the user's own; weekStart = first day of the week.",
+          },
+          includeArchived: { type: "boolean", description: "false when the user wants archived items left out." },
+        },
+        required: ["action"],
       },
     },
     {

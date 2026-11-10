@@ -1,7 +1,7 @@
 {
   "name": "habit-assistant",
   "private": true,
-  "version": "1.81.1",
+  "version": "1.82.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -29,6 +29,7 @@
     "test:weekStart": "tsx src/lib/weekStart.test.ts",
     "test:trialHint": "tsx src/lib/trialHint.test.ts",
     "test:taskCategory": "tsx src/lib/taskCategory.test.ts",
+    "test:backupJson": "tsx src/lib/backupJson.test.ts",
     "test:history": "tsx src/lib/history.test.ts",
     "test:dayNotes": "tsx src/lib/dayNotes.test.ts",
     "test:skip": "tsx src/lib/skip.test.ts",

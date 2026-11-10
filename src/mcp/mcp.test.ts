@@ -197,11 +197,13 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
     "checklist",
     "create_items",
     "delete_items",
+    "export_backup",
     "find_items",
     "get_day",
     "get_history",
     "get_stats",
     "goals",
+    "import_backup",
     "log_progress",
     "reset_stats",
     "schedule",
@@ -213,8 +215,8 @@ const deps: McpDeps = { store: memoryStore(data), log: (event) => logged.push(ev
   ]);
   // Deletes, stats resets and undo ask for approval; reads are marked read-only.
   const hints = Object.fromEntries(result.tools.map((t: { name: string; annotations: Record<string, boolean> }) => [t.name, t.annotations]));
-  for (const name of ["delete_items", "reset_stats", "undo"]) assert.equal(hints[name].destructiveHint, true, name);
-  for (const name of ["get_day", "find_items", "get_history", "get_stats"]) assert.equal(hints[name].readOnlyHint, true, name);
+  for (const name of ["delete_items", "reset_stats", "undo", "import_backup"]) assert.equal(hints[name].destructiveHint, true, name);
+  for (const name of ["get_day", "find_items", "get_history", "get_stats", "export_backup"]) assert.equal(hints[name].readOnlyHint, true, name);
   for (const name of ["checklist", "schedule", "set_done", "set_note", "create_items", "update_items", "categories", "settings", "log_progress", "goals"]) {
     assert.equal(hints[name].destructiveHint, false, name);
   }
