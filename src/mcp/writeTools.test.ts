@@ -423,6 +423,46 @@ const entry = (data: AppData, itemId: string, date = TODAY) =>
   assert.match(init.instructions, /call get_day/);
 }
 
+// --- export_backup / import_backup (§82) ------------------------------------------------
+{
+  const { store, deps } = fresh();
+  const exported = (await callTool(deps, "export_backup", { sections: ["habits"], includeArchived: false })).body;
+  assert.equal(exported.status, "ok");
+  assert.equal(exported.filename, `habit-assistant-${TODAY}.json`);
+  assert.match(exported.contents, /^habits \(8\)$/, "archived left out");
+  const backup: string = exported.backup;
+  assert.ok(!backup.includes("Europe/Lisbon") && !backup.includes("someFutureField"));
+
+  // Into an empty account: asks Merge or Replace, then previews, then imports.
+  const empty = fresh({ ...fixture(), habits: [], recurringTasks: [], singleTasks: [] });
+  const ask = (await callTool(empty.deps, "import_backup", { backup })).body;
+  assert.equal(ask.status, "need_info");
+  assert.match(ask.message, /Merge .* or Replace/);
+  const preview = (await callTool(empty.deps, "import_backup", { backup, mode: "merge" })).body;
+  assert.equal(preview.status, "needs_confirm");
+  assert.match(preview.question, /^Adds: habits 8\.\nGo ahead\?$/);
+  assert.equal(empty.store.file().habits.length, 0, "nothing saved before a yes");
+  const done = (await callTool(empty.deps, "import_backup", { backup, mode: "merge", confirm: true })).body;
+  assert.equal(done.status, "ok");
+  assert.equal(done.message, "Added: habits 8.");
+  assert.equal(empty.store.file().habits.length, 8);
+  assert.equal((empty.store.file() as AppData & { someFutureField?: unknown }).someFutureField !== undefined, true, "rest of the file kept");
+  // The same again changes nothing; "undo" takes the import back.
+  assert.match((await callTool(empty.deps, "import_backup", { backup, mode: "merge" })).body.message, /^Nothing to change/);
+  assert.equal((await callTool(empty.deps, "undo", {})).body.status, "ok");
+  assert.equal(empty.store.file().habits.length, 0);
+
+  // Replace clears the part first.
+  const replace = (await callTool(deps, "import_backup", { backup, mode: "replace", confirm: true })).body;
+  assert.equal(replace.message, "Removed: habits 1.");
+  assert.equal(store.file().habits.length, 8);
+  assert.ok(!store.file().habits.some((h) => h.name === "Archived"), "the habit the backup didn't hold is gone");
+
+  // Bad files and missing parts are refused.
+  assert.equal((await callTool(deps, "import_backup", { backup: "{}", mode: "merge" })).body.status, "rejected");
+  assert.match((await callTool(deps, "import_backup", { backup, sections: ["goals"], mode: "merge" })).body.message, /holds none of those parts/);
+}
+
 for (const event of logged) assert.deepEqual(Object.keys(event).sort(), ["ms", "status", "tool"]);
 
 console.log("mcp write tools: all assertions passed");

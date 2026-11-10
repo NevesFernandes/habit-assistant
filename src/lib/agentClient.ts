@@ -3,6 +3,7 @@
 // per-request and never stored server-side). See CLAUDE.md's "Cost model /
 // provider strategy".
 import type { ByokSettings } from "./settingsStore";
+import type { BackupSection } from "./backupJson";
 import type { Category, DayPart, RecurrenceRule, WeekStart } from "../types/models";
 import type { PackItem } from "./pack";
 import type { CreateHabitInput, CreateRecurringTaskInput, CreateSingleTaskInput, DeleteCriteria, UpdatePatch } from "./dataStore";
@@ -226,6 +227,12 @@ export interface ExportCsvToolCall {
   input: { from?: string; to?: string };
 }
 
+// §82: a JSON backup of the parts named (none = everything); "import" only points to Settings.
+export interface BackupDataToolCall {
+  name: "backupData";
+  input: { action: "export" | "import"; sections?: BackupSection[]; includeArchived?: boolean };
+}
+
 // §75: one action on the items named, or on every item the filters catch.
 export interface ApplyToManyToolCall {
   name: "applyToMany";
@@ -328,6 +335,7 @@ export type AgentToolCall =
   | GetMissedToolCall
   | ApplyToManyToolCall
   | ExportCsvToolCall
+  | BackupDataToolCall
   | CreatePackToolCall
   | UndoLastChangeToolCall
   | EditManyToolCall;

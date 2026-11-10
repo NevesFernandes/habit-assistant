@@ -1,4 +1,6 @@
 import { useState } from "react";
+import BackupSection from "./BackupSection";
+import type { BackupFile, BackupSection as BackupPart, ImportMode } from "../lib/backupJson";
 import {
   getSavedKey,
   saveProviderKey,
@@ -15,7 +17,7 @@ import { getTtsEnabled, setTtsEnabled } from "../lib/ttsPreference";
 import { isTtsSupported, cancelSpeech } from "../lib/textToSpeech";
 import OnDeviceSttSettings from "./OnDeviceSttSettings";
 import type { DebugLogEntry } from "../lib/debugLogStore";
-import type { WeekStart } from "../types/models";
+import type { AppData, WeekStart } from "../types/models";
 
 interface SettingsProps {
   activeProvider: ByokProvider | null;
@@ -25,6 +27,9 @@ interface SettingsProps {
   // §43: synced in the Drive file, so App.tsx owns it rather than this panel.
   weekStartsOn: WeekStart;
   onChangeWeekStart: (weekStartsOn: WeekStart) => void;
+  // §82: the Backup section reads the data to export and saves an import through persist.
+  data: AppData;
+  onImportBackup: (file: BackupFile, sections: BackupPart[], mode: ImportMode) => Promise<boolean>;
   // §27 in Roadmap.md: owned by App.tsx (not loaded/cleared locally here) so
   // the list stays live while this panel is open during a chat turn, instead
   // of only reflecting a one-time snapshot taken when it was unlocked.
@@ -55,6 +60,8 @@ export default function Settings({
   onClose,
   weekStartsOn,
   onChangeWeekStart,
+  data,
+  onImportBackup,
   debugLogEnabled,
   debugLog,
   onClearDebugLog,
@@ -266,6 +273,10 @@ export default function Settings({
           </button>
         ))}
       </div>
+
+      <hr className="my-4 border-slate-700" />
+
+      <BackupSection data={data} onImport={onImportBackup} />
 
       <hr className="my-4 border-slate-700" />
 

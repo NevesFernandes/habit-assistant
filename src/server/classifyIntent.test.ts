@@ -141,6 +141,10 @@ const cases: Case[] = [
   // §72
   ["export my October", ["history"]],
   ["give me last month as a spreadsheet", ["history"]],
+  // §82: backups go to the same family (backupData); "restore" alone stays unarchive.
+  ["back up everything", ["history"]],
+  ["can you back my habits up", ["history"]],
+  ["import my backup", ["history"]],
   // §75
   ["mark all my morning habits done", ["progress"]],
   ["pause everything in Sports for a week", ["schedule"]],

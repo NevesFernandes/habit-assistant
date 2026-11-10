@@ -129,6 +129,8 @@ const HISTORY_PATTERNS: RegExp[] = [
   /\bslipped\b/, /\banything i missed\b/,
   // §72
   /\bexport\b/, /\bspreadsheet\b/, /\bcsv\b/, /\bexcel\b/, /\bdownload\b/,
+  // §82
+  /\bback ?ups?\b/, /\bback (?:it |them |everything |my \w+ )?up\b/, /\bimport\b/,
   /\bdid i\b[\s\S]*\b(?:yesterday|last week|this week|last month|this month|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/,
   /\b(?:my|the) history\b/, /\b(?:recap|review|summary of) (?:my|the|this|last)\b/,
   /\bwhat(?:'s| is| do i have)\b[\s\S]*\b(?:this|next|coming) (?:week|month)\b/, /\bplan (?:my|the) (?:week|month)\b/,

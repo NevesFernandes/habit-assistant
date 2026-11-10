@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { saveTextFile } from "../lib/saveFile";
 import type { AgentHistoryMessage } from "../lib/agentClient";
 import type { ByokProvider } from "../lib/settingsStore";
 import { toDisplayMessages, type ChatDownload } from "../server/agentHistory";
@@ -80,15 +81,7 @@ export default function Chat({ messages, onSend, sending, sttApiKey, byokProvide
   );
 }
 
-// §72: an export saved from its Download button. The byte-order mark makes Excel read the
-// file as UTF-8, so accents and emoji in names and notes come through.
+// §72's CSV export and §82's JSON backup, saved from the message's Download button.
 function saveDownload(download: ChatDownload) {
-  const url = URL.createObjectURL(new Blob(["\uFEFF", download.text], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = download.filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveTextFile(download.filename, download.text);
 }
